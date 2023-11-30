@@ -5,8 +5,15 @@ from pathlib import Path
 
 app = FastAPI()
 
-templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
+app.mount(
+    "/static",
+    StaticFiles(directory=Path(__file__).parent.parent.absolute() / "static"),
+    name="static"
+)
+
+templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
+
 
 @app.get("/")
 async def root(request: Request):
-   return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("main_page.html", {"request": request})
