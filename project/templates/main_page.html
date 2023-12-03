@@ -10,6 +10,11 @@
       href="{{ url_for('static', path='/img/chat.ico') }}"
       type="image/x-icon" />
 
+    <!-- Google font -->
+    <link
+      href="https://fonts.googleapis.com/css?family=PT+Sans:regular,italic,700,700italic"
+      rel="stylesheet" />
+
     <!-- CSS -->
     <link
       href="{{ url_for('static', path='/css/style.css') }}"
@@ -115,6 +120,27 @@
                   app will keep you mobile and adaptable whether you're working
                   remotely or while on the go.
                 </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="py-5">
+        <div class="pt-5">
+          <div class="bg-primary pt-5 pb-5">
+            <div class="row text-center d-flex px-5">
+              <div>
+                <h3 class="bold">
+                  Visit us and become a part of our expanding, happy user
+                  community!
+                </h3>
+                <button class="btn btn-light btn-lg mt-5">
+                  <a
+                    class="text-decoration-none text-dark bold"
+                    href="{{ url_for('sign_up') }}"
+                    >Sign up</a
+                  >
+                </button>
               </div>
             </div>
           </div>

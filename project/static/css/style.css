@@ -1,8 +1,37 @@
+/* General font */
+
+body {
+    font-family: 'PT Sans', serif;
+}
+
+
 /* Chat icon in header */
 
 #chat-icon {
     width: 50px;
     height: 50px;
+}
+
+/* Header highlight text login, contact, etc. */
+
+.nav-link {
+    position: relative;
+    font-size: 115%;
+}
+
+.nav-link::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 0;
+    height: 2px;
+    background-color: #0250c4;
+    transition: width 0.3s ease-in-out;
+}
+
+.nav-link:hover::after {
+    width: 100%;
 }
 
 /* Icons size in main page */
@@ -13,6 +42,28 @@
 
 /* Icons size in footer */
 
-.social-links {
+.social-link {
     font-size: 30px;
 }
+
+/* Social links highlight icons */
+
+.social-link {
+    position: relative;
+ }
+ 
+ .social-link::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 15px;
+    width: 0;
+    height: 2px;
+    background-color: #0250c4;
+    transition: width 0.3s ease-in-out;
+ }
+ 
+ .social-link:hover::after {
+    width: 60%;
+ }
+ 

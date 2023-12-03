@@ -1,28 +1,49 @@
 <header>
-  <!-- Nav tabs -->
-  <ul class="nav nav-tabs pt-2 pb-2" id="navId" role="tablist">
+  <!-- Navigation with ARIA roles -->
+  <nav
+    class="nav nav-tabs pt-2 pb-2"
+    role="navigation"
+    aria-label="Main Navigation">
     <div class="rounded float-start ps-5">
-      <a href="{{ url_for('root') }}"
-        ><img
+      <a href="{{ url_for('root') }}">
+        <img
           src="{{ url_for('static', path='/img/chat.png') }}"
           id="chat-icon"
-          alt="chat-icon"
-      /></a>
+          alt="chat-icon" />
+      </a>
     </div>
     <div class="ms-auto d-flex">
-      <li class="nav-item lead bold" role="presentation">
-        <a href="#tab5Id" class="nav-link" data-bs-toggle="tab">Login</a>
-      </li>
+      <div class="nav-item lead bold" role="tablist">
+        <a
+          href="{{ url_for('login') }}"
+          class="nav-link"
+          role="tab"
+          aria-selected="false"
+          >Login</a
+        >
+      </div>
 
-      <li class="nav-item lead bold" role="presentation">
-        <a href="#tab5Id" class="nav-link" data-bs-toggle="tab">Sign up</a>
-      </li>
+      <div class="nav-item lead bold" role="tablist">
+        <a
+          href="{{ url_for('sign_up') }}"
+          class="nav-link"
+          role="tab"
+          aria-selected="false"
+          >Sign up</a
+        >
+      </div>
 
-      <li class="nav-item lead bold" role="presentation">
-        <a href="#tab5Id" class="nav-link me-5" data-bs-toggle="tab">Contact</a>
-      </li>
+      <div class="nav-item lead bold" role="tablist">
+        <a
+          href="{{ url_for('contact') }}"
+          class="nav-link me-5"
+          role="tab"
+          aria-selected="false"
+          >Contact</a
+        >
+      </div>
     </div>
-  </ul>
+  </nav>
 
   <!-- Tab panes -->
   <div class="tab-content" id="myTabContent">

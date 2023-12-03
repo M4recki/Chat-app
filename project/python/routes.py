@@ -12,10 +12,25 @@ def current_year(request: Request):
 
 templates = Jinja2Templates(
     directory=Path(__file__).parent.parent / "templates",
-    context_processors=[current_year]
+    context_processors=[current_year],
 )
 
 
 @router.get("/")
 def root(request: Request):
     return templates.TemplateResponse("main_page.html", {"request": request})
+
+
+@router.get("/sign_up")
+def sign_up(request: Request):
+    return templates.TemplateResponse("sign_up.html", {"request": request})
+
+
+@router.get("/login")
+def login(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
+
+
+@router.get("/contact")
+def contact(request: Request):
+    return templates.TemplateResponse("contact.html", {"request": request})
