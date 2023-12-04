@@ -22,15 +22,15 @@ def root(request: Request):
 
 
 @router.get("/sign_up")
-def sign_up(request: Request):
+async def sign_up(request: Request):
     return templates.TemplateResponse("sign_up.html", {"request": request})
 
 
 @router.get("/login")
-def login(request: Request):
+async def login(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
 
 
 @router.get("/contact")
-def contact(request: Request):
+async def contact(request: Request):
     return templates.TemplateResponse("contact.html", {"request": request})
