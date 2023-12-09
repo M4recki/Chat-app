@@ -57,22 +57,38 @@
       <div class="container d-flex align-items-center justify-content-between">
         <div class="col-md-6">
           <h1 class="text-center py-5 bold text-primary">Sign up</h1>
-          <form>
+          <form action="/sign_up" method="post">
             <div class="mb-3">
               <label for="name" class="form-label">Name</label>
-              <input type="text" class="form-control my-3" id="name" />
+              <input
+                type="text"
+                class="form-control my-3"
+                name="name"
+                id="name" />
             </div>
             <div class="mb-3">
               <label for="surname" class="form-label">Surname</label>
-              <input type="text" class="form-control my-3" id="surname" />
+              <input
+                type="text"
+                class="form-control my-3"
+                name="surname"
+                id="surname" />
             </div>
             <div class="mb-3">
               <label for="email" class="form-label">Email</label>
-              <input type="email" class="form-control my-3" id="email" />
+              <input
+                type="email"
+                class="form-control my-3"
+                name="email"
+                id="email" />
             </div>
             <div class="mb-3">
               <label for="password" class="form-label">Password</label>
-              <input type="password" class="form-control my-3" id="password" />
+              <input
+                type="password"
+                class="form-control my-3"
+                name="password"
+                id="password" />
             </div>
             <div class="mb-3">
               <label for="confirmPassword" class="form-label"
@@ -81,18 +97,20 @@
               <input
                 type="password"
                 class="form-control my-3"
+                name="confirm_password"
                 id="confirmPassword" />
             </div>
             <div class="mb-3">
               <input
                 type="checkbox"
-                name="terms-conditions"
                 id="checkbox"
+                name="terms_conditions"
                 class="form-check-input mx-2" />
               <label class="form-check-label mb-4" for="form-check-input">
                 I agree to the Terms and Conditions
               </label>
             </div>
+            <div class="justify-content-center"></div>
             <button type="submit" class="btn btn-lg btn-primary bold">
               Submit
             </button>

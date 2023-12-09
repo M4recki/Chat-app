@@ -1,55 +1,72 @@
-<header>
-  <!-- Navigation with ARIA roles -->
-  <nav
-    class="nav nav-tabs pt-2 pb-2"
-    role="navigation"
-    aria-label="Main Navigation">
-    <div class="rounded float-start ps-5">
-      <a href="{{ url_for('root') }}">
-        <img
-          src="{{ url_for('static', path='/img/chat.png') }}"
-          id="chat-icon"
-          alt="chat-icon" />
-      </a>
-    </div>
-    <div class="ms-auto d-flex">
-      <div class="nav-item lead bold" role="tablist">
-        <a
-          href="{{ url_for('login') }}"
-          class="nav-link"
-          role="tab"
-          aria-selected="false"
-          >Login</a
-        >
-      </div>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-      <div class="nav-item lead bold" role="tablist">
-        <a
-          href="{{ url_for('sign_up') }}"
-          class="nav-link"
-          role="tab"
-          aria-selected="false"
-          >Sign up</a
-        >
-      </div>
+    <!-- CSS -->
+    <link
+      href="{{ url_for('static', path='/css/style.css') }}"
+      rel="stylesheet" />
+  </head>
+  <body>
+    <header>
+      <!-- Navigation with ARIA roles -->
+      <nav
+        class="nav nav-tabs pt-2 pb-2"
+        role="navigation"
+        aria-label="Main Navigation">
+        <div class="rounded float-start ps-5">
+          <a href="{{ url_for('root') }}">
+            <img
+              src="{{ url_for('static', path='/img/chat.png') }}"
+              id="chat-icon"
+              alt="chat-icon" />
+          </a>
+        </div>
+        <div class="ms-auto d-flex">
+          <div class="nav-item lead bold" role="tablist">
+            <a
+              href="{{ url_for('login') }}"
+              class="nav-link text-white"
+              role="tab"
+              aria-selected="false"
+              >Log in</a
+            >
+          </div>
 
-      <div class="nav-item lead bold" role="tablist">
-        <a
-          href="{{ url_for('contact') }}"
-          class="nav-link me-5"
-          role="tab"
-          aria-selected="false"
-          >Contact</a
-        >
-      </div>
-    </div>
-  </nav>
+          <div class="nav-item lead bold" role="tablist">
+            <a
+              href="{{ url_for('sign_up') }}"
+              class="nav-link text-white"
+              role="tab"
+              aria-selected="false"
+              >Sign up</a
+            >
+          </div>
 
-  <!-- Tab panes -->
-  <div class="tab-content" id="myTabContent">
-    <div class="tab-pane fade show active" id="tab1Id" role="tabpanel"></div>
-    <div class="tab-pane fade" id="tab2Id" role="tabpanel"></div>
-    <div class="tab-pane fade" id="tab3Id" role="tabpanel"></div>
-    <div class="tab-pane fade" id="tab4Id" role="tabpanel"></div>
-  </div>
-</header>
+          <div class="nav-item lead bold" role="tablist">
+            <a
+              href="{{ url_for('contact') }}"
+              class="nav-link text-white me-5"
+              role="tab"
+              aria-selected="false"
+              >Contact</a
+            >
+          </div>
+        </div>
+      </nav>
+
+      <!-- Tab panes -->
+      <div class="tab-content" id="myTabContent">
+        <div
+          class="tab-pane fade show active"
+          id="tab1Id"
+          role="tabpanel"></div>
+        <div class="tab-pane fade" id="tab2Id" role="tabpanel"></div>
+        <div class="tab-pane fade" id="tab3Id" role="tabpanel"></div>
+        <div class="tab-pane fade" id="tab4Id" role="tabpanel"></div>
+      </div>
+    </header>
+  </body>
+</html>

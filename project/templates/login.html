@@ -67,16 +67,16 @@
         </div>
         <div class="col-md-6">
           <h1 class="text-center pb-5 bold text-primary">Login</h1>
-          <form>
+          <form action="/login" method="post">
             <div class="mb-3">
               <label for="email" class="form-label">Email</label>
-              <input type="email" class="form-control my-3" id="email" />
+              <input type="email" class="form-control my-3" name="email" id="email" />
             </div>
             <div class="mb-3">
               <label for="password" class="form-label">Password</label>
-              <input type="password" class="form-control my-3" id="password" />
+              <input type="password" class="form-control my-3" name="password" id="password" />
             </div>
-            <button type="submit" class="btn btn-lg btn-primary mt-3 bold float-end">
+            <button type="submit" class="btn btn-lg btn-primary mt-3 bold float-start">
               Submit
             </button>
           </form>
