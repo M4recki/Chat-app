@@ -2,3 +2,4 @@ instance/
 __pycache__/
 .vscode/
 .pytest_cache/
+Chat app.session.sql
