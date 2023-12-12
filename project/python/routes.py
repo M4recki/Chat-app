@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request, Form
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
+from fastapi.exceptions import RequestValidationError
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from pathlib import Path
@@ -54,35 +55,30 @@ async def sign_up_data(
     db = SessionLocal()
     user = db.query(User).filter(User.email == email).first()
 
+    errors = {}
+
     if user:
-        return templates.TemplateResponse(
-            "sign_up.html",
-            {"request": request, "error": "User with this email already exists"},
-        )
+        errors["email"] = "User with this email already exists"
 
-    if len(email) < 8:
-        return templates.TemplateResponse(
-            "sign_up.html",
-            {
-                "request": request,
-                "error": "Password must be at least 8 characters long",
-            },
-        )
+    if (
+        not name
+        or not surname
+        or not email
+        or not password
+        or not confirm_password
+        or not terms_conditions
+    ):
+        errors["password"] = "This field is missing"
 
-    if not terms_conditions:
-        return templates.TemplateResponse(
-            "sign_up.html",
-            {"request": request, "error": "You must accept the terms and conditions"},
-        )
-
-    if email.find("@") == -1:
-        return templates.TemplateResponse(
-            "sign_up.html", {"request": request, "error": "Invalid email"}
-        )
+    if not password.isalnum():
+        errors["password"] = "Password must contain only letters and numbers"
 
     if password != confirm_password:
+        errors["confirm_password"] = "Passwords do not match"
+
+    if errors:
         return templates.TemplateResponse(
-            "sign_up.html", {"request": request, "error": "Passwords do not match"}
+            "sign_up.html", {"request": request, "errors": errors}
         )
 
     hashed_password = generate_password_hash(
@@ -100,7 +96,7 @@ async def sign_up_data(
 
     SECRET_KEY = environ.get("Secret_key_chat")
     s = Serializer(SECRET_KEY)
-    token = s.dumps({"user_id": new_user.id}, expires_in=timedelta(hours=1))
+    token = s.dumps({"user_id": new_user.id})
 
     response = RedirectResponse(request.url_for("root"), status_code=303)
     response.set_cookie(key="access_token", value=token, httponly=True)
@@ -123,19 +119,22 @@ async def login_data(
     db = SessionLocal()
     user = db.query(User).filter(User.email == email).first()
 
+    errors = {}
+
     if not user:
-        return templates.TemplateResponse(
-            "login.html", {"request": request, "error": "User not found"}
-        )
+        errors["email"] = "User with this email does not exist"
 
     if not check_password_hash(user.password, password):
+        errors["password"] = "Incorrect password. Please try again"
+
+    if errors:
         return templates.TemplateResponse(
-            "login.html", {"request": request, "error": "Incorrect password"}
+            "sign_up.html", {"request": request, "errors": errors}
         )
 
     SECRET_KEY = environ.get("Secret_key_chat")
     s = Serializer(SECRET_KEY)
-    token = s.dumps({"user_id": user.id}, expires_in=timedelta(hours=1))
+    token = s.dumps({"user_id": user.id})
 
     response = RedirectResponse(request.url_for("root"), status_code=303)
     response.set_cookie(key="access_token", value=token, httponly=True)
@@ -177,6 +176,8 @@ async def contact_data(
     subject: str = Form(...),
     message: str = Form(...),
 ):
+    errors = {}
+
     send_email(email, subject, message)
     flash_messages = ["Your message has been sent"]
     return templates.TemplateResponse(

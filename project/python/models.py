@@ -49,10 +49,9 @@ class GroupUser(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
     created_at = Column(DateTime, nullable=False)
-    user = relationship("User", backref="group_users")
+    user = relationship("User", backref="group_users", overlaps="groups,user_groups,users")
     group = relationship(
         "Group", backref="group_users", overlaps="groups,user_groups,users"
     )
 
-
-User.groups = relationship("Group", secondary="group_users", back_populates="users")
+Base.metadata.create_all(bind=engine)
