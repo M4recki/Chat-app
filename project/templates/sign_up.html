@@ -65,16 +65,10 @@
                 class="form-control my-3"
                 name="name"
                 id="name" />
-                {% if errors %}
- <div class="error">
- {% for error in errors %}
-     <p>{{ error['msg'] }}</p>
- {% endfor %}
- </div>
-{% endif %}
-
               {% if errors.name %}
-              <div class="alert alert-danger" role="alert">{{ errors.name }}</div>
+              <div class="alert alert-danger" role="alert">
+                {{ errors.name }}
+              </div>
               {% endif %}
             </div>
             <div class="mb-3">
@@ -83,9 +77,12 @@
                 type="text"
                 class="form-control my-3"
                 name="surname"
-                id="surname" />
+                id="surname"
+                required />
               {% if errors.surname %}
-              <div class="alert alert-danger" role="alert">{{ errors.surname }}</div>
+              <div class="alert alert-danger" role="alert">
+                {{ errors.surname }}
+              </div>
               {% endif %}
             </div>
             <div class="mb-3">
@@ -94,9 +91,12 @@
                 type="email"
                 class="form-control my-3"
                 name="email"
-                id="email" />
+                id="email"
+                required />
               {% if errors.email %}
-              <div class="alert alert-danger" role="alert">{{ errors.email }}</div>
+              <div class="alert alert-danger" role="alert">
+                {{ errors.email }}
+              </div>
               {% endif %}
             </div>
             <div class="mb-3">
@@ -105,9 +105,12 @@
                 type="password"
                 class="form-control my-3"
                 name="password"
-                id="password" />
+                id="password"
+                required />
               {% if errors.password %}
-              <div class="alert alert-danger" role="alert">{{ errors.password }}</div>
+              <div class="alert alert-danger" role="alert">
+                {{ errors.password }}
+              </div>
               {% endif %}
             </div>
             <div class="mb-3">
@@ -118,9 +121,12 @@
                 type="password"
                 class="form-control my-3"
                 name="confirm_password"
-                id="confirmPassword" />
-                {% if errors.confirm_password %}
-              <div class="alert alert-danger" role="alert">{{ errors.confirm_password }}</div>
+                id="confirmPassword"
+                required />
+              {% if errors.confirm_password %}
+              <div class="alert alert-danger" role="alert">
+                {{ errors.confirm_password }}
+              </div>
               {% endif %}
             </div>
             <div class="mb-3">
@@ -128,9 +134,12 @@
                 type="checkbox"
                 id="checkbox"
                 name="terms_conditions"
-                class="form-check-input mx-2" />
-                {% if errors.terms_conditions %}
-              <div class="alert alert-danger" role="alert">{{ errors.terms_conditions }}</div>
+                class="form-check-input mx-2"
+                required />
+              {% if errors.terms_conditions %}
+              <div class="alert alert-danger" role="alert">
+                {{ errors.terms_conditions }}
+              </div>
               {% endif %}
               <label class="form-check-label mb-4" for="form-check-input">
                 I agree to the Terms and Conditions

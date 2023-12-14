@@ -25,6 +25,26 @@
           </a>
         </div>
         <div class="ms-auto d-flex">
+          {% if is_authenticated %}
+          <div class="nav-item lead bold" role="tablist">
+            <a
+              href="{{ url_for('dashboard') }}"
+              class="nav-link text-white"
+              role="tab"
+              aria-selected="false"
+              >Dashboard</a
+            >
+          </div>
+          <div class="nav-item lead bold" role="tablist">
+            <a
+              href="{{ url_for('logout') }}"
+              class="nav-link text-white"
+              role="tab"
+              aria-selected="false"
+              >Log out</a
+            >
+          </div>
+          {% else %}
           <div class="nav-item lead bold" role="tablist">
             <a
               href="{{ url_for('login') }}"
@@ -34,7 +54,6 @@
               >Log in</a
             >
           </div>
-
           <div class="nav-item lead bold" role="tablist">
             <a
               href="{{ url_for('sign_up') }}"
@@ -44,7 +63,7 @@
               >Sign up</a
             >
           </div>
-
+          {% endif %}
           <div class="nav-item lead bold" role="tablist">
             <a
               href="{{ url_for('contact') }}"
@@ -56,7 +75,6 @@
           </div>
         </div>
       </nav>
-
       <!-- Tab panes -->
       <div class="tab-content" id="myTabContent">
         <div

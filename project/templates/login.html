@@ -74,7 +74,8 @@
                 type="email"
                 class="form-control my-3"
                 name="email"
-                id="email" />
+                id="email"
+                required />
               {% if error %}
               <div class="alert alert-danger" role="alert">{{ error }}</div>
               {% endif %}
@@ -85,7 +86,8 @@
                 type="password"
                 class="form-control my-3"
                 name="password"
-                id="password" />
+                id="password"
+                required />
               {% if error %}
               <div class="alert alert-danger" role="alert">{{ error }}</div>
               {% endif %}

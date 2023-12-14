@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, LargeBinary
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from database import Base, engine
@@ -14,6 +14,7 @@ class User(Base):
     surname = Column(String(100), nullable=False)
     email = Column(String(100), nullable=False, unique=True)
     password = Column(String(100), nullable=False)
+    avatar = Column(LargeBinary, nullable=False)
     created_at = Column(DateTime, nullable=False)
 
 
@@ -37,6 +38,7 @@ class Group(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
     created_at = Column(DateTime, nullable=False)
+    avatar = Column(LargeBinary, nullable=False)
     users = relationship("User", secondary="group_users", backref="user_groups")
 
 

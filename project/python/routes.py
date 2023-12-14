@@ -11,10 +11,20 @@ from email.message import EmailMessage
 import ssl
 import smtplib
 from os import environ
+from PIL import Image
+import io
 from models import User
 
 
 router = APIRouter()
+
+
+def is_authenticated(request: Request):
+    token = request.cookies.get("access_token")
+    if token:
+        return {"is_authenticated": True}
+    else:
+        return {"is_authenticated": False}
 
 
 def current_year(request: Request):
@@ -23,7 +33,7 @@ def current_year(request: Request):
 
 templates = Jinja2Templates(
     directory=Path(__file__).parent.parent / "templates",
-    context_processors=[current_year],
+    context_processors=[current_year, is_authenticated],
 )
 
 # Main page
@@ -39,7 +49,9 @@ def root(request: Request):
 
 @router.get("/sign_up", name="sign_up")
 def sign_up_page(request: Request):
-    return templates.TemplateResponse("sign_up.html", {"request": request})
+    return templates.TemplateResponse(
+        "sign_up.html", {"request": request, "errors": {}}
+    )
 
 
 @router.post("/sign_up")
@@ -60,16 +72,6 @@ async def sign_up_data(
     if user:
         errors["email"] = "User with this email already exists"
 
-    if (
-        not name
-        or not surname
-        or not email
-        or not password
-        or not confirm_password
-        or not terms_conditions
-    ):
-        errors["password"] = "This field is missing"
-
     if not password.isalnum():
         errors["password"] = "Password must contain only letters and numbers"
 
@@ -84,11 +86,18 @@ async def sign_up_data(
     hashed_password = generate_password_hash(
         password, method="pbkdf2:sha256", salt_length=6
     )
+
+    img = Image.open("project/static/img/default avatar.jpg")
+    img_binary = io.BytesIO()
+    img.save(img_binary, format="JPEG")
+    img_binary = img_binary.getvalue()
+
     new_user = User(
         name=name,
         surname=surname,
         email=email,
         password=hashed_password,
+        avatar=img_binary,
         created_at=datetime.now(),
     )
     db.add(new_user)
@@ -136,7 +145,7 @@ async def login_data(
     s = Serializer(SECRET_KEY)
     token = s.dumps({"user_id": user.id})
 
-    response = RedirectResponse(request.url_for("root"), status_code=303)
+    response = RedirectResponse(request.url_for("dashboard"), status_code=303)
     response.set_cookie(key="access_token", value=token, httponly=True)
 
     return response
@@ -178,8 +187,29 @@ async def contact_data(
 ):
     errors = {}
 
+    if len(message) < 10:
+        errors["message"] = "Message must contain at least 10 characters"
+
     send_email(email, subject, message)
     flash_messages = ["Your message has been sent"]
     return templates.TemplateResponse(
         "main_page.html", {"request": request, "flash_messages": flash_messages}
     )
+
+
+# Logout
+
+
+@router.get("/logout")
+def logout(request: Request):
+    response = RedirectResponse(request.url_for("root"), status_code=303)
+    response.delete_cookie(key="access_token")
+    return response
+
+
+# User's dashboard
+
+
+@router.get("/dashboard", name="dashboard")
+def dashboard(request: Request):
+    return templates.TemplateResponse("dashboard.html", {"request": request})
