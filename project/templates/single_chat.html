@@ -46,7 +46,7 @@
       integrity="sha384-BBtl+eGJRgqQAUMxJ7pMwbEyER4l1g+O15P+16Ep7Q9Q+zqX6gSbd85u4mG4QzX+"
       crossorigin="anonymous"></script>
 
-    <title>Chat app - Dashboard</title>
+    <title>Chat app - Individual Chat</title>
   </head>
   <body>
     <!-- Header -->
@@ -57,33 +57,28 @@
       <div class="container-fluid">
         <div class="row">
           <!-- Sidebar -->
-          <nav class="col-md-2 d-none d-md-block bg-light sidebar vh-100">
-            <div class="sidebar-sticky">
-              <ul class="nav flex-column">
-                <li class="nav-item">
-                  <a class="nav-link active" href="#">
-                    <i class="bi bi-person-fill"></i>
-                    Individual Chat
-                  </a>
-                </li>
-                <li class="nav-item">
-                  <a class="nav-link" href="#">
-                    <i class="bi bi-people-fill"></i>
-                    Group Chat
-                  </a>
-                </li>
-                <li class="nav-item">
-                  <a class="nav-link" href="#">
-                    <i class="bi bi-robot"></i>
-                    Chat with AI
-                  </a>
-                </li>
-              </ul>
-            </div>
-          </nav>
+          {% include "sidebar.html" %}
           <section role="main" class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
+<!-- User avatars -->
+<div class="d-flex flex-nowrap overflow-auto mb-3">
+  <div class="card mb-2 me-2">
+   <img src="{{ url_for('static', path='/img/default avatar.jpg') }}" class="card-img-top user-image mx-auto mt-3" alt="User 1">
+   <div class="card-body">
+    <h5 class="card-title">User 1</h5>
+   </div>
+  </div>
+  <div class="card mb-2 me-2">
+   <img src="{{ url_for('static', path='/img/default avatar.jpg') }}" class="card-img-top user-image mx-auto mt-3" alt="User 2">
+   <div class="card-body">
+    <h5 class="card-title">User 2</h5>
+   </div>
+  </div>
+  <!-- Add more users as needed -->
+ </div>
+ 
+ 
             <!-- Content goes here -->
-          </section>
+          </section> 
         </div>
       </div>
     </main>

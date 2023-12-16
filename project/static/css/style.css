@@ -75,3 +75,10 @@ header {
     width: 60%;
  }
  
+ /* User/group image in chats */
+
+ .user-image {
+    width: 50px;
+    height: 50px;
+    border-radius: 100%;
+ }

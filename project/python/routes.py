@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Request, Form
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
-from fastapi.exceptions import RequestValidationError
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from pathlib import Path
@@ -18,6 +17,8 @@ from models import User
 
 router = APIRouter()
 
+# Authentication
+
 
 def is_authenticated(request: Request):
     token = request.cookies.get("access_token")
@@ -27,13 +28,34 @@ def is_authenticated(request: Request):
         return {"is_authenticated": False}
 
 
+# User name
+
+
+def user_name(request: Request):
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        try:
+            user_id = s.loads(token, max_age=3600).get('user_id')
+            db = SessionLocal()
+            user = db.query(User).filter(User.id == user_id).first()
+            return {"user_name": user.name}
+        except:
+            return {"user_name": None}
+    else:
+        return {"user_name": None}
+
+
+# Current year in footer
+
+
 def current_year(request: Request):
     return {"current_year": datetime.now().year}
 
 
 templates = Jinja2Templates(
     directory=Path(__file__).parent.parent / "templates",
-    context_processors=[current_year, is_authenticated],
+    context_processors=[current_year, is_authenticated, user_name],
 )
 
 # Main page
@@ -107,7 +129,7 @@ async def sign_up_data(
     s = Serializer(SECRET_KEY)
     token = s.dumps({"user_id": new_user.id})
 
-    response = RedirectResponse(request.url_for("root"), status_code=303)
+    response = RedirectResponse(request.url_for("single_chat"), status_code=303)
     response.set_cookie(key="access_token", value=token, httponly=True)
 
     return response
@@ -138,14 +160,14 @@ async def login_data(
 
     if errors:
         return templates.TemplateResponse(
-            "sign_up.html", {"request": request, "errors": errors}
+            "login.html", {"request": request, "errors": errors}
         )
 
     SECRET_KEY = environ.get("Secret_key_chat")
     s = Serializer(SECRET_KEY)
     token = s.dumps({"user_id": user.id})
 
-    response = RedirectResponse(request.url_for("dashboard"), status_code=303)
+    response = RedirectResponse(request.url_for("single_chat"), status_code=303)
     response.set_cookie(key="access_token", value=token, httponly=True)
 
     return response
@@ -207,9 +229,37 @@ def logout(request: Request):
     return response
 
 
-# User's dashboard
+# Single chat
 
 
-@router.get("/dashboard", name="dashboard")
-def dashboard(request: Request):
-    return templates.TemplateResponse("dashboard.html", {"request": request})
+@router.get("/single_chat")
+def single_chat(request: Request):
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        try:
+            user_id = s.loads(token, max_age=3600).get('user_id')
+            db = SessionLocal()
+            user = db.query(User).filter(User.id == user_id).first()
+            return templates.TemplateResponse(
+                "single_chat.html", {"request": request, "user": user}
+            )
+        except:
+            return templates.TemplateResponse("login.html", {"request": request})
+    return templates.TemplateResponse("single_chat.html", {"request": request})
+
+
+# Group chat
+
+
+@router.get("/group_chat")
+def group_chat(request: Request):
+    return templates.TemplateResponse("group_chat.html", {"request": request})
+
+
+# AI chat
+
+
+@router.get("/ai_chat")
+def ai_chat(request: Request):
+    return templates.TemplateResponse("ai_chat.html", {"request": request})

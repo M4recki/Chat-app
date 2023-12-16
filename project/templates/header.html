@@ -27,12 +27,10 @@
         <div class="ms-auto d-flex">
           {% if is_authenticated %}
           <div class="nav-item lead bold" role="tablist">
-            <a
-              href="{{ url_for('dashboard') }}"
+            <p
               class="nav-link text-white"
               role="tab"
-              aria-selected="false"
-              >Dashboard</a
+              > Welcome back, {{user_name}}! 👋</p
             >
           </div>
           <div class="nav-item lead bold" role="tablist">
