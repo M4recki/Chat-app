@@ -16,6 +16,7 @@ class User(Base):
     password = Column(String(100), nullable=False)
     avatar = Column(LargeBinary, nullable=False)
     created_at = Column(DateTime, nullable=False)
+    last_active = Column(DateTime, nullable=True)
 
 
 # Messages table
@@ -39,6 +40,7 @@ class Group(Base):
     name = Column(String(100), nullable=False)
     created_at = Column(DateTime, nullable=False)
     avatar = Column(LargeBinary, nullable=False)
+    admin_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     users = relationship("User", secondary="group_users", backref="user_groups")
 
 
@@ -51,9 +53,38 @@ class GroupUser(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
     created_at = Column(DateTime, nullable=False)
-    user = relationship("User", backref="group_users", overlaps="groups,user_groups,users")
+    user = relationship(
+        "User", backref="group_users", overlaps="groups,user_groups,users"
+    )
     group = relationship(
         "Group", backref="group_users", overlaps="groups,user_groups,users"
     )
+
+
+# Group_role table
+
+
+class GroupRole(Base):
+    __tablename__ = "group_roles"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
+    role = Column(String(100), nullable=False)
+    user = relationship("User", backref="group_roles")
+    group = relationship("Group", backref="group_roles")
+
+
+# Friends table
+
+
+class Friend(Base):
+    __tablename__ = "friends"
+    id = Column(Integer, primary_key=True)
+    user1_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user2_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(String(10), nullable=False)
+    user1 = relationship("User", foreign_keys=[user1_id])
+    user2 = relationship("User", foreign_keys=[user2_id])
+
 
 Base.metadata.create_all(bind=engine)

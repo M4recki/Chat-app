@@ -12,7 +12,7 @@ import smtplib
 from os import environ
 from PIL import Image
 import io
-from models import User
+from models import User, Friend
 
 
 router = APIRouter()
@@ -36,7 +36,7 @@ def user_name(request: Request):
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
         try:
-            user_id = s.loads(token, max_age=3600).get('user_id')
+            user_id = s.loads(token, max_age=3600).get("user_id")
             db = SessionLocal()
             user = db.query(User).filter(User.id == user_id).first()
             return {"user_name": user.name}
@@ -238,7 +238,7 @@ def single_chat(request: Request):
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
         try:
-            user_id = s.loads(token, max_age=3600).get('user_id')
+            user_id = s.loads(token, max_age=3600).get("user_id")
             db = SessionLocal()
             user = db.query(User).filter(User.id == user_id).first()
             return templates.TemplateResponse(
@@ -263,3 +263,46 @@ def group_chat(request: Request):
 @router.get("/ai_chat")
 def ai_chat(request: Request):
     return templates.TemplateResponse("ai_chat.html", {"request": request})
+
+
+# Search users
+
+
+@router.get("/search_users")
+def search_users(request: Request, search_term: str):
+    db = SessionLocal()
+    users = db.query(User).filter(User.name.like(f"%{search_term}%")).all()
+    return templates.TemplateResponse(
+        "search_users.html", {"request": request, "users": users}
+    )
+
+
+# Add friend
+
+
+@router.post("/add_friend")
+def add_friend(request: Request, friend_id: int):
+    db = SessionLocal()
+    user_id = request.cookies.get("access_token")
+    new_friendship = Friend(user1_id=user_id, user2_id=friend_id, status="pending")
+    db.add(new_friendship)
+    db.commit()
+    return templates.TemplateResponse("add_friend.html", {"request": request})
+
+
+# Accept friends
+
+
+@router.post("/accept_friend")
+def accept_friend(request: Request, friend_id: int):
+    db = SessionLocal()
+    user_id = request.cookies.get("access_token")
+    friendship = (
+        db.query(Friend)
+        .filter(Friend.user1_id == user_id, Friend.user2_id == friend_id)
+        .first()
+    )
+    if friendship:
+        friendship.status = "accepted"
+        db.commit()
+    return templates.TemplateResponse("accept_friend.html", {"request": request})
