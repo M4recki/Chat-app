@@ -233,7 +233,7 @@ def logout(request: Request):
 
 
 @router.get("/single_chat")
-def single_chat(request: Request):
+async def single_chat(request: Request):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -242,7 +242,7 @@ def single_chat(request: Request):
             db = SessionLocal()
             user = db.query(User).filter(User.id == user_id).first()
             return templates.TemplateResponse(
-                "single_chat.html", {"request": request, "user": user}
+                "single_chat.html", {"request": request, "avatar": user.avatar}
             )
         except:
             return templates.TemplateResponse("login.html", {"request": request})
@@ -253,7 +253,7 @@ def single_chat(request: Request):
 
 
 @router.get("/group_chat")
-def group_chat(request: Request):
+async def group_chat(request: Request):
     return templates.TemplateResponse("group_chat.html", {"request": request})
 
 
@@ -261,40 +261,47 @@ def group_chat(request: Request):
 
 
 @router.get("/ai_chat")
-def ai_chat(request: Request):
+async def ai_chat(request: Request):
     return templates.TemplateResponse("ai_chat.html", {"request": request})
 
 
-# Search users
+# Search user
 
 
-@router.get("/search_users")
-def search_users(request: Request, search_term: str):
-    db = SessionLocal()
-    users = db.query(User).filter(User.name.like(f"%{search_term}%")).all()
-    return templates.TemplateResponse(
-        "search_users.html", {"request": request, "users": users}
-    )
+@router.get("/search_user")
+async def search_user(request: Request):
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        try:
+            db = SessionLocal()
+            users = db.query(User).all()
+            return templates.TemplateResponse(
+                "search_user.html", {"request": request, "users": users}
+            )
+        except:
+            return templates.TemplateResponse("login.html", {"request": request})
 
 
 # Add friend
 
 
 @router.post("/add_friend")
-def add_friend(request: Request, friend_id: int):
-    db = SessionLocal()
-    user_id = request.cookies.get("access_token")
-    new_friendship = Friend(user1_id=user_id, user2_id=friend_id, status="pending")
-    db.add(new_friendship)
-    db.commit()
-    return templates.TemplateResponse("add_friend.html", {"request": request})
+async def add_friend(request: Request, friend_id: int):
+   db = SessionLocal()
+   user_id = request.cookies.get("access_token")
+   new_friendship = Friend(user1_id=user_id, user2_id=friend_id, status="pending")
+   db.add(new_friendship)
+   db.commit()
+   return templates.TemplateResponse("add_friend.html", {"request": request})
+
 
 
 # Accept friends
 
 
 @router.post("/accept_friend")
-def accept_friend(request: Request, friend_id: int):
+async def accept_friend(request: Request, friend_id: int):
     db = SessionLocal()
     user_id = request.cookies.get("access_token")
     friendship = (

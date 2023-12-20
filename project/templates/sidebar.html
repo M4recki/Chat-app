@@ -15,19 +15,25 @@
       <div class="sidebar-sticky">
         <ul class="nav flex-column">
           <li class="nav-item">
-            <a class="nav-link active my-3" href="#">
+            <a class="nav-link active my-3" href="{{ url_for('search_user') }}">
+              <i class="bi bi-search mx-2"></i>
+              Search User
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link active my-3" href="{{ url_for('single_chat') }}">
               <i class="bi bi-person-fill mx-2"></i>
               Individual Chat
             </a>
           </li>
           <li class="nav-item">
-            <a class="nav-link my-3" href="#">
+            <a class="nav-link my-3" href="{{ url_for('group_chat') }}">
               <i class="bi bi-people-fill mx-2"></i>
               Group Chat
             </a>
           </li>
           <li class="nav-item">
-            <a class="nav-link my-3" href="#">
+            <a class="nav-link my-3" href="{{ url_for('ai_chat') }}">
               <i class="bi bi-robot mx-2"></i>
               Chat with AI
             </a>

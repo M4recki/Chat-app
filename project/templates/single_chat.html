@@ -59,26 +59,48 @@
           <!-- Sidebar -->
           {% include "sidebar.html" %}
           <section role="main" class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
-<!-- User avatars -->
-<div class="d-flex flex-nowrap overflow-auto mb-3">
-  <div class="card mb-2 me-2">
-   <img src="{{ url_for('static', path='/img/default avatar.jpg') }}" class="card-img-top user-image mx-auto mt-3" alt="User 1">
-   <div class="card-body">
-    <h5 class="card-title">User 1</h5>
-   </div>
-  </div>
-  <div class="card mb-2 me-2">
-   <img src="{{ url_for('static', path='/img/default avatar.jpg') }}" class="card-img-top user-image mx-auto mt-3" alt="User 2">
-   <div class="card-body">
-    <h5 class="card-title">User 2</h5>
-   </div>
-  </div>
-  <!-- Add more users as needed -->
- </div>
- 
- 
-            <!-- Content goes here -->
-          </section> 
+            <!-- User avatars -->
+            <div
+              class="d-flex flex-nowrap overflow-auto mb-3 justify-content-center mt-4">
+              <div class="card mb-2 me-3">
+                <a
+                  href="{{ url_for('search_user') }}"
+                  class="text-decoration-none">
+                  <div class="card-body text-center">
+                    <i
+                      class="bi bi-person-plus card-img-top social-link mt-3 mx-auto"></i>
+                    <h5 class="card-title mt-4">Add new friend</h5>
+                  </div>
+                </a>
+              </div>
+              <div class="card mb-2 me-3">
+                <a href="" class="text-decoration-none">
+                  <div class="card-body text-center">
+                    <img
+                      src="{{ url_for('static', path='/img/default avatar.jpg') }}"
+                      class="card-img-top user-image mx-auto mt-3"
+                      alt="User 1" />
+                    <div class="card-body">
+                      <h5 class="card-title">User 1</h5>
+                    </div>
+                  </div>
+                </a>
+              </div>
+              <div class="card mb-2 me-3">
+                <a href="" class="text-decoration-none">
+                  <div class="card-body text-center">
+                    <img
+                      src="{{ url_for('static', path='/img/default avatar.jpg') }}"
+                      class="card-img-top user-image mx-auto mt-3"
+                      alt="User 2" />
+                    <div class="card-body">
+                      <h5 class="card-title">User 2</h5>
+                    </div>
+                  </div>
+                </a>
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </main>
