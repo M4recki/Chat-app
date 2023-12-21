@@ -12,6 +12,7 @@ import smtplib
 from os import environ
 from PIL import Image
 import io
+import base64
 from models import User, Friend
 
 
@@ -229,6 +230,55 @@ def logout(request: Request):
     return response
 
 
+# Search user
+
+
+@router.get("/search_user")
+async def search_user(request: Request):
+   token = request.cookies.get("access_token")
+   if token:
+       try:
+            db = SessionLocal()
+            users = db.query(User).all()
+            for user in users:
+                user.avatar = base64.b64encode(user.avatar).decode()
+            return templates.TemplateResponse(
+                "search_user.html", {"request": request, "users": users}
+            )
+       except:
+            return templates.TemplateResponse("login.html", {"request": request})
+           
+
+# Friend requests
+
+
+@router.get("/friend_requests")
+async def friend_requests(request: Request):
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        try:
+            db = SessionLocal()
+            user_id = s.loads(token, max_age=3600).get("user_id")
+            user = db.query(User).filter(User.id == user_id).first()
+            friend_requests = (
+                db.query(Friend)
+                .filter(Friend.user2_id == user_id, Friend.status == "pending")
+                .all()
+            )
+            for friend_request in friend_requests:
+                friend_request.user1.avatar = base64.b64encode(
+                    friend_request.user1.avatar
+                ).decode()
+            return templates.TemplateResponse(
+                "friend_requests.html",
+                {"request": request, "friend_requests": friend_requests},
+            )
+        except:
+            return templates.TemplateResponse("login.html", {"request": request})
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})
+
 # Single chat
 
 
@@ -238,15 +288,15 @@ async def single_chat(request: Request):
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
         try:
-            user_id = s.loads(token, max_age=3600).get("user_id")
             db = SessionLocal()
-            user = db.query(User).filter(User.id == user_id).first()
+            users = db.query(User).all()
+            for user in users:
+                user.avatar = base64.b64encode(user.avatar).decode()
             return templates.TemplateResponse(
-                "single_chat.html", {"request": request, "avatar": user.avatar}
+                "single_chat.html", {"request": request, "users": users}
             )
         except:
             return templates.TemplateResponse("login.html", {"request": request})
-    return templates.TemplateResponse("single_chat.html", {"request": request})
 
 
 # Group chat
@@ -265,36 +315,17 @@ async def ai_chat(request: Request):
     return templates.TemplateResponse("ai_chat.html", {"request": request})
 
 
-# Search user
-
-
-@router.get("/search_user")
-async def search_user(request: Request):
-    token = request.cookies.get("access_token")
-    if token:
-        s = Serializer(environ.get("Secret_key_chat"))
-        try:
-            db = SessionLocal()
-            users = db.query(User).all()
-            return templates.TemplateResponse(
-                "search_user.html", {"request": request, "users": users}
-            )
-        except:
-            return templates.TemplateResponse("login.html", {"request": request})
-
-
 # Add friend
 
 
-@router.post("/add_friend")
+@router.post("/add_friend/{friend_id}")
 async def add_friend(request: Request, friend_id: int):
-   db = SessionLocal()
-   user_id = request.cookies.get("access_token")
-   new_friendship = Friend(user1_id=user_id, user2_id=friend_id, status="pending")
-   db.add(new_friendship)
-   db.commit()
-   return templates.TemplateResponse("add_friend.html", {"request": request})
-
+    db = SessionLocal()
+    user_id = request.cookies.get("access_token")
+    new_friendship = Friend(user1_id=user_id, user2_id=friend_id, status="pending")
+    db.add(new_friendship)
+    db.commit()
+    return templates.TemplateResponse("add_friend.html", {"request": request})
 
 
 # Accept friends

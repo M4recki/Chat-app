@@ -46,7 +46,7 @@
       integrity="sha384-BBtl+eGJRgqQAUMxJ7pMwbEyER4l1g+O15P+16Ep7Q9Q+zqX6gSbd85u4mG4QzX+"
       crossorigin="anonymous"></script>
 
-    <title>Chat app - Individual Chat</title>
+    <title>Chat app - Single chat</title>
   </head>
   <body>
     <!-- Header -->
@@ -69,36 +69,24 @@
                   <div class="card-body text-center">
                     <i
                       class="bi bi-person-plus card-img-top social-link mt-3 mx-auto"></i>
-                    <h5 class="card-title mt-4">Add new friend</h5>
+                    <p class="card-title lead mt-4">Add new friend</p>
                   </div>
                 </a>
               </div>
+              {% for user in users %}
               <div class="card mb-2 me-3">
-                <a href="" class="text-decoration-none">
-                  <div class="card-body text-center">
-                    <img
-                      src="{{ url_for('static', path='/img/default avatar.jpg') }}"
-                      class="card-img-top user-image mx-auto mt-3"
-                      alt="User 1" />
-                    <div class="card-body">
-                      <h5 class="card-title">User 1</h5>
-                    </div>
+                <div class="card-body text-center">
+                  <a href="" class="text-decoration-none">
+                  <img
+                    class="card-img-top user-image mx-auto mt-3"
+                    src="data:image/jpeg;base64,{{ user.avatar }}"
+                    alt="{{ user.name }}'s avatar" />
+                  <div class="card-body">
+                    <p class="card-title lead">{{ user.name }} {{ user.surname }}</p>
                   </div>
-                </a>
+                </div>
               </div>
-              <div class="card mb-2 me-3">
-                <a href="" class="text-decoration-none">
-                  <div class="card-body text-center">
-                    <img
-                      src="{{ url_for('static', path='/img/default avatar.jpg') }}"
-                      class="card-img-top user-image mx-auto mt-3"
-                      alt="User 2" />
-                    <div class="card-body">
-                      <h5 class="card-title">User 2</h5>
-                    </div>
-                  </div>
-                </a>
-              </div>
+              {% endfor %}
             </div>
           </section>
         </div>
