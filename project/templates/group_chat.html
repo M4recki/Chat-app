@@ -58,7 +58,9 @@
         <div class="row">
           <!-- Sidebar -->
           {% include "sidebar.html" %}
+
           <section role="main" class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
+            <h1 class="mt-5 text-center">Your groups</h1>
             <!-- Group avatars -->
             <div
               class="d-flex flex-nowrap overflow-auto mb-3 justify-content-center mt-4">
@@ -69,36 +71,28 @@
                   <div class="card-body text-center">
                     <i
                       class="bi bi-plus-circle card-img-top social-link mt-3 mx-auto"></i>
-                    <h5 class="card-title mt-4">Create new group</h5>
+                    <p class="card-title lead mt-4">Create new group</p>
                   </div>
                 </a>
               </div>
+              <!-- Your groups -->
+              {% for group in groups %}
               <div class="card mb-2 me-3">
-                <a href="" class="text-decoration-none">
+                <a
+                  href="{{ url_for('group_chat', group_id=group.id) }}"
+                  class="text-decoration-none">
                   <div class="card-body text-center">
                     <img
-                      src="{{ url_for('static', path='/img/default group chat avatar.jpg') }}"
                       class="card-img-top user-image mx-auto mt-3"
-                      alt="User 1" />
+                      src="data:image/jpeg;base64,{{ group.avatar }}"
+                      alt="{{ group.name }}'s avatar" />
                     <div class="card-body">
-                      <h5 class="card-title">Group 1</h5>
+                      <p class="card-title lead">{{ group.name }}</p>
                     </div>
                   </div>
                 </a>
               </div>
-              <div class="card mb-2 me-3">
-                <a href="" class="text-decoration-none">
-                  <div class="card-body text-center">
-                    <img
-                      src="{{ url_for('static', path='/img/default group chat avatar.jpg') }}"
-                      class="card-img-top user-image mx-auto mt-3"
-                      alt="User 2" />
-                    <div class="card-body">
-                      <h5 class="card-title">Group 2</h5>
-                    </div>
-                  </div>
-                </a>
-              </div>
+              {% endfor %}
             </div>
           </section>
         </div>

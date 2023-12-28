@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Form
+from fastapi import APIRouter, Request, Form, Depends, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -13,10 +13,11 @@ from os import environ
 from PIL import Image
 import io
 import base64
-from models import User, Friend
+from models import User, Friend, Group, GroupUser
 
 
 router = APIRouter()
+
 
 # Authentication
 
@@ -27,6 +28,21 @@ def is_authenticated(request: Request):
         return {"is_authenticated": True}
     else:
         return {"is_authenticated": False}
+
+
+def get_current_user(request: Request):
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        try:
+            user_id = s.loads(token, max_age=3600).get("user_id")
+            db = SessionLocal()
+            user = db.query(User).filter(User.id == user_id).first()
+            return user
+        except:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+    else:
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
 
 # User name
@@ -223,7 +239,7 @@ async def contact_data(
 # Logout
 
 
-@router.get("/logout")
+@router.get("/logout", dependencies=[Depends(get_current_user)])
 def logout(request: Request):
     response = RedirectResponse(request.url_for("root"), status_code=303)
     response.delete_cookie(key="access_token")
@@ -233,84 +249,110 @@ def logout(request: Request):
 # Search user
 
 
-@router.get("/search_user")
+@router.get("/search_user", dependencies=[Depends(get_current_user)])
 async def search_user(request: Request):
-   token = request.cookies.get("access_token")
-   if token:
-       try:
-            db = SessionLocal()
-            users = db.query(User).all()
-            for user in users:
-                user.avatar = base64.b64encode(user.avatar).decode()
-            return templates.TemplateResponse(
-                "search_user.html", {"request": request, "users": users}
-            )
-       except:
-            return templates.TemplateResponse("login.html", {"request": request})
-           
+    db = SessionLocal()
+    users = db.query(User).all()
+    for user in users:
+        user.avatar = base64.b64encode(user.avatar).decode()
+    return templates.TemplateResponse(
+        "search_user.html", {"request": request, "users": users}
+    )
+
 
 # Friend requests
 
 
-@router.get("/friend_requests")
+@router.get("/friend_requests", dependencies=[Depends(get_current_user)])
 async def friend_requests(request: Request):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
-        try:
-            db = SessionLocal()
-            user_id = s.loads(token, max_age=3600).get("user_id")
-            user = db.query(User).filter(User.id == user_id).first()
-            friend_requests = (
-                db.query(Friend)
-                .filter(Friend.user2_id == user_id, Friend.status == "pending")
-                .all()
-            )
-            for friend_request in friend_requests:
-                friend_request.user1.avatar = base64.b64encode(
-                    friend_request.user1.avatar
-                ).decode()
-            return templates.TemplateResponse(
-                "friend_requests.html",
-                {"request": request, "friend_requests": friend_requests},
-            )
-        except:
-            return templates.TemplateResponse("login.html", {"request": request})
+        db = SessionLocal()
+        user_id = s.loads(token, max_age=3600).get("user_id")
+        user = db.query(User).filter(User.id == user_id).first()
+        friend_requests = (
+            db.query(Friend)
+            .filter(Friend.user2_id == user_id, Friend.status == "pending")
+            .all()
+        )
+        for friend_request in friend_requests:
+            friend_request.user1.avatar = base64.b64encode(
+                friend_request.user1.avatar
+            ).decode()
+        return templates.TemplateResponse(
+            "friend_requests.html",
+            {"request": request, "friend_requests": friend_requests},
+        )
     else:
         return templates.TemplateResponse("login.html", {"request": request})
+
 
 # Single chat
 
 
-@router.get("/single_chat")
+@router.get("/single_chat", dependencies=[Depends(get_current_user)])
 async def single_chat(request: Request):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
-        try:
-            db = SessionLocal()
-            users = db.query(User).all()
-            for user in users:
-                user.avatar = base64.b64encode(user.avatar).decode()
-            return templates.TemplateResponse(
-                "single_chat.html", {"request": request, "users": users}
+        db = SessionLocal()
+        user_id = s.loads(token, max_age=3600).get("user_id")
+        users = (
+            db.query(User)
+            .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
+            .filter(
+                (Friend.user1_id == user_id) | (Friend.user2_id == user_id),
+                Friend.status == "accepted",
             )
-        except:
-            return templates.TemplateResponse("login.html", {"request": request})
+            .all()
+        )
+        for user in users:
+            user.avatar = base64.b64encode(user.avatar).decode()
+        return templates.TemplateResponse(
+            "single_chat.html", {"request": request, "users": users}
+        )
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})
 
 
 # Group chat
 
 
-@router.get("/group_chat")
+@router.get("/group_chat", dependencies=[Depends(get_current_user)])
 async def group_chat(request: Request):
-    return templates.TemplateResponse("group_chat.html", {"request": request})
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        db = SessionLocal()
+        user_id = s.loads(token, max_age=3600).get("user_id")
+        groups = (
+            db.query(Group)
+            .join(GroupUser, GroupUser.group_id == Group.id)
+            .filter(GroupUser.user_id == user_id)
+            .all()
+        )
+        for group in groups:
+            group.avatar = base64.b64encode(group.avatar).decode()
+        return templates.TemplateResponse(
+            "group_chat.html", {"request": request, "groups": groups}
+        )
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})
+
+
+# Create group
+
+
+@router.get("/create_group", dependencies=[Depends(get_current_user)])
+async def create_group(request: Request):
+    return templates.TemplateResponse("create_group.html", {"request": request})
 
 
 # AI chat
 
 
-@router.get("/ai_chat")
+@router.get("/ai_chat", dependencies=[Depends(get_current_user)])
 async def ai_chat(request: Request):
     return templates.TemplateResponse("ai_chat.html", {"request": request})
 
@@ -318,29 +360,45 @@ async def ai_chat(request: Request):
 # Add friend
 
 
-@router.post("/add_friend/{friend_id}")
+@router.post("/add_friend/{friend_id}", dependencies=[Depends(get_current_user)])
 async def add_friend(request: Request, friend_id: int):
     db = SessionLocal()
     user_id = request.cookies.get("access_token")
     new_friendship = Friend(user1_id=user_id, user2_id=friend_id, status="pending")
     db.add(new_friendship)
     db.commit()
-    return templates.TemplateResponse("add_friend.html", {"request": request})
+    return templates.TemplateResponse("single_chat.html", {"request": request})
 
 
-# Accept friends
+# Accept friend requests
 
 
-@router.post("/accept_friend")
+@router.post("/accept_friend/{friend_id}", dependencies=[Depends(get_current_user)])
 async def accept_friend(request: Request, friend_id: int):
     db = SessionLocal()
     user_id = request.cookies.get("access_token")
-    friendship = (
+    friend = (
         db.query(Friend)
-        .filter(Friend.user1_id == user_id, Friend.user2_id == friend_id)
+        .filter(Friend.user1_id == friend_id, Friend.user2_id == user_id)
         .first()
     )
-    if friendship:
-        friendship.status = "accepted"
-        db.commit()
+    friend.status = "accepted"
+    db.commit()
     return templates.TemplateResponse("accept_friend.html", {"request": request})
+
+
+# Deny friend requests
+
+
+@router.post("/deny_friend/{friend_id}", dependencies=[Depends(get_current_user)])
+async def deny_friend(request: Request, friend_id: int):
+    db = SessionLocal()
+    user_id = request.cookies.get("access_token")
+    friend = (
+        db.query(Friend)
+        .filter(Friend.user1_id == friend_id, Friend.user2_id == user_id)
+        .first()
+    )
+    db.delete(friend)
+    db.commit()
+    return templates.TemplateResponse("single_chat.html", {"request": request})
