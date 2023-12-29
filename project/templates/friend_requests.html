@@ -61,14 +61,13 @@
 
           <section role="main" class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
             <h1 class="mt-5 text-center">Friend requests</h1>
-            <!-- Friend requests -->
-            {% if friend_requests %} {% for friend_request in friend_requests %}
+            <div class="d-flex flex-nowrap overflow-auto mb-3">
+              <!-- Friend requests -->
+              {% if friend_requests %} {% for friend_request in friend_requests
+              %}
 
-            <div class="card mb-2 me-3">
-              <div class="card-body text-center">
-                <a
-                  href="{{ url_for('friend_request', friend_request_id=friend_request.id) }}"
-                  class="text-decoration-none">
+              <div class="card mb-2 me-3">
+                <div class="card-body text-center">
                   <img
                     class="card-img-top user-image mx-auto mt-3"
                     src="data:image/jpeg;base64,{{ friend_request.user1.avatar }}"
@@ -79,12 +78,27 @@
                       friend_request.user1.surname }}
                     </p>
                   </div>
-                </a>
+                </div>
+                <p class="mx-3">
+                  {{ friend_request.user1.name }} wants to be your friend.
+                </p>
+                <a
+                  href="{{ url_for('accept_friend', friend_id=friend_request.user1) }}"
+                  class="btn btn-success mt-3 mx-3"
+                  >Accept</a
+                >
+                <a
+                  href="{{ url_for('deny_friend', friend_id=friend_request.user1) }}"
+                  class="btn btn-danger mt-3 mx-3 mb-3"
+                  >Reject</a
+                >
               </div>
+              {% endfor %} {% else %}
+              <p class="text-center mt-4 lead">
+                There are no friend requests at the moment.
+              </p>
+              {% endif %}
             </div>
-            {% endfor %} {% else %}
-            <p class="text-center mt-4 lead">There are no friend requests at the moment.</p>
-            {% endif %}
           </section>
         </div>
       </div>
