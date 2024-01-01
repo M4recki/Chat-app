@@ -5,15 +5,16 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from pathlib import Path
 from datetime import datetime, timedelta
-from database import SessionLocal
 from email.message import EmailMessage
-import ssl
+from ssl import create_default_context
 import smtplib
 from os import environ
 from PIL import Image
-import io
-import base64
-from models import User, Friend, Group, GroupUser
+from io import BytesIO
+from base64 import b64encode
+from gpt4all import GPT4All
+from database import SessionLocal
+from models import User, Friend, Group, GroupUser, ChatbotMessage
 
 
 router = APIRouter()
@@ -46,6 +47,24 @@ def get_current_user(request: Request):
         return templates.TemplateResponse("login.html", {"request": request})
 
 
+# User image
+
+
+def user_image(request: Request):
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        try:
+            user_id = s.loads(token, max_age=3600).get("user_id")
+            db = SessionLocal()
+            user = db.query(User).filter(User.id == user_id).first()
+            return {"user_image": b64encode(user.avatar).decode("utf-8")}
+        except:
+            return {"user_image": None}
+    else:
+        return {"user_image": None}
+
+
 # User name
 
 
@@ -73,7 +92,7 @@ def current_year(request: Request):
 
 templates = Jinja2Templates(
     directory=Path(__file__).parent.parent / "templates",
-    context_processors=[current_year, is_authenticated, user_name],
+    context_processors=[current_year, is_authenticated, user_image, user_name],
 )
 
 # Main page
@@ -128,7 +147,7 @@ async def sign_up_data(
     )
 
     img = Image.open("project/static/img/default avatar.jpg")
-    img_binary = io.BytesIO()
+    img_binary = BytesIO()
     img.save(img_binary, format="JPEG")
     img_binary = img_binary.getvalue()
 
@@ -205,7 +224,7 @@ def send_email(email_address, subject, message):
     email["Subject"] = subject
     email.set_content(message)
 
-    context = ssl.create_default_context()
+    context = create_default_context()
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
         smtp.login(email_receiver, password)
@@ -260,7 +279,7 @@ async def search_user(request: Request):
 
         users = db.query(User).filter(User.id != user_id).all()
         for user in users:
-            user.avatar = base64.b64encode(user.avatar).decode()
+            user.avatar = b64encode(user.avatar).decode()
         return templates.TemplateResponse(
             "search_user.html", {"request": request, "users": users}
         )
@@ -285,7 +304,7 @@ async def friend_requests(request: Request):
             .all()
         )
         for friend_request in friend_requests:
-            friend_request.user1.avatar = base64.b64encode(
+            friend_request.user1.avatar = b64encode(
                 friend_request.user1.avatar
             ).decode()
         return templates.TemplateResponse(
@@ -316,7 +335,7 @@ async def single_chat(request: Request):
             .all()
         )
         for user in users:
-            user.avatar = base64.b64encode(user.avatar).decode()
+            user.avatar = b64encode(user.avatar).decode()
         return templates.TemplateResponse(
             "single_chat.html", {"request": request, "users": users}
         )
@@ -341,7 +360,7 @@ async def group_chat(request: Request):
             .all()
         )
         for group in groups:
-            group.avatar = base64.b64encode(group.avatar).decode()
+            group.avatar = b64encode(group.avatar).decode()
         return templates.TemplateResponse(
             "group_chat.html", {"request": request, "groups": groups}
         )
@@ -357,14 +376,6 @@ async def create_group(request: Request):
     return templates.TemplateResponse("create_group.html", {"request": request})
 
 
-# AI chat
-
-
-@router.get("/ai_chat", dependencies=[Depends(get_current_user)])
-async def ai_chat(request: Request):
-    return templates.TemplateResponse("ai_chat.html", {"request": request})
-
-
 # Add friend
 
 
@@ -378,20 +389,32 @@ async def add_friend(request: Request, friend_id: int):
 
         existing_request = (
             db.query(Friend)
-            .filter(
-                (Friend.user1_id == user_id)
-                & (Friend.user2_id == friend_id)
-                & (Friend.status == "pending")
-            )
+            .filter((Friend.user1_id == user_id) & (Friend.user2_id == friend_id))
             .first()
         )
 
-        if existing_request:
-            raise HTTPException(status_code=400, detail="Friend request already sent")
+        if existing_request and existing_request.status == "pending":
+            if datetime.now() - existing_request.last_sent > timedelta(days=14):
+                existing_request.last_sent = datetime.now()
+                db.commit()
+            else:
+                raise HTTPException(
+                    status_code=400, detail="Friend request already sent recently"
+                )
+        elif existing_request and existing_request.status == "denied":
+            existing_request.status = "pending"
+            existing_request.last_sent = datetime.now()
+            db.commit()
+        else:
+            new_friendship = Friend(
+                user1_id=user_id,
+                user2_id=friend_id,
+                status="pending",
+                last_sent=datetime.now(),
+            )
+            db.add(new_friendship)
+            db.commit()
 
-        new_friendship = Friend(user1_id=user_id, user2_id=friend_id, status="pending")
-        db.add(new_friendship)
-        db.commit()
         return templates.TemplateResponse("single_chat.html", {"request": request})
     else:
         return templates.TemplateResponse("login.html", {"request": request})
@@ -429,3 +452,81 @@ async def deny_friend(request: Request, friend_id: int):
     friend.status = "denied"
     db.commit()
     return templates.TemplateResponse("single_chat.html", {"request": request})
+
+
+# Ai chat
+
+
+def chatbot_response(user_input: str):
+    model = GPT4All(model_name="gpt4all-falcon-q4_0.gguf")
+
+    with model.chat_session():
+        response = model.generate(prompt=f"{user_input}", temp=0)
+        return model.current_chat_session[2]["content"]
+
+
+@router.get("/chatbot", dependencies=[Depends(get_current_user)])
+async def chatbot_page(request: Request):
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        db = SessionLocal()
+        user_id = s.loads(token, max_age=3600).get("user_id")
+
+        user = db.query(User).filter(User.id == user_id).first()    
+        user.avatar = b64encode(user.avatar).decode()
+        
+        return templates.TemplateResponse(
+            "chatbot.html", {"request": request, "user": user}
+        )
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})
+
+
+@router.post("/chatbot", dependencies=[Depends(get_current_user)])
+async def chatbot(request: Request, message: str = Form(...)):
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        db = SessionLocal()
+        user_id = s.loads(token, max_age=3600).get("user_id")
+        
+        user = db.query(User).filter(User.id == user_id).first()
+        user.avatar = b64encode(user.avatar).decode()
+        
+        chatbot_message = ChatbotMessage(
+            user_id=user.id, message=message, created_at=datetime.now()
+        )
+        db.add(chatbot_message)
+        db.commit()
+
+        response = chatbot_response(message)
+
+        chatbot_message.response = response
+        db.commit()
+
+        return templates.TemplateResponse(
+            "chatbot.html", {"request": request, "message": message, "response": response}
+        )
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})
+
+
+@router.get("/chatbot_messages", dependencies=[Depends(get_current_user)])
+async def chatbot_messages(request: Request):
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        db = SessionLocal()
+        user_id = s.loads(token, max_age=3600).get("user_id")
+        
+        user = db.query(User).filter(User.id == user_id).first()
+        chatbot_messages = (
+            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
+        )
+        return templates.TemplateResponse(
+            "chatbot_messages.html",
+            {"request": request, "chatbot_messages": chatbot_messages},
+        )
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})

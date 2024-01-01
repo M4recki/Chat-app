@@ -25,12 +25,16 @@
         </div>
         <div class="ms-auto d-flex">
           {% if is_authenticated %}
+          <div class="nav-item lead bold">
+            <img
+              class="card-img-top user-image mx-2"
+              src="data:image/jpeg;base64,{{ user_image }}"
+              alt="{{ user_name }}'s avatar" />
+          </div>
           <div class="nav-item lead bold" role="tablist">
-            <p
-              class="nav-link text-white"
-              role="tab"
-              > Welcome back, {{user_name}}! 👋</p
-            >
+            <p class="nav-link text-white" role="tab">
+              Welcome back, {{user_name}}! 👋
+            </p>
           </div>
           <div class="nav-item lead bold" role="tablist">
             <a

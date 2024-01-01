@@ -82,3 +82,9 @@ header {
     height: 50px;
     border-radius: 100%;
  }
+
+ /* Text area height */
+
+ .textarea-height {
+    height: 200px !important;
+ }

@@ -46,7 +46,7 @@
       integrity="sha384-BBtl+eGJRgqQAUMxJ7pMwbEyER4l1g+O15P+16Ep7Q9Q+zqX6gSbd85u4mG4QzX+"
       crossorigin="anonymous"></script>
 
-    <title>Chat app - Single chat</title>
+    <title>Chat app - Chatbot messages</title>
   </head>
   <body>
     <!-- Header -->
@@ -58,37 +58,20 @@
         <div class="row">
           <!-- Sidebar -->
           {% include "sidebar.html" %}
-          
+
           <section role="main" class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
-            <h1 class="mt-5 text-center">Your friends</h1>
-            <!-- User avatars -->
-            <div
-              class="d-flex flex-nowrap overflow-auto mb-3 justify-content-center mt-4">
-              <div class="card mb-2 me-3">
-                <a
-                  href="{{ url_for('search_user') }}"
-                  class="text-decoration-none">
-                  <div class="card-body text-center">
-                    <i
-                      class="bi bi-person-plus card-img-top social-link mt-3 mx-auto"></i>
-                    <p class="card-title lead mt-4">Add new friend</p>
-                  </div>
-                </a>
+            <h1 class="mt-5 text-center">Chatbot Messages</h1>
+            {% for chatbot_message in chatbot_messages %}
+            <div class="card mb-2">
+              <div class="card-body">
+                <p class="card-title">{{ chatbot_message.created_at }}</p>
+                <p>{{ chatbot_message.message }}</p>
+                {% if chatbot_message.response %}
+                <p>Chatbot says: {{ chatbot_message.response }}</p>
+                {% endif %}
               </div>
-              {% for user in users %}
-              <div class="card mb-2 me-3">
-                <div class="card-body text-center">
-                  <img
-                    class="card-img-top user-image mx-auto mt-3"
-                    src="data:image/jpeg;base64,{{ user.avatar }}"
-                    alt="{{ user.name }}'s avatar" />
-                  <div class="card-body">
-                    <p class="card-title lead">{{ user.name }} {{ user.surname }}</p>
-                  </div>
-                </div>
-              </div>
-              {% endfor %}
             </div>
+            {% endfor %}
           </section>
         </div>
       </div>

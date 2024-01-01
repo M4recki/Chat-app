@@ -83,8 +83,22 @@ class Friend(Base):
     user1_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user2_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(String(10), nullable=False)
+    last_sent = Column(DateTime, nullable=False)
     user1 = relationship("User", foreign_keys=[user1_id])
     user2 = relationship("User", foreign_keys=[user2_id])
+    
+    
+# Chatbot table
+
+class ChatbotMessage(Base):
+   __tablename__ = "chatbot_messages"
+   id = Column(Integer, primary_key=True)
+   user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+   message = Column(String(500), nullable=False)
+   response = Column(String(500), nullable=True)
+   created_at = Column(DateTime, nullable=False)
+   user = relationship("User", backref="chatbot_messages")
+
 
 
 Base.metadata.create_all(bind=engine)

@@ -46,7 +46,7 @@
       integrity="sha384-BBtl+eGJRgqQAUMxJ7pMwbEyER4l1g+O15P+16Ep7Q9Q+zqX6gSbd85u4mG4QzX+"
       crossorigin="anonymous"></script>
 
-    <title>Chat app - Single chat</title>
+    <title>Chat app - Chatbot</title>
   </head>
   <body>
     <!-- Header -->
@@ -58,37 +58,46 @@
         <div class="row">
           <!-- Sidebar -->
           {% include "sidebar.html" %}
-          
+
           <section role="main" class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
-            <h1 class="mt-5 text-center">Your friends</h1>
-            <!-- User avatars -->
-            <div
-              class="d-flex flex-nowrap overflow-auto mb-3 justify-content-center mt-4">
-              <div class="card mb-2 me-3">
-                <a
-                  href="{{ url_for('search_user') }}"
-                  class="text-decoration-none">
-                  <div class="card-body text-center">
-                    <i
-                      class="bi bi-person-plus card-img-top social-link mt-3 mx-auto"></i>
-                    <p class="card-title lead mt-4">Add new friend</p>
+            <h1 class="mt-5 text-center">How can I help you today?</h1>
+            <form
+              action="/chatbot"
+              method="POST"
+              class="d-flex flex-column">
+              <div class="card mt-3">
+                <div class="card-body">
+                  <div class="d-flex justify-content-start">
+                    <img
+                      class="user-image mb-3 mt-5"
+                      src="data:image/jpeg;base64,{{ user.avatar }}"
+                      alt="{{ user.name }}'s avatar" />
+                    <div class="form-floating">
+                      <textarea
+                        type="text"
+                        cols="120"
+                        id="message"
+                        class="form-control textarea-height mx-3 mt-5"
+                        name="message"
+                        placeholder="Message our chatbot..."
+                        style="height: 200px;"
+                        required></textarea>
+                      <label for="floatingTextarea">Message</label>
+                    </div>
                   </div>
-                </a>
-              </div>
-              {% for user in users %}
-              <div class="card mb-2 me-3">
-                <div class="card-body text-center">
-                  <img
-                    class="card-img-top user-image mx-auto mt-3"
-                    src="data:image/jpeg;base64,{{ user.avatar }}"
-                    alt="{{ user.name }}'s avatar" />
-                  <div class="card-body">
-                    <p class="card-title lead">{{ user.name }} {{ user.surname }}</p>
+                  <div class="d-flex justify-content-center">
+                    <button
+                      class="btn btn-primary btn-lg text-decoration-none text-dark bold my-3"
+                      type="submit">
+                      Send
+                    </button>
                   </div>
                 </div>
               </div>
-              {% endfor %}
-            </div>
+            </form>
+            {% if response %}
+            <p>Chatbot says: {{ response }}</p>
+            {% endif %}
           </section>
         </div>
       </div>
