@@ -192,7 +192,7 @@ async def login_data(
     if not user:
         errors["email"] = "User with this email does not exist"
 
-    if not check_password_hash(user.password, password):
+    elif not check_password_hash(user.password, password):
         errors["password"] = "Incorrect password. Please try again"
 
     if errors:
@@ -473,8 +473,7 @@ async def chatbot_page(request: Request):
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
-        user = db.query(User).filter(User.id == user_id).first()    
-        user.avatar = b64encode(user.avatar).decode()
+        user = db.query(User).filter(User.id == user_id).first()
         
         return templates.TemplateResponse(
             "chatbot.html", {"request": request, "user": user}
@@ -492,21 +491,18 @@ async def chatbot(request: Request, message: str = Form(...)):
         user_id = s.loads(token, max_age=3600).get("user_id")
         
         user = db.query(User).filter(User.id == user_id).first()
-        user.avatar = b64encode(user.avatar).decode()
         
+        response = chatbot_response(message)
+    
         chatbot_message = ChatbotMessage(
-            user_id=user.id, message=message, created_at=datetime.now()
+            user_id=user.id, message=message, response=response,
+            created_at=datetime.now()
         )
         db.add(chatbot_message)
         db.commit()
 
-        response = chatbot_response(message)
-
-        chatbot_message.response = response
-        db.commit()
-
         return templates.TemplateResponse(
-            "chatbot.html", {"request": request, "message": message, "response": response}
+            "chatbot.html", {"request": request, "user": user, "user_image": user.avatar, "message": message, "response": response}
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})
