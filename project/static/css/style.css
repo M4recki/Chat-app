@@ -88,3 +88,9 @@ header {
  .textarea-height {
     height: 200px !important;
  }
+
+ /* Default icon size */
+
+ .icon-size {
+    font-size: 30px;
+ }

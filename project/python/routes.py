@@ -3,6 +3,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer as Serializer
+from itsdangerous.exc import SignatureExpired
 from pathlib import Path
 from datetime import datetime, timedelta
 from email.message import EmailMessage
@@ -23,7 +24,7 @@ router = APIRouter()
 # Authentication
 
 
-def is_authenticated(request: Request):
+def authentication_in_header(request: Request):
     token = request.cookies.get("access_token")
     if token:
         return {"is_authenticated": True}
@@ -31,7 +32,7 @@ def is_authenticated(request: Request):
         return {"is_authenticated": False}
 
 
-def get_current_user(request: Request):
+def is_authenticated(request: Request):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -40,9 +41,8 @@ def get_current_user(request: Request):
             db = SessionLocal()
             user = db.query(User).filter(User.id == user_id).first()
             return user
-        except:
+        except SignatureExpired:
             return templates.TemplateResponse("login.html", {"request": request})
-
     else:
         return templates.TemplateResponse("login.html", {"request": request})
 
@@ -92,7 +92,7 @@ def current_year(request: Request):
 
 templates = Jinja2Templates(
     directory=Path(__file__).parent.parent / "templates",
-    context_processors=[current_year, is_authenticated, user_image, user_name],
+    context_processors=[current_year, authentication_in_header, user_image, user_name],
 )
 
 # Main page
@@ -259,7 +259,7 @@ async def contact_data(
 # Logout
 
 
-@router.get("/logout", dependencies=[Depends(get_current_user)])
+@router.get("/logout", dependencies=[Depends(is_authenticated)])
 def logout(request: Request):
     response = RedirectResponse(request.url_for("root"), status_code=303)
     response.delete_cookie(key="access_token")
@@ -269,7 +269,7 @@ def logout(request: Request):
 # Search user
 
 
-@router.get("/search_user", dependencies=[Depends(get_current_user)])
+@router.get("/search_user", dependencies=[Depends(is_authenticated)])
 async def search_user(request: Request):
     token = request.cookies.get("access_token")
     if token:
@@ -290,7 +290,7 @@ async def search_user(request: Request):
 # Friend requests
 
 
-@router.get("/friend_requests", dependencies=[Depends(get_current_user)])
+@router.get("/friend_requests", dependencies=[Depends(is_authenticated)])
 async def friend_requests(request: Request):
     token = request.cookies.get("access_token")
     if token:
@@ -318,22 +318,24 @@ async def friend_requests(request: Request):
 # Single chat
 
 
-@router.get("/single_chat", dependencies=[Depends(get_current_user)])
+@router.get("/single_chat", dependencies=[Depends(is_authenticated)])
 async def single_chat(request: Request):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
+
         users = (
             db.query(User)
             .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
-            .filter(
-                (Friend.user1_id == user_id) | (Friend.user2_id == user_id),
-                Friend.status == "accepted",
-            )
+            .filter(Friend.status == "accepted")
             .all()
         )
+
+        # Filter out the current user
+        users = [user for user in users if user.id != user_id]
+
         for user in users:
             user.avatar = b64encode(user.avatar).decode()
         return templates.TemplateResponse(
@@ -346,7 +348,7 @@ async def single_chat(request: Request):
 # Group chat
 
 
-@router.get("/group_chat", dependencies=[Depends(get_current_user)])
+@router.get("/group_chat", dependencies=[Depends(is_authenticated)])
 async def group_chat(request: Request):
     token = request.cookies.get("access_token")
     if token:
@@ -371,7 +373,7 @@ async def group_chat(request: Request):
 # Create group
 
 
-@router.get("/create_group", dependencies=[Depends(get_current_user)])
+@router.get("/create_group", dependencies=[Depends(is_authenticated)])
 async def create_group(request: Request):
     return templates.TemplateResponse("create_group.html", {"request": request})
 
@@ -379,7 +381,7 @@ async def create_group(request: Request):
 # Add friend
 
 
-@router.get("/add_friend/{friend_id}", dependencies=[Depends(get_current_user)])
+@router.get("/add_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
 async def add_friend(request: Request, friend_id: int):
     token = request.cookies.get("access_token")
     if token:
@@ -423,35 +425,47 @@ async def add_friend(request: Request, friend_id: int):
 # Accept friend requests
 
 
-@router.post("/accept_friend/{friend_id}", dependencies=[Depends(get_current_user)])
+@router.get("/accept_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
 async def accept_friend(request: Request, friend_id: int):
-    db = SessionLocal()
-    user_id = request.cookies.get("access_token")
-    friend = (
-        db.query(Friend)
-        .filter(Friend.user1_id == friend_id, Friend.user2_id == user_id)
-        .first()
-    )
-    friend.status = "accepted"
-    db.commit()
-    return templates.TemplateResponse("single_chat.html", {"request": request})
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        db = SessionLocal()
+        user_id = s.loads(token, max_age=3600).get("user_id")
+
+        friend = (
+            db.query(Friend)
+            .filter(Friend.user1_id == friend_id, Friend.user2_id == user_id)
+            .first()
+        )
+        friend.status = "accepted"
+        db.commit()
+        return templates.TemplateResponse("single_chat.html", {"request": request})
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})
 
 
 # Deny friend requests
 
 
-@router.post("/deny_friend/{friend_id}", dependencies=[Depends(get_current_user)])
+@router.get("/deny_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
 async def deny_friend(request: Request, friend_id: int):
-    db = SessionLocal()
-    user_id = request.cookies.get("access_token")
-    friend = (
-        db.query(Friend)
-        .filter(Friend.user1_id == friend_id, Friend.user2_id == user_id)
-        .first()
-    )
-    friend.status = "denied"
-    db.commit()
-    return templates.TemplateResponse("single_chat.html", {"request": request})
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        db = SessionLocal()
+        user_id = s.loads(token, max_age=3600).get("user_id")
+
+        friend = (
+            db.query(Friend)
+            .filter(Friend.user1_id == friend_id, Friend.user2_id == user_id)
+            .first()
+        )
+        friend.status = "denied"
+        db.commit()
+        return templates.TemplateResponse("single_chat.html", {"request": request})
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})
 
 
 # Ai chat
@@ -465,7 +479,7 @@ def chatbot_response(user_input: str):
         return model.current_chat_session[2]["content"]
 
 
-@router.get("/chatbot", dependencies=[Depends(get_current_user)])
+@router.get("/chatbot", dependencies=[Depends(is_authenticated)])
 async def chatbot_page(request: Request):
     token = request.cookies.get("access_token")
     if token:
@@ -474,7 +488,7 @@ async def chatbot_page(request: Request):
         user_id = s.loads(token, max_age=3600).get("user_id")
 
         user = db.query(User).filter(User.id == user_id).first()
-        
+
         return templates.TemplateResponse(
             "chatbot.html", {"request": request, "user": user}
         )
@@ -482,47 +496,55 @@ async def chatbot_page(request: Request):
         return templates.TemplateResponse("login.html", {"request": request})
 
 
-@router.post("/chatbot", dependencies=[Depends(get_current_user)])
+@router.post("/chatbot", dependencies=[Depends(is_authenticated)])
 async def chatbot(request: Request, message: str = Form(...)):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
-        
+
         user = db.query(User).filter(User.id == user_id).first()
-        
+
         response = chatbot_response(message)
-    
+
         chatbot_message = ChatbotMessage(
-            user_id=user.id, message=message, response=response,
-            created_at=datetime.now()
+            user_id=user.id,
+            message=message,
+            response=response,
+            created_at=datetime.now(),
         )
         db.add(chatbot_message)
         db.commit()
 
         return templates.TemplateResponse(
-            "chatbot.html", {"request": request, "user": user, "user_image": user.avatar, "message": message, "response": response}
+            "chatbot.html",
+            {
+                "request": request,
+                "user": user,
+                "message": message,
+                "response": response,
+            },
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})
 
 
-@router.get("/chatbot_messages", dependencies=[Depends(get_current_user)])
+@router.get("/chatbot_messages", dependencies=[Depends(is_authenticated)])
 async def chatbot_messages(request: Request):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
-        
+
         user = db.query(User).filter(User.id == user_id).first()
         chatbot_messages = (
             db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
         )
         return templates.TemplateResponse(
             "chatbot_messages.html",
-            {"request": request, "chatbot_messages": chatbot_messages},
+            {"request": request, "user": user, "chatbot_messages": chatbot_messages},
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})

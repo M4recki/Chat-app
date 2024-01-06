@@ -84,7 +84,7 @@
                   {{ friend_request.user1.name }} wants to be your friend.
                 </p>
                 <a
-                  href="{{ url_for('accept_friend', friend_id=friend_request.user1) }}"
+                  href="{{ url_for('accept_friend', friend_id=friend_request.user1_id) }}"
                   class="btn btn-success mt-3 mx-3"
                   >Accept</a
                 >
@@ -104,7 +104,7 @@
                       <label for="cancel" class="btn-text">Cancel</label>
                     </button>
                     <a
-                      href="{{ url_for('deny_friend', friend_id=friend_request.user1) }}"
+                      href="{{ url_for('deny_friend', friend_id=friend_request.user1_id) }}"
                       ><button class="btn btn-danger text-dark">
                         <label for="delete" class="btn-text">Confirm</label>
                       </button></a

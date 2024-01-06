@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, LargeBinary
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, LargeBinary
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from database import Base, engine
@@ -54,10 +54,10 @@ class GroupUser(Base):
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
     created_at = Column(DateTime, nullable=False)
     user = relationship(
-        "User", backref="group_users", overlaps="groups,user_groups,users"
+        "User", backref="group_users", overlaps="user_groups,users"
     )
     group = relationship(
-        "Group", backref="group_users", overlaps="groups,user_groups,users"
+        "Group", backref="group_users", overlaps="user_groups,users"
     )
 
 
@@ -94,8 +94,8 @@ class ChatbotMessage(Base):
    __tablename__ = "chatbot_messages"
    id = Column(Integer, primary_key=True)
    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-   message = Column(String(500), nullable=False)
-   response = Column(String(500), nullable=True)
+   message = Column(Text, nullable=False)
+   response = Column(Text, nullable=True)
    created_at = Column(DateTime, nullable=False)
    user = relationship("User", backref="chatbot_messages")
 

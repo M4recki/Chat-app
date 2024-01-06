@@ -61,17 +61,30 @@
 
           <section role="main" class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
             <h1 class="mt-5 text-center">Chatbot Messages</h1>
-            {% for chatbot_message in chatbot_messages %}
+            {% if chatbot_messages %} {% for chatbot_message in chatbot_messages
+            %}
             <div class="card mb-2">
               <div class="card-body">
-                <p class="card-title">{{ chatbot_message.created_at }}</p>
-                <p>{{ chatbot_message.message }}</p>
+                <p class="card-title">
+                  {{ chatbot_message.created_at.strftime(' %H:%M, %Y-%m-%d') }}
+                </p>
+                <p>
+                  <strong>{{ user.name }}:</strong> {{ chatbot_message.message
+                  }}
+                </p>
                 {% if chatbot_message.response %}
-                <p>Chatbot says: {{ chatbot_message.response }}</p>
+                <p>
+                  <strong><i class="bi bi-robot"></i> Chatbot:</strong> {{
+                  chatbot_message.response }}
+                </p>
                 {% endif %}
               </div>
             </div>
-            {% endfor %}
+            {% endfor %} {% else %}
+            <p class="text-center mt-5 lead col-12">
+              There are no previous conversations with chatbot.
+            </p>
+            {% endif %}
           </section>
         </div>
       </div>
