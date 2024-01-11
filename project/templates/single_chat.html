@@ -58,7 +58,7 @@
         <div class="row">
           <!-- Sidebar -->
           {% include "sidebar.html" %}
-          
+
           <section role="main" class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
             <h1 class="mt-5 text-center">Your friends</h1>
             <!-- User avatars -->
@@ -77,15 +77,21 @@
               </div>
               {% for user in users %}
               <div class="card mb-2 me-3">
-                <div class="card-body text-center">
-                  <img
-                    class="card-img-top user-image mx-auto mt-3"
-                    src="data:image/jpeg;base64,{{ user.avatar }}"
-                    alt="{{ user.name }}'s avatar" />
-                  <div class="card-body">
-                    <p class="card-title lead">{{ user.name }} {{ user.surname }}</p>
+                <a
+                  href="{{ url_for('friend_chat', friend_id=user.id) }}"
+                  class="text-decoration-none">
+                  <div class="card-body text-center">
+                    <img
+                      class="card-img-top user-image mx-auto mt-3"
+                      src="data:image/jpeg;base64,{{ user.avatar }}"
+                      alt="{{ user.name }}'s avatar" />
+                    <div class="card-body">
+                      <p class="card-title lead text-dark">
+                        {{ user.name }} {{ user.surname }}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                </a>
               </div>
               {% endfor %}
             </div>

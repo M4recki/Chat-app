@@ -86,7 +86,7 @@ header {
  /* Text area height */
 
  .textarea-height {
-    height: 200px !important;
+    height: 200px;
  }
 
  /* Default icon size */

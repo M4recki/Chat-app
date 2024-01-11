@@ -325,6 +325,7 @@ async def single_chat(request: Request):
         s = Serializer(environ.get("Secret_key_chat"))
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
+        user = db.query(User).filter(User.id == user_id).first()
 
         users = (
             db.query(User)
@@ -339,7 +340,26 @@ async def single_chat(request: Request):
         for user in users:
             user.avatar = b64encode(user.avatar).decode()
         return templates.TemplateResponse(
-            "single_chat.html", {"request": request, "users": users}
+            "single_chat.html", {"request": request, "users": users, "user": user}
+        )
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})
+
+
+# Friend chat
+
+
+@router.get("/friend_chat/{friend_id}", dependencies=[Depends(is_authenticated)])
+async def friend_chat(request: Request, friend_id: int):
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        db = SessionLocal()
+        user_id = s.loads(token, max_age=3600).get("user_id")
+        friend = db.query(User).filter(User.id == friend_id).first()
+        friend.avatar = b64encode(friend.avatar).decode()
+        return templates.TemplateResponse(
+            "friend_chat.html", {"request": request, "friend": friend}
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})
@@ -489,8 +509,13 @@ async def chatbot_page(request: Request):
 
         user = db.query(User).filter(User.id == user_id).first()
 
+        chatbot_messages = (
+            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
+        )
+
         return templates.TemplateResponse(
-            "chatbot.html", {"request": request, "user": user}
+            "chatbot_chat.html",
+            {"request": request, "user": user, "chatbot_messages": chatbot_messages},
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})
@@ -517,34 +542,38 @@ async def chatbot(request: Request, message: str = Form(...)):
         db.add(chatbot_message)
         db.commit()
 
+        chatbot_messages = (
+            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
+        )
+
         return templates.TemplateResponse(
-            "chatbot.html",
+            "chatbot_chat.html",
             {
                 "request": request,
                 "user": user,
                 "message": message,
                 "response": response,
+                "chatbot_messages": chatbot_messages,
             },
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})
 
 
-@router.get("/chatbot_messages", dependencies=[Depends(is_authenticated)])
-async def chatbot_messages(request: Request):
+# Clear past conversations with chatbot
+
+
+@router.get("/clear_chatbot_messages", dependencies=[Depends(is_authenticated)])
+async def clear_chatbot_messages(request: Request):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
-        user = db.query(User).filter(User.id == user_id).first()
-        chatbot_messages = (
-            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
-        )
-        return templates.TemplateResponse(
-            "chatbot_messages.html",
-            {"request": request, "user": user, "chatbot_messages": chatbot_messages},
-        )
+        db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user_id).delete()
+        db.commit()
+
+        return templates.TemplateResponse("chatbot_chat.html", {"request": request})
     else:
         return templates.TemplateResponse("login.html", {"request": request})
