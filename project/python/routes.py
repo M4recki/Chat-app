@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Form, Depends, HTTPException
+from fastapi import APIRouter, Request, Form, Depends, HTTPException, WebSocket
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -15,11 +15,10 @@ from io import BytesIO
 from base64 import b64encode
 from gpt4all import GPT4All
 from database import SessionLocal
-from models import User, Friend, Group, GroupUser, ChatbotMessage
+from models import User, Friend, Group, GroupUser, ChatbotMessage, Message
 
 
 router = APIRouter()
-
 
 # Authentication
 
@@ -349,17 +348,32 @@ async def single_chat(request: Request):
 # Friend chat
 
 
-@router.get("/friend_chat/{friend_id}", dependencies=[Depends(is_authenticated)])
-async def friend_chat(request: Request, friend_id: int):
+@router.websocket("/friend_chat/{channel_id}")
+async def websocket_endpoint(websocket: WebSocket, channel_id: str):
+    await websocket.accept()
+    while True:
+        data = await websocket.receive_text()
+        await websocket.send_text(f"Message text was: {data}")
+
+
+@router.get("/friend_chat/{channel_id}")
+async def friend_chat(request: Request, channel_id: str):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
         db = SessionLocal()
+
         user_id = s.loads(token, max_age=3600).get("user_id")
-        friend = db.query(User).filter(User.id == friend_id).first()
-        friend.avatar = b64encode(friend.avatar).decode()
+        
+        friends = db.query(Friend).filter(Friend.status == "accepted").all()
+        friend_ids = [friend.user2_id for friend in friends]
+        friend_ids.append(user_id)
+        
+        messages = (db.query(Message).filter(Message.channel_id == channel_id).all())
+        
+
         return templates.TemplateResponse(
-            "friend_chat.html", {"request": request, "friend": friend}
+            "friend_chat.html", {"request": request, "friend_ids": friend_ids,  "messages": messages}
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})
@@ -530,6 +544,11 @@ async def chatbot(request: Request, message: str = Form(...)):
         user_id = s.loads(token, max_age=3600).get("user_id")
 
         user = db.query(User).filter(User.id == user_id).first()
+
+        errors = {}
+
+        if message <= 0:
+            errors["message"] = "Message cannot be empty"
 
         response = chatbot_response(message)
 
