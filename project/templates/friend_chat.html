@@ -60,30 +60,20 @@
           {% include "sidebar.html" %}
 
           <section role="main" class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
-            {% if messages %} {% for message in messages
-            %}
+            {% if messages %} {% for message in messages %}
             <div class="card mb-2">
               <div class="card-body">
                 <p class="card-title">
                   {{ message.created_at.strftime(' %H:%M, %Y-%m-%d') }}
                 </p>
-                <p>
-                  <strong>{{ user.name }}:</strong> {{ message.message
-                  }}
-                </p>
-                {% if chatbot_message.response %}
-                <p>
-                  <strong><i class="bi bi-robot"></i> {{ friend_ids }}:</strong> {{
-                  messages }}
-                </p>
-                {% endif %}
+                <p><strong>{{ user.name }}:</strong> {{ message.content }}</p>
               </div>
             </div>
             {% endfor %}
             <div class="card mt-3">
               <div class="card-body">
                 <form
-                  action="/chatbot"
+                  action="/friend_chat/{friend_ids}"
                   method="POST"
                   class="d-flex flex-column">
                   <div class="form-floating">
@@ -108,12 +98,10 @@
               </div>
             </div>
             {% else %}
+            <h1 class="mt-5 mb-5 text-center">Start a new conversation</h1>
             <div class="card mt-3">
               <div class="card-body">
-                <form
-                  action="/chatbot"
-                  method="POST"
-                  class="d-flex flex-column">
+                <form method="POST" class="d-flex flex-column">
                   <div class="form-floating">
                     <textarea
                       type="text"
@@ -121,16 +109,19 @@
                       id="message"
                       class="form-control textarea-height textarea-height mx-3 mt-5"
                       name="message"
-                      placeholder="Message our chatbot..."
                       required></textarea>
                     <label for="floatingTextarea">Your message:</label>
                   </div>
                   <div class="d-flex justify-content-center">
-                    <button
-                      class="btn btn-primary btn-lg text-decoration-none text-dark bold my-3"
-                      type="submit">
-                      Send
-                    </button>
+                    <a
+                      href="{{ url_for('friend_chat_page', channel_id=user.id) }}"
+                      class="text-decoration-none"
+                      ><button
+                        class="btn btn-primary btn-lg text-decoration-none text-dark bold my-3"
+                        type="submit">
+                        Send
+                      </button>
+                    </a>
                   </div>
                 </form>
               </div>

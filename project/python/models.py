@@ -26,9 +26,11 @@ class Message(Base):
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True)
     content = Column(String(500), nullable=False)
+    channel_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    user = relationship("User", backref="messages")
+    channel = relationship("User", foreign_keys=[channel_id])
+    user = relationship("User", foreign_keys=[user_id])
 
 
 # Group table
@@ -53,12 +55,8 @@ class GroupUser(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
     created_at = Column(DateTime, nullable=False)
-    user = relationship(
-        "User", backref="group_users", overlaps="user_groups,users"
-    )
-    group = relationship(
-        "Group", backref="group_users", overlaps="user_groups,users"
-    )
+    user = relationship("User", backref="group_users", overlaps="user_groups,users")
+    group = relationship("Group", backref="group_users", overlaps="user_groups,users")
 
 
 # Group_role table
@@ -86,19 +84,19 @@ class Friend(Base):
     last_sent = Column(DateTime, nullable=False)
     user1 = relationship("User", foreign_keys=[user1_id])
     user2 = relationship("User", foreign_keys=[user2_id])
-    
-    
+
+
 # Chatbot table
 
-class ChatbotMessage(Base):
-   __tablename__ = "chatbot_messages"
-   id = Column(Integer, primary_key=True)
-   user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-   message = Column(Text, nullable=False)
-   response = Column(Text, nullable=True)
-   created_at = Column(DateTime, nullable=False)
-   user = relationship("User", backref="chatbot_messages")
 
+class ChatbotMessage(Base):
+    __tablename__ = "chatbot_messages"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    message = Column(Text, nullable=False)
+    response = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False)
+    user = relationship("User", backref="chatbot_messages")
 
 
 Base.metadata.create_all(bind=engine)

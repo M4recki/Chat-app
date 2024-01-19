@@ -1,4 +1,12 @@
-from fastapi import APIRouter, Request, Form, Depends, HTTPException, WebSocket
+from fastapi import (
+    APIRouter,
+    Request,
+    Form,
+    Depends,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -16,9 +24,12 @@ from base64 import b64encode
 from gpt4all import GPT4All
 from database import SessionLocal
 from models import User, Friend, Group, GroupUser, ChatbotMessage, Message
+from connection_manager import ConnectionManager
 
 
 router = APIRouter()
+
+manager = ConnectionManager()
 
 # Authentication
 
@@ -41,9 +52,13 @@ def is_authenticated(request: Request):
             user = db.query(User).filter(User.id == user_id).first()
             return user
         except SignatureExpired:
-            return templates.TemplateResponse("login.html", {"request": request})
+            response = RedirectResponse(request.url_for("root"), status_code=303)
+            response.delete_cookie(key="access_token")
+            return templates.TemplateResponse(
+                "login.html", {"request": request, "response": response}
+            )
     else:
-        return templates.TemplateResponse("login.html", {"request": request})
+        raise HTTPException(status_code=401, detail="No token provided. Please log in.")
 
 
 # User image
@@ -349,31 +364,74 @@ async def single_chat(request: Request):
 
 
 @router.websocket("/friend_chat/{channel_id}")
-async def websocket_endpoint(websocket: WebSocket, channel_id: str):
-    await websocket.accept()
-    while True:
-        data = await websocket.receive_text()
-        await websocket.send_text(f"Message text was: {data}")
+async def websocket_endpoint(websocket: WebSocket, channel_id: int):
+    await manager.connect(websocket)
+    client_id = manager.get_client_id(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await manager.send_personal_message(f"You wrote: {data}", websocket)
+            await manager.broadcast(f"Client #{client_id} says: {data}")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+        await manager.broadcast(f"Client #{client_id} left the chat")
 
 
 @router.get("/friend_chat/{channel_id}")
-async def friend_chat(request: Request, channel_id: str):
+async def friend_chat_page(request: Request, channel_id: int):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
         db = SessionLocal()
 
         user_id = s.loads(token, max_age=3600).get("user_id")
-        
+
+        user = db.query(User).filter(User.id == user_id).first()
+
         friends = db.query(Friend).filter(Friend.status == "accepted").all()
         friend_ids = [friend.user2_id for friend in friends]
         friend_ids.append(user_id)
-        
-        messages = (db.query(Message).filter(Message.channel_id == channel_id).all())
-        
+
+        messages = db.query(Message).filter(Message.channel_id == channel_id).all()
 
         return templates.TemplateResponse(
-            "friend_chat.html", {"request": request, "friend_ids": friend_ids,  "messages": messages}
+            "friend_chat.html",
+            {
+                "request": request,
+                "friend_ids": friend_ids,
+                "user": user,
+                "messages": messages,
+            },
+        )
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})
+
+
+@router.post("/friend_chat/{channel_id}")
+async def friend_chat(request: Request, channel_id: int, message: str = Form(...)):
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        db = SessionLocal()
+
+        user_id = s.loads(token, max_age=3600).get("user_id")
+
+        user = db.query(User).filter(User.id == user_id).first()
+
+        messages = db.query(Message).filter(Message.channel_id == channel_id).all()
+
+        message_obj = Message(
+            content=message,
+            channel_id=channel_id,
+            user_id=user_id,
+            created_at=datetime.now(),
+        )
+
+        db.add(message_obj)
+        db.commit()
+        db.refresh(message_obj)
+        return templates.TemplateResponse(
+            "friend_chat.html", {"request": request, "messages": messages, "user": user}
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})
@@ -547,7 +605,7 @@ async def chatbot(request: Request, message: str = Form(...)):
 
         errors = {}
 
-        if message <= 0:
+        if len(message) <= 0:
             errors["message"] = "Message cannot be empty"
 
         response = chatbot_response(message)
