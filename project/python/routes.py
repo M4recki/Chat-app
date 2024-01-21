@@ -21,9 +21,10 @@ from os import environ
 from PIL import Image
 from io import BytesIO
 from base64 import b64encode
+from uuid import uuid4
 from gpt4all import GPT4All
 from database import SessionLocal
-from models import User, Friend, Group, GroupUser, ChatbotMessage, Message
+from models import User, Friend, Group, GroupUser, ChatbotMessage, Message, Channel
 from connection_manager import ConnectionManager
 
 
@@ -312,6 +313,7 @@ async def friend_requests(request: Request):
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
         user = db.query(User).filter(User.id == user_id).first()
+        
         friend_requests = (
             db.query(Friend)
             .filter(Friend.user2_id == user_id, Friend.status == "pending")
@@ -321,6 +323,7 @@ async def friend_requests(request: Request):
             friend_request.user1.avatar = b64encode(
                 friend_request.user1.avatar
             ).decode()
+        
         return templates.TemplateResponse(
             "friend_requests.html",
             {"request": request, "friend_requests": friend_requests},
@@ -348,13 +351,25 @@ async def single_chat(request: Request):
             .all()
         )
 
-        # Filter out the current user
         users = [user for user in users if user.id != user_id]
 
         for user in users:
             user.avatar = b64encode(user.avatar).decode()
+
+        channel_id = str(uuid4())
+
+        new_channel = Channel(id=channel_id, user1_id=user_id, user2_id=user.id)
+        db.add(new_channel)
+        db.commit()
+
         return templates.TemplateResponse(
-            "single_chat.html", {"request": request, "users": users, "user": user}
+            "single_chat.html",
+            {
+                "request": request,
+                "users": users,
+                "user": user,
+                "channel_id": channel_id,
+            },
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})
@@ -364,13 +379,12 @@ async def single_chat(request: Request):
 
 
 @router.websocket("/friend_chat/{channel_id}")
-async def websocket_endpoint(websocket: WebSocket, channel_id: int):
+async def websocket_endpoint(websocket: WebSocket, channel_id: str):
     await manager.connect(websocket)
     client_id = manager.get_client_id(websocket)
     try:
         while True:
             data = await websocket.receive_text()
-            await manager.send_personal_message(f"You wrote: {data}", websocket)
             await manager.broadcast(f"Client #{client_id} says: {data}")
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -378,7 +392,7 @@ async def websocket_endpoint(websocket: WebSocket, channel_id: int):
 
 
 @router.get("/friend_chat/{channel_id}")
-async def friend_chat_page(request: Request, channel_id: int):
+async def friend_chat_page(request: Request, channel_id: str):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -387,6 +401,11 @@ async def friend_chat_page(request: Request, channel_id: int):
         user_id = s.loads(token, max_age=3600).get("user_id")
 
         user = db.query(User).filter(User.id == user_id).first()
+        
+        channel = db.query(Channel).filter(Channel.id == channel_id).first()
+
+        if not channel:
+            raise HTTPException(status_code=404, detail="Channel not found")
 
         friends = db.query(Friend).filter(Friend.status == "accepted").all()
         friend_ids = [friend.user2_id for friend in friends]
@@ -398,7 +417,6 @@ async def friend_chat_page(request: Request, channel_id: int):
             "friend_chat.html",
             {
                 "request": request,
-                "friend_ids": friend_ids,
                 "user": user,
                 "messages": messages,
             },
@@ -408,7 +426,7 @@ async def friend_chat_page(request: Request, channel_id: int):
 
 
 @router.post("/friend_chat/{channel_id}")
-async def friend_chat(request: Request, channel_id: int, message: str = Form(...)):
+async def friend_chat(request: Request, channel_id: str, message: str = Form(...)):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -417,8 +435,6 @@ async def friend_chat(request: Request, channel_id: int, message: str = Form(...
         user_id = s.loads(token, max_age=3600).get("user_id")
 
         user = db.query(User).filter(User.id == user_id).first()
-
-        messages = db.query(Message).filter(Message.channel_id == channel_id).all()
 
         message_obj = Message(
             content=message,
@@ -430,6 +446,9 @@ async def friend_chat(request: Request, channel_id: int, message: str = Form(...
         db.add(message_obj)
         db.commit()
         db.refresh(message_obj)
+
+        messages = db.query(Message).filter(Message.channel_id == channel_id).all()
+
         return templates.TemplateResponse(
             "friend_chat.html", {"request": request, "messages": messages, "user": user}
         )
@@ -447,6 +466,7 @@ async def group_chat(request: Request):
         s = Serializer(environ.get("Secret_key_chat"))
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
+        
         groups = (
             db.query(Group)
             .join(GroupUser, GroupUser.group_id == Group.id)
@@ -455,6 +475,7 @@ async def group_chat(request: Request):
         )
         for group in groups:
             group.avatar = b64encode(group.avatar).decode()
+        
         return templates.TemplateResponse(
             "group_chat.html", {"request": request, "groups": groups}
         )

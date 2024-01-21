@@ -72,6 +72,18 @@ class GroupRole(Base):
     group = relationship("Group", backref="group_roles")
 
 
+# Channel table
+
+
+class Channel(Base):
+    __tablename__ = "channels"
+    id = Column(String(32), primary_key=True)
+    user1_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user2_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user1 = relationship("User", foreign_keys=[user1_id])
+    user2 = relationship("User", foreign_keys=[user2_id])
+
+
 # Friends table
 
 
