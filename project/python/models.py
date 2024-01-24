@@ -26,11 +26,12 @@ class Message(Base):
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True)
     content = Column(String(500), nullable=False)
-    channel_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    channel_id = Column(String(100), ForeignKey("channels.channel_id"), nullable=False)
     created_at = Column(DateTime, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    channel = relationship("User", foreign_keys=[channel_id])
+    channel = relationship("Channel", foreign_keys=[channel_id])
     user = relationship("User", foreign_keys=[user_id])
+
 
 
 # Group table
@@ -77,7 +78,8 @@ class GroupRole(Base):
 
 class Channel(Base):
     __tablename__ = "channels"
-    id = Column(String(32), primary_key=True)
+    id = Column(Integer, primary_key=True)
+    channel_id = Column(String(100), nullable=False, unique=True)
     user1_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user2_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user1 = relationship("User", foreign_keys=[user1_id])

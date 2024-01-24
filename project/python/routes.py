@@ -313,7 +313,7 @@ async def friend_requests(request: Request):
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
         user = db.query(User).filter(User.id == user_id).first()
-        
+
         friend_requests = (
             db.query(Friend)
             .filter(Friend.user2_id == user_id, Friend.status == "pending")
@@ -323,7 +323,7 @@ async def friend_requests(request: Request):
             friend_request.user1.avatar = b64encode(
                 friend_request.user1.avatar
             ).decode()
-        
+
         return templates.TemplateResponse(
             "friend_requests.html",
             {"request": request, "friend_requests": friend_requests},
@@ -353,15 +353,27 @@ async def single_chat(request: Request):
 
         users = [user for user in users if user.id != user_id]
 
+        # for user in users:
+        #     user.avatar = b64encode(user.avatar).decode()
+
+        channel_id = ""
         for user in users:
-            user.avatar = b64encode(user.avatar).decode()
+            existing_channel = (
+                db.query(Channel)
+                .filter((Channel.user1_id == user_id) & (Channel.user2_id == user.id))
+                .first()
+            )
+            if existing_channel:
+                channel_id = existing_channel.channel_id
+            else:
+                channel_id = str(uuid4())
+                new_channel = Channel(
+                    channel_id=channel_id, user1_id=user_id, user2_id=user.id
+                )
+                db.add(new_channel)
+                db.commit()
 
-        channel_id = str(uuid4())
-
-        new_channel = Channel(id=channel_id, user1_id=user_id, user2_id=user.id)
-        db.add(new_channel)
-        db.commit()
-
+        print(channel_id)
         return templates.TemplateResponse(
             "single_chat.html",
             {
@@ -378,7 +390,7 @@ async def single_chat(request: Request):
 # Friend chat
 
 
-@router.websocket("/friend_chat/{channel_id}")
+@router.websocket("/friend_chat/{channel_id}", dependencies=[Depends(is_authenticated)])
 async def websocket_endpoint(websocket: WebSocket, channel_id: str):
     await manager.connect(websocket)
     client_id = manager.get_client_id(websocket)
@@ -391,7 +403,7 @@ async def websocket_endpoint(websocket: WebSocket, channel_id: str):
         await manager.broadcast(f"Client #{client_id} left the chat")
 
 
-@router.get("/friend_chat/{channel_id}")
+@router.get("/friend_chat/{channel_id}", dependencies=[Depends(is_authenticated)])
 async def friend_chat_page(request: Request, channel_id: str):
     token = request.cookies.get("access_token")
     if token:
@@ -399,10 +411,16 @@ async def friend_chat_page(request: Request, channel_id: str):
         db = SessionLocal()
 
         user_id = s.loads(token, max_age=3600).get("user_id")
-
         user = db.query(User).filter(User.id == user_id).first()
-        
-        channel = db.query(Channel).filter(Channel.id == channel_id).first()
+
+        users = (
+            db.query(User)
+            .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
+            .filter(Friend.status == "accepted")
+            .all()
+        )
+
+        channel = db.query(Channel).filter(Channel.channel_id == channel_id).first()
 
         if not channel:
             raise HTTPException(status_code=404, detail="Channel not found")
@@ -419,13 +437,14 @@ async def friend_chat_page(request: Request, channel_id: str):
                 "request": request,
                 "user": user,
                 "messages": messages,
+                "channel_id": channel_id,
             },
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})
 
 
-@router.post("/friend_chat/{channel_id}")
+@router.post("/friend_chat/{channel_id}", dependencies=[Depends(is_authenticated)])
 async def friend_chat(request: Request, channel_id: str, message: str = Form(...)):
     token = request.cookies.get("access_token")
     if token:
@@ -466,7 +485,7 @@ async def group_chat(request: Request):
         s = Serializer(environ.get("Secret_key_chat"))
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
-        
+
         groups = (
             db.query(Group)
             .join(GroupUser, GroupUser.group_id == Group.id)
@@ -475,7 +494,7 @@ async def group_chat(request: Request):
         )
         for group in groups:
             group.avatar = b64encode(group.avatar).decode()
-        
+
         return templates.TemplateResponse(
             "group_chat.html", {"request": request, "groups": groups}
         )
