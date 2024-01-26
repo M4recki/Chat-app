@@ -58,7 +58,7 @@
         <div class="col-md-6 px-5 mt-5 text-center">
           <img
             src="{{ url_for('static', path='/img/man sitting and writing.jpg') }}"
-            alt="girl and boy chatting"
+            alt="man sitting and writing"
             class="img-fluid rounded pb-3" />
         </div>
         <div class="col-md-6">
@@ -98,9 +98,12 @@
               class="mb-3 d-flex"
               name="message"
               id="message"
-              cols="85"
-              rows="10"
               required></textarea>
+            {% if errors is defined and errors.message %}
+            <div class="alert alert-danger" role="alert">
+              {{ errors.message }}
+            </div>
+            {% endif %}
             <button
               type="submit"
               class="btn btn-lg btn-primary mt-3 bold float-start">

@@ -6,6 +6,7 @@ from fastapi import (
     HTTPException,
     WebSocket,
     WebSocketDisconnect,
+    Query,  
 )
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
@@ -22,20 +23,27 @@ from PIL import Image
 from io import BytesIO
 from base64 import b64encode
 from uuid import uuid4
+from typing import Optional
 from gpt4all import GPT4All
 from database import SessionLocal
 from models import User, Friend, Group, GroupUser, ChatbotMessage, Message, Channel
-from connection_manager import ConnectionManager
 
 
 router = APIRouter()
 
-manager = ConnectionManager()
 
 # Authentication
 
 
 def authentication_in_header(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         return {"is_authenticated": True}
@@ -44,6 +52,17 @@ def authentication_in_header(request: Request):
 
 
 def is_authenticated(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Raises:
+        HTTPException: _description_
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -66,6 +85,14 @@ def is_authenticated(request: Request):
 
 
 def user_image(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -84,6 +111,14 @@ def user_image(request: Request):
 
 
 def user_name(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -102,6 +137,14 @@ def user_name(request: Request):
 
 
 def current_year(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     return {"current_year": datetime.now().year}
 
 
@@ -115,6 +158,14 @@ templates = Jinja2Templates(
 
 @router.get("/")
 def root(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     return templates.TemplateResponse("main_page.html", {"request": request})
 
 
@@ -123,6 +174,14 @@ def root(request: Request):
 
 @router.get("/sign_up", name="sign_up")
 def sign_up_page(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     return templates.TemplateResponse(
         "sign_up.html", {"request": request, "errors": {}}
     )
@@ -138,6 +197,20 @@ async def sign_up_data(
     confirm_password: str = Form(...),
     terms_conditions: bool = Form(...),
 ):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+        name (str, optional): _description_. Defaults to Form(...).
+        surname (str, optional): _description_. Defaults to Form(...).
+        email (str, optional): _description_. Defaults to Form(...).
+        password (str, optional): _description_. Defaults to Form(...).
+        confirm_password (str, optional): _description_. Defaults to Form(...).
+        terms_conditions (bool, optional): _description_. Defaults to Form(...).
+
+    Returns:
+        _type_: _description_
+    """
     db = SessionLocal()
     user = db.query(User).filter(User.email == email).first()
 
@@ -192,6 +265,14 @@ async def sign_up_data(
 
 @router.get("/login", name="login")
 def login_page(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     return templates.TemplateResponse("login.html", {"request": request})
 
 
@@ -199,6 +280,16 @@ def login_page(request: Request):
 async def login_data(
     request: Request, email: str = Form(...), password: str = Form(...)
 ):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+        email (str, optional): _description_. Defaults to Form(...).
+        password (str, optional): _description_. Defaults to Form(...).
+
+    Returns:
+        _type_: _description_
+    """
     db = SessionLocal()
     user = db.query(User).filter(User.email == email).first()
 
@@ -229,6 +320,13 @@ async def login_data(
 
 
 def send_email(email_address, subject, message):
+    """_summary_
+
+    Args:
+        email_address (_type_): _description_
+        subject (_type_): _description_
+        message (_type_): _description_
+    """
     email_receiver = environ.get("EMAIL_RECEIVER_TODO")
     password = environ.get("EMAIL_PASSWORD_CAFE")
 
@@ -248,6 +346,14 @@ def send_email(email_address, subject, message):
 
 @router.get("/contact", name="contact")
 def contact_page(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     return templates.TemplateResponse("contact.html", {"request": request})
 
 
@@ -259,6 +365,18 @@ async def contact_data(
     subject: str = Form(...),
     message: str = Form(...),
 ):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+        name (str, optional): _description_. Defaults to Form(...).
+        email (str, optional): _description_. Defaults to Form(...).
+        subject (str, optional): _description_. Defaults to Form(...).
+        message (str, optional): _description_. Defaults to Form(...).
+
+    Returns:
+        _type_: _description_
+    """
     errors = {}
 
     if len(message) < 10:
@@ -276,6 +394,14 @@ async def contact_data(
 
 @router.get("/logout", dependencies=[Depends(is_authenticated)])
 def logout(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     response = RedirectResponse(request.url_for("root"), status_code=303)
     response.delete_cookie(key="access_token")
     return response
@@ -286,6 +412,14 @@ def logout(request: Request):
 
 @router.get("/search_user", dependencies=[Depends(is_authenticated)])
 async def search_user(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -307,6 +441,14 @@ async def search_user(request: Request):
 
 @router.get("/friend_requests", dependencies=[Depends(is_authenticated)])
 async def friend_requests(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -337,6 +479,14 @@ async def friend_requests(request: Request):
 
 @router.get("/single_chat", dependencies=[Depends(is_authenticated)])
 async def single_chat(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -351,10 +501,12 @@ async def single_chat(request: Request):
             .all()
         )
 
+        # Show only friends
+
         users = [user for user in users if user.id != user_id]
 
-        # for user in users:
-        #     user.avatar = b64encode(user.avatar).decode()
+        for user in users:
+            user.avatar = b64encode(user.avatar).decode()
 
         channel_id = ""
         for user in users:
@@ -373,7 +525,6 @@ async def single_chat(request: Request):
                 db.add(new_channel)
                 db.commit()
 
-        print(channel_id)
         return templates.TemplateResponse(
             "single_chat.html",
             {
@@ -390,21 +541,20 @@ async def single_chat(request: Request):
 # Friend chat
 
 
-@router.websocket("/friend_chat/{channel_id}", dependencies=[Depends(is_authenticated)])
-async def websocket_endpoint(websocket: WebSocket, channel_id: str):
-    await manager.connect(websocket)
-    client_id = manager.get_client_id(websocket)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            await manager.broadcast(f"Client #{client_id} says: {data}")
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
-        await manager.broadcast(f"Client #{client_id} left the chat")
-
-
 @router.get("/friend_chat/{channel_id}", dependencies=[Depends(is_authenticated)])
-async def friend_chat_page(request: Request, channel_id: str):
+async def friend_chat(request: Request, channel_id: str):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+        channel_id (str): _description_
+
+    Raises:
+        HTTPException: _description_
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -445,34 +595,20 @@ async def friend_chat_page(request: Request, channel_id: str):
 
 
 @router.post("/friend_chat/{channel_id}", dependencies=[Depends(is_authenticated)])
-async def friend_chat(request: Request, channel_id: str, message: str = Form(...)):
-    token = request.cookies.get("access_token")
-    if token:
-        s = Serializer(environ.get("Secret_key_chat"))
-        db = SessionLocal()
+async def friend_chat_message(request: Request, channel_id: str, message: Optional[str] = Query(None)):
+    """_summary_
 
-        user_id = s.loads(token, max_age=3600).get("user_id")
+    Args:
+        request (Request): _description_
+        channel_id (str): _description_
+        message (Optional[str], optional): _description_. Defaults to Query(None).
 
-        user = db.query(User).filter(User.id == user_id).first()
-
-        message_obj = Message(
-            content=message,
-            channel_id=channel_id,
-            user_id=user_id,
-            created_at=datetime.now(),
-        )
-
-        db.add(message_obj)
-        db.commit()
-        db.refresh(message_obj)
-
-        messages = db.query(Message).filter(Message.channel_id == channel_id).all()
-
-        return templates.TemplateResponse(
-            "friend_chat.html", {"request": request, "messages": messages, "user": user}
-        )
-    else:
-        return templates.TemplateResponse("login.html", {"request": request})
+    Returns:
+        _type_: _description_
+    """    
+    if message:
+        print(f"Received message: {message}")
+    return {"message": message}
 
 
 # Group chat
@@ -480,6 +616,14 @@ async def friend_chat(request: Request, channel_id: str, message: str = Form(...
 
 @router.get("/group_chat", dependencies=[Depends(is_authenticated)])
 async def group_chat(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -507,6 +651,14 @@ async def group_chat(request: Request):
 
 @router.get("/create_group", dependencies=[Depends(is_authenticated)])
 async def create_group(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     return templates.TemplateResponse("create_group.html", {"request": request})
 
 
@@ -515,6 +667,18 @@ async def create_group(request: Request):
 
 @router.get("/add_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
 async def add_friend(request: Request, friend_id: int):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+        friend_id (int): _description_
+
+    Raises:
+        HTTPException: _description_
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -559,6 +723,15 @@ async def add_friend(request: Request, friend_id: int):
 
 @router.get("/accept_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
 async def accept_friend(request: Request, friend_id: int):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+        friend_id (int): _description_
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -582,6 +755,15 @@ async def accept_friend(request: Request, friend_id: int):
 
 @router.get("/deny_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
 async def deny_friend(request: Request, friend_id: int):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+        friend_id (int): _description_
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -604,6 +786,14 @@ async def deny_friend(request: Request, friend_id: int):
 
 
 def chatbot_response(user_input: str):
+    """_summary_
+
+    Args:
+        user_input (str): _description_
+
+    Returns:
+        _type_: _description_
+    """
     model = GPT4All(model_name="gpt4all-falcon-q4_0.gguf")
 
     with model.chat_session():
@@ -613,6 +803,14 @@ def chatbot_response(user_input: str):
 
 @router.get("/chatbot", dependencies=[Depends(is_authenticated)])
 async def chatbot_page(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -635,6 +833,15 @@ async def chatbot_page(request: Request):
 
 @router.post("/chatbot", dependencies=[Depends(is_authenticated)])
 async def chatbot(request: Request, message: str = Form(...)):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+        message (str, optional): _description_. Defaults to Form(...).
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -682,6 +889,14 @@ async def chatbot(request: Request, message: str = Form(...)):
 
 @router.get("/clear_chatbot_messages", dependencies=[Depends(is_authenticated)])
 async def clear_chatbot_messages(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
