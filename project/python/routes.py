@@ -1,15 +1,15 @@
+import asyncio
+import json
+from requests import Session
 from fastapi import (
     APIRouter,
     Request,
     Form,
     Depends,
     HTTPException,
-    WebSocket,
-    WebSocketDisconnect,
-    Query,  
 )
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from itsdangerous.exc import SignatureExpired
@@ -23,7 +23,6 @@ from PIL import Image
 from io import BytesIO
 from base64 import b64encode
 from uuid import uuid4
-from typing import Optional
 from gpt4all import GPT4All
 from database import SessionLocal
 from models import User, Friend, Group, GroupUser, ChatbotMessage, Message, Channel
@@ -79,6 +78,14 @@ def is_authenticated(request: Request):
             )
     else:
         raise HTTPException(status_code=401, detail="No token provided. Please log in.")
+
+
+# Get user id
+
+
+def get_user(user_id):
+    db = SessionLocal()
+    return db.query(User).filter(User.id == user_id).first()
 
 
 # User image
@@ -401,7 +408,7 @@ def logout(request: Request):
 
     Returns:
         _type_: _description_
-    """
+    """    
     response = RedirectResponse(request.url_for("root"), status_code=303)
     response.delete_cookie(key="access_token")
     return response
@@ -505,8 +512,8 @@ async def single_chat(request: Request):
 
         users = [user for user in users if user.id != user_id]
 
-        for user in users:
-            user.avatar = b64encode(user.avatar).decode()
+        # for user in users:
+        #     user.avatar = b64encode(user.avatar).decode()
 
         channel_id = ""
         for user in users:
@@ -517,13 +524,26 @@ async def single_chat(request: Request):
             )
             if existing_channel:
                 channel_id = existing_channel.channel_id
+                break
             else:
-                channel_id = str(uuid4())
-                new_channel = Channel(
-                    channel_id=channel_id, user1_id=user_id, user2_id=user.id
+                existing_channel = (
+                    db.query(Channel)
+                    .filter(
+                        (Channel.user1_id == user.id) & (Channel.user2_id == user_id)
+                    )
+                    .first()
                 )
-                db.add(new_channel)
-                db.commit()
+                if existing_channel:
+                    channel_id = existing_channel.channel_id
+                    break
+                else:
+                    channel_id = str(uuid4())
+                    new_channel = Channel(
+                        channel_id=channel_id, user1_id=user_id, user2_id=user.id
+                    )
+                    db.add(new_channel)
+                    db.commit()
+                    break
 
         return templates.TemplateResponse(
             "single_chat.html",
@@ -542,7 +562,7 @@ async def single_chat(request: Request):
 
 
 @router.get("/friend_chat/{channel_id}", dependencies=[Depends(is_authenticated)])
-async def friend_chat(request: Request, channel_id: str):
+async def friend_chat_page(request: Request, channel_id: str):
     """_summary_
 
     Args:
@@ -563,6 +583,8 @@ async def friend_chat(request: Request, channel_id: str):
         user_id = s.loads(token, max_age=3600).get("user_id")
         user = db.query(User).filter(User.id == user_id).first()
 
+        messages = db.query(Message).filter(Message.channel_id == channel_id).all()
+
         users = (
             db.query(User)
             .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
@@ -579,6 +601,59 @@ async def friend_chat(request: Request, channel_id: str):
         friend_ids = [friend.user2_id for friend in friends]
         friend_ids.append(user_id)
 
+        return templates.TemplateResponse(
+            "friend_chat.html",
+            {
+                "request": request,
+                "user": user,
+                "messages": messages,
+                "channel_id": channel_id,
+                "get_user": get_user,
+            },
+        )
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})
+
+
+@router.post("/friend_chat/{channel_id}", dependencies=[Depends(is_authenticated)])
+async def friend_chat_message(
+    request: Request, channel_id: str, message: str = Form(...)
+):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+        channel_id (str): _description_
+        message (str, optional): _description_. Defaults to Form(...).
+
+    Raises:
+        HTTPException: _description_
+
+    Returns:
+        _type_: _description_
+    """
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        db = SessionLocal()
+
+        user_id = s.loads(token, max_age=3600).get("user_id")
+        user = db.query(User).filter(User.id == user_id).first()
+
+        channel = db.query(Channel).filter(Channel.channel_id == channel_id).first()
+
+        if not channel:
+            raise HTTPException(status_code=404, detail="Channel not found")
+
+        new_message = Message(
+            content=message,
+            channel_id=channel_id,
+            created_at=datetime.now(),
+            user_id=user_id,
+        )
+        db.add(new_message)
+        db.commit()
+
         messages = db.query(Message).filter(Message.channel_id == channel_id).all()
 
         return templates.TemplateResponse(
@@ -588,27 +663,9 @@ async def friend_chat(request: Request, channel_id: str):
                 "user": user,
                 "messages": messages,
                 "channel_id": channel_id,
+                "get_user": get_user,
             },
         )
-    else:
-        return templates.TemplateResponse("login.html", {"request": request})
-
-
-@router.post("/friend_chat/{channel_id}", dependencies=[Depends(is_authenticated)])
-async def friend_chat_message(request: Request, channel_id: str, message: Optional[str] = Query(None)):
-    """_summary_
-
-    Args:
-        request (Request): _description_
-        channel_id (str): _description_
-        message (Optional[str], optional): _description_. Defaults to Query(None).
-
-    Returns:
-        _type_: _description_
-    """    
-    if message:
-        print(f"Received message: {message}")
-    return {"message": message}
 
 
 # Group chat
