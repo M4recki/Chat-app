@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -67,15 +67,21 @@
                   {{ message.created_at.strftime(' %H:%M, %Y-%m-%d') }}
                 </p>
                 {% set sender = get_user(message.user_id) %}
-                <p id="messages">
-                  <strong>{{ sender.name }}:</strong> {{ message.content }}
-                </p>
+                <p><strong>{{ sender.name }}:</strong> {{ message.content }}</p>
               </div>
             </div>
             {% endfor %}
             <div class="card mt-3">
+              <div class="card-body"></div>
+            </div>
+            {% else %}
+            <h1 class="mt-5 mb-5 text-center">Start a new conversation</h1>
+            <div class="card mt-3">
               <div class="card-body">
-                <form method="POST" class="d-flex flex-column">
+                <form
+                  action=""
+                  onsubmit="sendMessage(event)"
+                  class="d-flex flex-column">
                   <div class="form-floating">
                     <textarea
                       type="text"
@@ -83,6 +89,7 @@
                       id="messageText"
                       class="form-control textarea-height textarea-height mx-3 mt-5"
                       name="message"
+                      autocomplete="off"
                       required></textarea>
                     <label for="floatingTextarea">Your message:</label>
                   </div>
@@ -93,35 +100,7 @@
                       Send
                     </button>
                   </div>
-                </form>
-              </div>
-            </div>
-            {% else %}
-            <h1 class="mt-5 mb-5 text-center">Start a new conversation</h1>
-            <div class="card mt-3">
-              <div class="card-body">
-                <form method="POST" class="d-flex flex-column">
-                  <div class="form-floating">
-                    <textarea
-                      type="text"
-                      cols="0"
-                      id="messageText"
-                      class="form-control textarea-height textarea-height mx-3 mt-5"
-                      name="message"
-                      required></textarea>
-                    <label for="floatingTextarea">Your message:</label>
-                  </div>
-                  <div class="d-flex justify-content-center">
-                    <a
-                      href="{{ url_for('friend_chat_message', channel_id=user.id) }}"
-                      class="text-decoration-none"
-                      ><button
-                        class="btn btn-primary btn-lg text-decoration-none text-dark bold my-3"
-                        type="submit">
-                        Send
-                      </button>
-                    </a>
-                  </div>
+                  <div id="messages"></div>
                 </form>
               </div>
             </div>
@@ -133,5 +112,48 @@
 
     <!-- Footer -->
     {% include "footer.html" %}
+
+    <script>
+      const client_name = "{{ user.name }}";
+      const client_avatar = "{{ user.avatar }}";
+
+      const ws = new WebSocket(`ws://localhost:8000/ws/${client_name}`);
+      ws.onmessage = function (event) {
+        const messages = document.getElementById("messages");
+
+        const messageContainer = document.createElement("div");
+        messageContainer.classList.add("card", "mb-2");
+
+        const messageBody = document.createElement("div");
+        messageBody.classList.add("card-body");
+
+        const message = document.createElement("p");
+        message.classList.add("py-3");
+
+        const user_avatar = document.createElement("img");
+        user_avatar.classList.add(
+          "smaller-user-image",
+          "mx-2",
+          "mt-3",
+          "float-start"
+        );
+        user_avatar.src = `data:image/jpeg;base64,${client_avatar}`;
+        user_avatar.alt = `${client_name}'s avatar`;
+
+        messageBody.appendChild(user_avatar);
+        message.innerHTML = event.data;
+
+        messageBody.appendChild(message);
+        messageContainer.appendChild(messageBody);
+
+        messages.appendChild(messageContainer);
+      };
+      function sendMessage(event) {
+        const input = document.getElementById("messageText");
+        ws.send(input.value);
+        input.value = "";
+        event.preventDefault();
+      }
+    </script>
   </body>
 </html>

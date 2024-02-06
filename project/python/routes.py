@@ -408,7 +408,7 @@ def logout(request: Request):
 
     Returns:
         _type_: _description_
-    """    
+    """
     response = RedirectResponse(request.url_for("root"), status_code=303)
     response.delete_cookie(key="access_token")
     return response
@@ -512,11 +512,11 @@ async def single_chat(request: Request):
 
         users = [user for user in users if user.id != user_id]
 
-        # for user in users:
-        #     user.avatar = b64encode(user.avatar).decode()
-
         channel_id = ""
         for user in users:
+
+            user.avatar = b64encode(user.avatar).decode()
+
             existing_channel = (
                 db.query(Channel)
                 .filter((Channel.user1_id == user_id) & (Channel.user2_id == user.id))
@@ -551,6 +551,7 @@ async def single_chat(request: Request):
                 "request": request,
                 "users": users,
                 "user": user,
+                "user.avatar": user.avatar,
                 "channel_id": channel_id,
             },
         )
@@ -582,6 +583,7 @@ async def friend_chat_page(request: Request, channel_id: str):
 
         user_id = s.loads(token, max_age=3600).get("user_id")
         user = db.query(User).filter(User.id == user_id).first()
+        user.avatar = b64encode(user.avatar).decode()
 
         messages = db.query(Message).filter(Message.channel_id == channel_id).all()
 
@@ -606,6 +608,7 @@ async def friend_chat_page(request: Request, channel_id: str):
             {
                 "request": request,
                 "user": user,
+                "user.avatar": user.avatar,
                 "messages": messages,
                 "channel_id": channel_id,
                 "get_user": get_user,
@@ -876,13 +879,20 @@ async def chatbot_page(request: Request):
 
         user = db.query(User).filter(User.id == user_id).first()
 
+        user.avatar = b64encode(user.avatar).decode()
+
         chatbot_messages = (
             db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
         )
 
         return templates.TemplateResponse(
             "chatbot_chat.html",
-            {"request": request, "user": user, "chatbot_messages": chatbot_messages},
+            {
+                "request": request,
+                "user": user,
+                "user.avatar": user.avatar,
+                "chatbot_messages": chatbot_messages,
+            },
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})

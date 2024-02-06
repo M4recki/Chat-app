@@ -16,23 +16,19 @@ app.mount(
 
 manager = ConnectionManager()
 
-@app.websocket("/ws/friend_chat/")
-async def websocket_endpoint(websocket: WebSocket):
-    """_summary_
 
-    Args:
-        websocket (WebSocket): _description_
-    """
+@app.websocket("/ws/{client_name}")
+async def websocket_endpoint(websocket: WebSocket, client_name: str):
     await manager.connect(websocket)
     try:
         while True:
             data = await websocket.receive_text()
-            await manager.send_personal_message(f"You wrote: {data}", websocket)
-            print(f"Client #{websocket.id} says: {data}")
-            await manager.broadcast(f"Client says: {data}")
+            await manager.broadcast(
+                f"<strong class='text-primary'>{client_name}:</strong> {data}"
+            )
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        await manager.broadcast(f"Client # left the chat")
+        await manager.broadcast(f"{client_name} left the chat")
 
 
 app.include_router(router)

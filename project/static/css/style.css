@@ -83,6 +83,12 @@ header {
     border-radius: 100%;
  }
 
+ .smaller-user-image {
+    width: 25px;
+    height: 25px;
+    border-radius: 100%;
+ }
+
  /* Text area height */
 
  .textarea-height {
