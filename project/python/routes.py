@@ -1,5 +1,3 @@
-import asyncio
-import json
 from requests import Session
 from fastapi import (
     APIRouter,
@@ -9,7 +7,7 @@ from fastapi import (
     HTTPException,
 )
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import RedirectResponse
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from itsdangerous.exc import SignatureExpired
@@ -71,13 +69,10 @@ def is_authenticated(request: Request):
             user = db.query(User).filter(User.id == user_id).first()
             return user
         except SignatureExpired:
-            response = RedirectResponse(request.url_for("root"), status_code=303)
-            response.delete_cookie(key="access_token")
-            return templates.TemplateResponse(
-                "login.html", {"request": request, "response": response}
-            )
+            request.cookies.clear()
+            return False
     else:
-        raise HTTPException(status_code=401, detail="No token provided. Please log in.")
+        return False
 
 
 # Get user id
@@ -616,59 +611,6 @@ async def friend_chat_page(request: Request, channel_id: str):
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})
-
-
-@router.post("/friend_chat/{channel_id}", dependencies=[Depends(is_authenticated)])
-async def friend_chat_message(
-    request: Request, channel_id: str, message: str = Form(...)
-):
-    """_summary_
-
-    Args:
-        request (Request): _description_
-        channel_id (str): _description_
-        message (str, optional): _description_. Defaults to Form(...).
-
-    Raises:
-        HTTPException: _description_
-
-    Returns:
-        _type_: _description_
-    """
-    token = request.cookies.get("access_token")
-    if token:
-        s = Serializer(environ.get("Secret_key_chat"))
-        db = SessionLocal()
-
-        user_id = s.loads(token, max_age=3600).get("user_id")
-        user = db.query(User).filter(User.id == user_id).first()
-
-        channel = db.query(Channel).filter(Channel.channel_id == channel_id).first()
-
-        if not channel:
-            raise HTTPException(status_code=404, detail="Channel not found")
-
-        new_message = Message(
-            content=message,
-            channel_id=channel_id,
-            created_at=datetime.now(),
-            user_id=user_id,
-        )
-        db.add(new_message)
-        db.commit()
-
-        messages = db.query(Message).filter(Message.channel_id == channel_id).all()
-
-        return templates.TemplateResponse(
-            "friend_chat.html",
-            {
-                "request": request,
-                "user": user,
-                "messages": messages,
-                "channel_id": channel_id,
-                "get_user": get_user,
-            },
-        )
 
 
 # Group chat

@@ -1,51 +1,36 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-    <!-- CSS -->
-    <link
-      href="{{ url_for('static', path='/css/style.css') }}"
-      rel="stylesheet" />
-  </head>
-  <body>
-    <!-- Sidebar -->
-    <nav class="col-md-2 d-none d-md-block bg-light sidebar vh-100">
-      <div class="sidebar-sticky">
-        <ul class="nav flex-column">
-          <li class="nav-item">
-            <a class="nav-link active my-3" href="{{ url_for('search_user') }}">
-              <i class="bi bi-search mx-2"></i>
-              Search user
-            </a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link active my-3" href="{{ url_for('friend_requests') }}">
-              <i class="bi bi-person-add mx-2"></i>
-              Friend requests
-            </a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link active my-3" href="{{ url_for('single_chat') }}">
-              <i class="bi bi-person mx-2"></i>
-              Individual chat
-            </a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link my-3" href="{{ url_for('group_chat') }}">
-              <i class="bi bi-people mx-2"></i>
-              Group chat
-            </a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link my-3" href="{{ url_for('chatbot') }}">
-              <i class="bi bi-robot mx-2"></i>
-              Chat with AI
-            </a>
-          </li>
-        </ul>
-      </div>
-    </nav>
-  </body>
-</html>
+<nav class="col-md-2 d-none d-md-block bg-light sidebar vh-100">
+  <div class="sidebar-sticky">
+    <ul class="nav flex-column">
+      <li class="nav-item">
+        <a class="nav-link active my-3" href="{{ url_for('search_user') }}">
+          <i class="bi bi-search mx-2"></i>
+          Search user
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link active my-3" href="{{ url_for('friend_requests') }}">
+          <i class="bi bi-person-add mx-2"></i>
+          Friend requests
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link active my-3" href="{{ url_for('single_chat') }}">
+          <i class="bi bi-person mx-2"></i>
+          Individual chat
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link my-3" href="{{ url_for('group_chat') }}">
+          <i class="bi bi-people mx-2"></i>
+          Group chat
+        </a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link my-3" href="{{ url_for('chatbot') }}">
+          <i class="bi bi-robot mx-2"></i>
+          Chat with AI
+        </a>
+      </li>
+    </ul>
+  </div>
+</nav>

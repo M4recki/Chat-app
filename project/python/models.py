@@ -16,7 +16,6 @@ class User(Base):
     password = Column(String(100), nullable=False)
     avatar = Column(LargeBinary, nullable=False)
     created_at = Column(DateTime, nullable=False)
-    last_active = Column(DateTime, nullable=True)
 
 
 # Messages table

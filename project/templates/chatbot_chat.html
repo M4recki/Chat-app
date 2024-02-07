@@ -1,50 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-    <!-- Icon -->
-    <link
-      rel="icon"
-      href="{{ url_for('static', path='/img/chat.ico') }}"
-      type="image/x-icon" />
-
-    <!-- Google font -->
-    <link
-      href="https://fonts.googleapis.com/css?family=PT+Sans:regular,italic,700,700italic"
-      rel="stylesheet" />
-
-    <!-- CSS -->
-    <link
-      href="{{ url_for('static', path='/css/style.css') }}"
-      rel="stylesheet" />
-
-    <!-- JavaScript -->
-    <script src="{{ url_for('static', path='/js/script.js') }}"></script>
-
-    <!-- Bootstrap CSS v5.3.2 -->
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-      integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN"
-      crossorigin="anonymous" />
-
-    <!-- Bootstrap icons -->
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" />
-
-    <!-- Bootstrap JavaScript Libraries -->
-    <script
-      src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.8/dist/umd/popper.min.js"
-      integrity="sha384-I7E8VVD/ismYTF4hNIPjVp/Zjvgyol6VFvRkX/vR+Vc4jQkC+hVqc2pM8ODewa9r"
-      crossorigin="anonymous"></script>
-
-    <script
-      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.min.js"
-      integrity="sha384-BBtl+eGJRgqQAUMxJ7pMwbEyER4l1g+O15P+16Ep7Q9Q+zqX6gSbd85u4mG4QzX+"
-      crossorigin="anonymous"></script>
+    <!-- Head -->
+    {% include "head.html" %}
 
     <title>Chat app - Chatbot</title>
   </head>
@@ -60,6 +18,7 @@
           {% include "sidebar.html" %}
 
           <section role="main" class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
+            <!-- Chatbot and user messages -->
             {% if chatbot_messages %} {% for chatbot_message in chatbot_messages
             %}
             <div class="card mt-3">
@@ -114,6 +73,8 @@
                 </form>
               </div>
             </div>
+
+            <!-- No previous conversation with chatbot -->
             {% else %}
             <h1 class="mt-5 mb-5 text-center">
               <strong class="me-3 text-primary"
@@ -131,7 +92,7 @@
                       type="text"
                       cols="0"
                       id="message"
-                      class="form-control textarea-height textarea-height mx-3 mt-5"
+                      class="form-control textarea-height mt-5"
                       name="message"
                       required></textarea>
                     <label for="floatingTextarea">Your message:</label>
@@ -146,6 +107,8 @@
                 </form>
               </div>
             </div>
+
+            <!-- Delete conversation -->
             {% endif %}
             <button
               class="btn btn-danger btn btn-primary btn-lg text-decoration-none text-dark bold mt-5 mx-3 mb-3 float-end"
