@@ -67,7 +67,9 @@ def is_authenticated(request: Request):
             user_id = s.loads(token, max_age=3600).get("user_id")
             db = SessionLocal()
             user = db.query(User).filter(User.id == user_id).first()
-            return user
+
+            #TODO: if user.name == None:
+                
         except SignatureExpired:
             request.cookies.clear()
             return False
@@ -631,6 +633,18 @@ async def group_chat(request: Request):
         s = Serializer(environ.get("Secret_key_chat"))
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
+        user = db.query(User).filter(User.id == user_id).first()
+
+        users = (
+            db.query(User)
+            .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
+            .filter(Friend.status == "accepted")
+            .all()
+        )
+
+        # Show only friends
+
+        users = [user for user in users if user.id != user_id]
 
         groups = (
             db.query(Group)
@@ -642,7 +656,15 @@ async def group_chat(request: Request):
             group.avatar = b64encode(group.avatar).decode()
 
         return templates.TemplateResponse(
-            "group_chat.html", {"request": request, "groups": groups}
+            "group_chat.html",
+            {
+                "request": request,
+                "groups": groups,
+                "group.avatar": group.avatar,
+                "user": user,
+                "users": users,
+                "user.avatar": user.avatar,
+            },
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})

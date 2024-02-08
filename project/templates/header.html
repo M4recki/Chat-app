@@ -12,94 +12,97 @@
   <body>
     <header>
       <nav
-        class="nav nav-tabs pt-2 pb-2"
+        class="nav navbar navbar-expand-lg bg-primary align-items-center"
         role="navigation"
         aria-label="Main Navigation">
-        <div class="rounded float-start ps-5">
-          <a href="{{ url_for('root') }}">
+        <div class="rounded ps-5">
+          <a href="{{ url_for('root') }}" class="navbar-brand">
             <img
               src="{{ url_for('static', path='/img/chat.png') }}"
               id="chat-icon"
               alt="chat-icon" />
           </a>
         </div>
-        <div class="ms-auto d-flex">
-          
-          <!-- Logged user -->
-          {% if is_authenticated %}
-          <div class="nav-item lead bold">
-            <img
-              class="card-img-top user-image mx-2"
-              src="data:image/jpeg;base64,{{ user_image }}"
-              alt="{{ user_name }}'s avatar" />
-          </div>
-          <div class="nav-item lead bold" role="tablist">
-            <p class="nav-link text-white" role="tab">
-              Welcome back, {{user_name}}! 👋
-            </p>
-          </div>
-          <div class="nav-item lead bold" role="tablist">
-            <a
-              href="{{ url_for('single_chat') }}"
-              class="nav-link text-white"
-              role="tab"
-              aria-selected="false"
-              >Chats</a
-            >
-          </div>
-          <div class="nav-item lead bold" role="tablist">
-            <a
-              href="{{ url_for('logout') }}"
-              class="nav-link text-white"
-              role="tab"
-              aria-selected="false"
-              >Log out</a
-            >
-          </div>
+        <button
+          class="navbar-toggler me-5"
+          type="button"
+          data-bs-toggle="collapse"
+          data-bs-target="#navbarNav"
+          aria-expanded="false"
+          aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
 
-          <!-- Not logged in user -->
-          {% else %}
-          <div class="nav-item lead bold" role="tablist">
-            <a
-              href="{{ url_for('login') }}"
-              class="nav-link text-white"
-              role="tab"
-              aria-selected="false"
-              >Log in</a
-            >
-          </div>
-          <div class="nav-item lead bold" role="tablist">
-            <a
-              href="{{ url_for('sign_up') }}"
-              class="nav-link text-white"
-              role="tab"
-              aria-selected="false"
-              >Sign up</a
-            >
-          </div>
+        <div
+          class="collapse navbar-collapse justify-content-end"
+          id="navbarNav">
+          <ul class="navbar-nav float-end pt-3 me-3">
+            <!-- Logged user -->
+            {% if is_authenticated %}
+            <li class="nav-item lead bold">
+              <img
+                class="card-img-top user-image mx-2"
+                src="data:image/jpeg;base64,{{ user_image }}"
+                alt="{{ user_name }}'s avatar" />
+            </li>
+            <li class="nav-item lead bold">
+              <p class="nav-link text-white" role="tab">
+                Welcome back, {{user_name}}! 👋
+              </p>
+            </li>
+            <li class="nav-item lead bold">
+              <a
+                href="{{ url_for('single_chat') }}"
+                class="nav-link text-white"
+                role="tab"
+                aria-selected="false"
+                >Chats</a
+              >
+            </li>
+            <li class="nav-item lead bold">
+              <a
+                href="{{ url_for('logout') }}"
+                class="nav-link text-white"
+                role="tab"
+                aria-selected="false"
+                >Log out</a
+              >
+            </li>
 
-          {% endif %}
-          <div class="nav-item lead bold" role="tablist">
-            <a
-              href="{{ url_for('contact') }}"
-              class="nav-link text-white me-5"
-              role="tab"
-              aria-selected="false"
-              >Contact</a
-            >
-          </div>
+            <!-- Not logged in user -->
+            {% else %}
+            <li class="nav-item lead bold">
+              <a
+                href="{{ url_for('login') }}"
+                class="nav-link text-white"
+                role="tab"
+                aria-selected="false"
+                >Log in</a
+              >
+            </li>
+            <li class="nav-item lead bold">
+              <a
+                href="{{ url_for('sign_up') }}"
+                class="nav-link text-white"
+                role="tab"
+                aria-selected="false"
+                >Sign up</a
+              >
+            </li>
+
+            {% endif %}
+            <li class="nav-item lead bold">
+              <a
+                href="{{ url_for('contact') }}"
+                class="nav-link text-white me-5"
+                role="tab"
+                aria-selected="false"
+                >Contact</a
+              >
+            </li>
+          </ul>
         </div>
       </nav>
-      <!-- Tab panes -->
-      <div class="tab-content" id="myTabContent">
-        <div
-          class="tab-pane fade show active"
-          id="tab1Id"
-          role="tabpanel"></div>
-        <div class="tab-pane fade" id="tab2Id" role="tabpanel"></div>
-        <div class="tab-pane fade" id="tab3Id" role="tabpanel"></div>
-        <div class="tab-pane fade" id="tab4Id" role="tabpanel"></div>
-      </div>
     </header>
   </body>
 </html>

@@ -20,6 +20,15 @@ header {
     height: 50px;
 }
 
+/* Community chat image behavior */
+
+@media (min-width: 759px) and (max-width: 1209px) {
+    .community-chat-image {
+      width: 300px;
+      height: 300px;
+    }
+  }
+
 /* Header highlight text login, contact, etc. */
 
 .nav-link {
