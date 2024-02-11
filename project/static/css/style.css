@@ -20,7 +20,7 @@ header {
     height: 50px;
 }
 
-/* Community chat image behavior */
+/* Community chat image behavior for smaller screens */
 
 @media (min-width: 759px) and (max-width: 1209px) {
     .community-chat-image {
@@ -49,6 +49,10 @@ header {
 
 .nav-link:hover::after {
     width: 100%;
+}
+
+.nav-img {
+    cursor: pointer;
 }
 
 /* Icons size in main page */
@@ -109,3 +113,19 @@ header {
  .icon-size {
     font-size: 30px;
  }
+
+ /* Main text in login, sign up and contact behavior for smaller screens */
+
+ @media (min-width: 50px) and (max-width: 991px) {
+    .main-word {
+        margin-top: 50px;
+    }
+  }
+
+  /* Main image in login, sign up and contact behavior for smaller screens */
+
+  @media (min-width: 50px) and (max-width: 768px) {
+    .main-image {
+        display: none;
+    }
+  }

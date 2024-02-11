@@ -37,13 +37,21 @@
           class="collapse navbar-collapse justify-content-end"
           id="navbarNav">
           <ul class="navbar-nav float-end pt-3 me-3">
+
             <!-- Logged user -->
             {% if is_authenticated %}
             <li class="nav-item lead bold">
-              <img
-                class="card-img-top user-image mx-2"
-                src="data:image/jpeg;base64,{{ user_image }}"
-                alt="{{ user_name }}'s avatar" />
+              <div class="position-relative">
+                <img
+                  src="data:image/jpeg;base64,{{ user_image }}"
+                  class="nav-img user-image mx-2 position-relative"
+                  alt="{{ user_name }}'s avatar"
+                  data-bs-toggle="dropdown"
+                  aria-expanded="false" />
+                <ul class="dropdown-menu dropdown-menu-end">
+                  <li><a class="dropdown-item" href="{{ url_for('update_profile_page') }}">Update profile</a></li>
+                </ul>
+              </div>
             </li>
             <li class="nav-item lead bold">
               <p class="nav-link text-white" role="tab">

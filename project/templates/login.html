@@ -7,8 +7,8 @@
     <title>Chat app - Login</title>
   </head>
   <body>
-    <!-- Header -->
-    {% include "header.html" %}
+    <!-- Navbar -->
+    {% include "navbar.html" %}
 
     <!-- Main content -->
     <main>
@@ -17,14 +17,14 @@
           <img
             src="{{ url_for('static', path='/img/2 people chatting 2nd img.jpg') }}"
             alt="girl and boy chatting"
-            class="img-fluid rounded pb-3" />
+            class="img-fluid rounded main-image pb-3" />
           <a href="{{ url_for('sign_up') }}" class="fw-bold text-body"
             ><i class="bi bi-person-add px-2 text-primary"></i
             ><u class="text-primary">Create an account</u></a
           >
         </div>
         <div class="col-md-6">
-          <h1 class="text-center pb-5 bold text-primary">Login</h1>
+          <h1 class="text-center text-primary main-word pb-5 bold">Login</h1>
           <form action="/login" method="post">
             <div class="mb-3">
               <label for="email" class="form-label">Email</label>

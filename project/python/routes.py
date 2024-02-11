@@ -19,11 +19,11 @@ import smtplib
 from os import environ
 from PIL import Image
 from io import BytesIO
-from base64 import b64encode
+from base64 import b64encode, b64decode
 from uuid import uuid4
 from gpt4all import GPT4All
 from database import SessionLocal
-from models import User, Friend, Group, GroupUser, ChatbotMessage, Message, Channel
+from models import User, Friend, ChatbotMessage, Message, Channel
 
 
 router = APIRouter()
@@ -68,8 +68,8 @@ def is_authenticated(request: Request):
             db = SessionLocal()
             user = db.query(User).filter(User.id == user_id).first()
 
-            #TODO: if user.name == None:
-                
+            # TODO: if user.name == None:
+
         except SignatureExpired:
             request.cookies.clear()
             return False
@@ -478,6 +478,96 @@ async def friend_requests(request: Request):
         return templates.TemplateResponse("login.html", {"request": request})
 
 
+# Update profile
+
+
+@router.get("/update_profile", dependencies=[Depends(is_authenticated)])
+async def update_profile_page(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        db = SessionLocal()
+        user_id = s.loads(token, max_age=3600).get("user_id")
+        user = db.query(User).filter(User.id == user_id).first()
+
+        return templates.TemplateResponse(
+            "update_profile.html",
+            {"request": request, "user": user, "errors": {}},
+        )
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})
+
+
+@router.post("/update_profile", dependencies=[Depends(is_authenticated)])
+async def update_profile_data(
+    request: Request,
+    avatar: str = Form(...),
+    name: str = Form(...),
+    surname: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    confirm_password: str = Form(...),
+):
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        db = SessionLocal()
+        user_id = s.loads(token, max_age=3600).get("user_id")
+        user = db.query(User).filter(User.id == user_id).first()
+
+        errors = {}
+
+        if avatar.content_type not in ["image/jpeg", "image/png"]:
+            errors["avatar"] = "Avatar must be a JPEG or PNG file"
+
+        if not password.isalnum():
+            errors["password"] = "Password must contain only letters and numbers"
+
+        if password != confirm_password:
+            errors["confirm_password"] = "Passwords do not match"
+
+        if errors:
+            return templates.TemplateResponse(
+                "update_profile.html",
+                {"request": request, "user": user, "errors": errors},
+            )
+
+        if avatar.content_type == "image/jpeg":
+            avatar_data = await avatar.read()
+            img_binary = BytesIO()
+            avatar_data.save(img_binary, format="JPEG")
+            user.avatar = img_binary.getvalue()
+
+        updated_user = User(
+            id=user_id,
+            name=name,
+            surname=surname,
+            email=email,
+            password=password,
+            avatar=user.avatar,
+        )
+        db.commit()
+
+        SECRET_KEY = environ.get("Secret_key_chat")
+        s = Serializer(SECRET_KEY)
+        token = s.dumps({"user_id": user_id})
+
+        response = RedirectResponse(request.url_for("single_chat"), status_code=303)
+        response.set_cookie(key="access_token", value=token, httponly=True)
+
+        return response
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})
+
+
 # Single chat
 
 
@@ -497,6 +587,7 @@ async def single_chat(request: Request):
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
         user = db.query(User).filter(User.id == user_id).first()
+        user.avatar = b64decode(user.avatar)
 
         users = (
             db.query(User)
@@ -606,6 +697,7 @@ async def friend_chat_page(request: Request, channel_id: str):
                 "request": request,
                 "user": user,
                 "user.avatar": user.avatar,
+                "users.avatar": users.avatar,
                 "messages": messages,
                 "channel_id": channel_id,
                 "get_user": get_user,
@@ -613,77 +705,6 @@ async def friend_chat_page(request: Request, channel_id: str):
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})
-
-
-# Group chat
-
-
-@router.get("/group_chat", dependencies=[Depends(is_authenticated)])
-async def group_chat(request: Request):
-    """_summary_
-
-    Args:
-        request (Request): _description_
-
-    Returns:
-        _type_: _description_
-    """
-    token = request.cookies.get("access_token")
-    if token:
-        s = Serializer(environ.get("Secret_key_chat"))
-        db = SessionLocal()
-        user_id = s.loads(token, max_age=3600).get("user_id")
-        user = db.query(User).filter(User.id == user_id).first()
-
-        users = (
-            db.query(User)
-            .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
-            .filter(Friend.status == "accepted")
-            .all()
-        )
-
-        # Show only friends
-
-        users = [user for user in users if user.id != user_id]
-
-        groups = (
-            db.query(Group)
-            .join(GroupUser, GroupUser.group_id == Group.id)
-            .filter(GroupUser.user_id == user_id)
-            .all()
-        )
-        for group in groups:
-            group.avatar = b64encode(group.avatar).decode()
-
-        return templates.TemplateResponse(
-            "group_chat.html",
-            {
-                "request": request,
-                "groups": groups,
-                "group.avatar": group.avatar,
-                "user": user,
-                "users": users,
-                "user.avatar": user.avatar,
-            },
-        )
-    else:
-        return templates.TemplateResponse("login.html", {"request": request})
-
-
-# Create group
-
-
-@router.get("/create_group", dependencies=[Depends(is_authenticated)])
-async def create_group(request: Request):
-    """_summary_
-
-    Args:
-        request (Request): _description_
-
-    Returns:
-        _type_: _description_
-    """
-    return templates.TemplateResponse("create_group.html", {"request": request})
 
 
 # Add friend

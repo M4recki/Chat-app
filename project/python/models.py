@@ -32,45 +32,6 @@ class Message(Base):
     user = relationship("User", foreign_keys=[user_id])
 
 
-# Group table
-
-
-class Group(Base):
-    __tablename__ = "groups"
-    id = Column(Integer, primary_key=True)
-    name = Column(String(100), nullable=False)
-    created_at = Column(DateTime, nullable=False)
-    avatar = Column(LargeBinary, nullable=False)
-    admin_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    users = relationship("User", secondary="group_users", backref="user_groups")
-
-
-# Group_users table
-
-
-class GroupUser(Base):
-    __tablename__ = "group_users"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
-    created_at = Column(DateTime, nullable=False)
-    user = relationship("User", backref="group_users", overlaps="user_groups,users")
-    group = relationship("Group", backref="group_users", overlaps="user_groups,users")
-
-
-# Group_role table
-
-
-class GroupRole(Base):
-    __tablename__ = "group_roles"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    group_id = Column(Integer, ForeignKey("groups.id"), nullable=False)
-    role = Column(String(100), nullable=False)
-    user = relationship("User", backref="group_roles")
-    group = relationship("Group", backref="group_roles")
-
-
 # Channel table
 
 
