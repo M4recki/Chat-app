@@ -4,7 +4,7 @@
     <!-- Head -->
     {% include "head.html" %}
 
-    <title>Chat app - Sign up</title>
+    <title>Chat app - Update profile</title>
   </head>
   <body>
     <!-- Navbar -->
@@ -17,7 +17,10 @@
           <h1 class="text-center bold text-primary main-word py-5">
             Update your profile
           </h1>
-          <form action="/update_profile_data" method="post">
+          <form
+            action="/update_profile"
+            method="post"
+            enctype="multipart/form-data">
             <div class="mb-3">
               <label for="avatar" class="form-label">Profile Picture</label>
               <input
@@ -29,7 +32,7 @@
 
               <!-- Display error -->
               {% if errors.avatar %}
-              <div class="alert alert-danger" role="alert">
+              <div class="alert alert-danger mt-3" role="alert">
                 {{ errors.avatar }}
               </div>
               {% endif %}
@@ -41,12 +44,11 @@
                 class="form-control my-3"
                 name="name"
                 id="name"
-                value="{{ user.name }}"
-                required />
+                value="{{ user.name }}" />
 
               <!-- Display error -->
               {% if errors.name %}
-              <div class="alert alert-danger" role="alert">
+              <div class="alert alert-danger mt-3" role="alert">
                 {{ errors.name }}
               </div>
               {% endif %}
@@ -58,12 +60,11 @@
                 class="form-control my-3"
                 name="surname"
                 id="surname"
-                value="{{ user.surname }}"
-                required />
+                value="{{ user.surname }}" />
 
               <!-- Display error -->
               {% if errors.surname %}
-              <div class="alert alert-danger" role="alert">
+              <div class="alert alert-danger mt-3" role="alert">
                 {{ errors.surname }}
               </div>
               {% endif %}
@@ -75,12 +76,11 @@
                 class="form-control my-3"
                 name="email"
                 id="email"
-                value="{{ user.email }}"
-                required />
+                value="{{ user.email }}" />
 
               <!-- Display error -->
               {% if errors.email %}
-              <div class="alert alert-danger" role="alert">
+              <div class="alert alert-danger mt-3" role="alert">
                 {{ errors.email }}
               </div>
               {% endif %}
@@ -91,12 +91,11 @@
                 type="password"
                 class="form-control my-3"
                 name="password"
-                id="password"
-                placeholder="New password (optional)" />
+                id="password" />
 
               <!-- Display error -->
               {% if errors.password %}
-              <div class="alert alert-danger" role="alert">
+              <div class="alert alert-danger mt-3" role="alert">
                 {{ errors.password }}
               </div>
               {% endif %}
@@ -109,12 +108,11 @@
                 type="password"
                 class="form-control my-3"
                 name="confirm_password"
-                id="confirmPassword"
-                placeholder="Confirm new password (optional)" />
+                id="confirmPassword" />
 
               <!-- Display error -->
               {% if errors.confirm_password %}
-              <div class="alert alert-danger" role="alert">
+              <div class="alert alert-danger mt-3" role="alert">
                 {{ errors.confirm_password }}
               </div>
               {% endif %}

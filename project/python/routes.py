@@ -5,6 +5,8 @@ from fastapi import (
     Form,
     Depends,
     HTTPException,
+    File,
+    UploadFile,
 )
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
@@ -24,7 +26,6 @@ from uuid import uuid4
 from gpt4all import GPT4All
 from database import SessionLocal
 from models import User, Friend, ChatbotMessage, Message, Channel
-
 
 router = APIRouter()
 
@@ -509,12 +510,12 @@ async def update_profile_page(request: Request):
 @router.post("/update_profile", dependencies=[Depends(is_authenticated)])
 async def update_profile_data(
     request: Request,
-    avatar: str = Form(...),
-    name: str = Form(...),
-    surname: str = Form(...),
-    email: str = Form(...),
-    password: str = Form(...),
-    confirm_password: str = Form(...),
+    avatar: UploadFile = File(None),
+    name: str = Form(None),
+    surname: str = Form(None),
+    email: str = Form(None),
+    password: str = Form(None),
+    confirm_password: str = Form(None),
 ):
     token = request.cookies.get("access_token")
     if token:
@@ -528,7 +529,7 @@ async def update_profile_data(
         if avatar.content_type not in ["image/jpeg", "image/png"]:
             errors["avatar"] = "Avatar must be a JPEG or PNG file"
 
-        if not password.isalnum():
+        if password is not None and not password.isalnum():
             errors["password"] = "Password must contain only letters and numbers"
 
         if password != confirm_password:
@@ -540,11 +541,14 @@ async def update_profile_data(
                 {"request": request, "user": user, "errors": errors},
             )
 
-        if avatar.content_type == "image/jpeg":
-            avatar_data = await avatar.read()
-            img_binary = BytesIO()
-            avatar_data.save(img_binary, format="JPEG")
-            user.avatar = img_binary.getvalue()
+        if avatar and avatar.content_type:
+            if avatar.content_type not in ["image/jpeg", "image/png"]:
+                errors["avatar"] = "Avatar must be a JPEG or PNG file"
+            else:
+                avatar_data = await avatar.read()
+                img_binary = BytesIO()
+                img_binary.write(avatar_data)
+                user.avatar = img_binary.getvalue()
 
         updated_user = User(
             id=user_id,
@@ -560,10 +564,7 @@ async def update_profile_data(
         s = Serializer(SECRET_KEY)
         token = s.dumps({"user_id": user_id})
 
-        response = RedirectResponse(request.url_for("single_chat"), status_code=303)
-        response.set_cookie(key="access_token", value=token, httponly=True)
-
-        return response
+        return templates.TemplateResponse("single_chat.html", {"request": request})
     else:
         return templates.TemplateResponse("login.html", {"request": request})
 
