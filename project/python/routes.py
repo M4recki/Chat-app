@@ -526,9 +526,6 @@ async def update_profile_data(
 
         errors = {}
 
-        if avatar.content_type not in ["image/jpeg", "image/png"]:
-            errors["avatar"] = "Avatar must be a JPEG or PNG file"
-
         if password is not None and not password.isalnum():
             errors["password"] = "Password must contain only letters and numbers"
 
@@ -688,9 +685,12 @@ async def friend_chat_page(request: Request, channel_id: str):
         if not channel:
             raise HTTPException(status_code=404, detail="Channel not found")
 
-        friends = db.query(Friend).filter(Friend.status == "accepted").all()
-        friend_ids = [friend.user2_id for friend in friends]
-        friend_ids.append(user_id)
+        friend = (
+            db.query(Friend, User.name)
+            .join(User, Friend.user2_id == User.id)
+            .filter(Friend.user1_id == user_id)
+            .first()
+        )
 
         return templates.TemplateResponse(
             "friend_chat.html",
@@ -698,12 +698,101 @@ async def friend_chat_page(request: Request, channel_id: str):
                 "request": request,
                 "user": user,
                 "user.avatar": user.avatar,
-                "users.avatar": users.avatar,
+                "users": users,
+                "friend": friend,
                 "messages": messages,
                 "channel_id": channel_id,
                 "get_user": get_user,
             },
         )
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})
+
+
+# Block friend
+
+
+@router.get("/block_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
+async def block_friend(request: Request, friend_id: int):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+        friend_id (int): _description_
+
+    Returns:
+        _type_: _description_
+    """ """"""
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        db = SessionLocal()
+        user_id = s.loads(token, max_age=3600).get("user_id")
+
+        existing_request = (
+            db.query(Friend)
+            .filter((Friend.user1_id == user_id) & (Friend.user2_id == friend_id))
+            .first()
+        )
+
+        if existing_request:
+            existing_request.status = "pending"
+            db.commit()
+        else:
+            new_friendship = Friend(
+                user1_id=user_id,
+                user2_id=friend_id,
+                status="blocked",
+                last_sent=datetime.now(),
+            )
+            db.add(new_friendship)
+            db.commit()
+
+        return templates.TemplateResponse("single_chat.html", {"request": request})
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})
+
+
+# Unblock friend
+
+
+@router.get("/unblock_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
+async def unblock_friend(request: Request, friend_id: int):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+        friend_id (int): _description_
+
+    Returns:
+        _type_: _description_
+    """ """"""
+    token = request.cookies.get("access_token")
+    if token:
+        s = Serializer(environ.get("Secret_key_chat"))
+        db = SessionLocal()
+        user_id = s.loads(token, max_age=3600).get("user_id")
+
+        existing_request = (
+            db.query(Friend)
+            .filter((Friend.user1_id == user_id) & (Friend.user2_id == friend_id))
+            .first()
+        )
+
+        if existing_request:
+            existing_request.status = "pending"
+            db.commit()
+        else:
+            new_friendship = Friend(
+                user1_id=user_id,
+                user2_id=friend_id,
+                status="accepted",
+                last_sent=datetime.now(),
+            )
+            db.add(new_friendship)
+            db.commit()
+
+        return templates.TemplateResponse("single_chat.html", {"request": request})
     else:
         return templates.TemplateResponse("login.html", {"request": request})
 

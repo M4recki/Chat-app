@@ -17,7 +17,7 @@
           <!-- Sidebar -->
           {% include "sidebar.html" %}
 
-          <section role="main" class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
+          <section class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
             <!-- Users messages -->
             {% if messages %} {% for message in messages %}
             <div class="card my-3">
@@ -83,7 +83,7 @@
                       type="text"
                       cols="0"
                       id="messageText"
-                      class="form-control textarea-height"
+                      class="form-control textarea-height mt-5"
                       name="message"
                       autocomplete="off"
                       required></textarea>
@@ -100,6 +100,54 @@
               </div>
             </div>
 
+            {% endif %}
+
+            <!-- Block friend -->
+            {% if friend.status == "accepted" %}
+            <button
+              class="btn btn-danger btn btn-danger btn-lg text-decoration-none text-dark bold mt-5 mx-3 mb-3 float-end"
+              onclick="document.getElementById('delete-confirmation').showModal()">
+              Block
+            </button>
+            <dialog id="delete-confirmation">
+              Are you sure you want to block this user?
+              <div class="button-container my-5 d-flex justify-content-center">
+                <button
+                  class="btn btn-success me-3 text-dark"
+                  id="close-dialog"
+                  onclick="DeleteConfirmationClose()">
+                  <label for="cancel" class="btn-text">Cancel</label>
+                </button>
+                <a href="{{ url_for('block_friend', friend_id=friend.id) }}"
+                  ><button class="btn btn-danger text-dark">
+                    <label for="delete" class="btn-text">Confirm</label>
+                  </button></a
+                >
+              </div>
+            </dialog>
+
+            {% elif friend.status == "blocked" %}
+            <button
+              class="btn btn-danger btn btn-success btn-lg text-decoration-none text-dark bold mt-5 mx-3 mb-3 float-end"
+              onclick="document.getElementById('delete-confirmation').showModal()">
+              Unblock
+            </button>
+            <dialog id="delete-confirmation">
+              Are you sure you want to block this user?
+              <div class="button-container my-5 d-flex justify-content-center">
+                <button
+                  class="btn btn-success me-3 text-dark"
+                  id="close-dialog"
+                  onclick="DeleteConfirmationClose()">
+                  <label for="cancel" class="btn-text">Cancel</label>
+                </button>
+                <a href="{{ url_for('block_friend', friend_id=friend.id) }}"
+                  ><button class="btn btn-danger text-dark">
+                    <label for="delete" class="btn-text">Confirm</label>
+                  </button></a
+                >
+              </div>
+            </dialog>
             {% endif %}
           </section>
         </div>
@@ -132,7 +180,7 @@
         messageTitle.classList.add("card-title", "mt-3", "ms-3");
 
         // Current date in correct format
-        
+
         function getCurrentDateTime() {
           const date = new Date();
           const hours = date.getHours().toString().padStart(2, "0");

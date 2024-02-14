@@ -12,115 +12,120 @@
 
     <!-- Main content -->
     <main>
-      <div class="container d-flex align-items-center justify-content-between">
-        <div class="col-md-12">
-          <h1 class="text-center bold text-primary main-word py-5">
-            Update your profile
-          </h1>
-          <form
-            action="/update_profile"
-            method="post"
-            enctype="multipart/form-data">
-            <div class="mb-3">
-              <label for="avatar" class="form-label">Profile Picture</label>
-              <input
-                type="file"
-                class="form-control"
-                name="avatar"
-                id="avatar"
-                accept="image/*" />
+      <div class="container-fluid">
+        <div class="row">
+          <!-- Sidebar -->
+          {% include "sidebar.html" %}
 
-              <!-- Display error -->
-              {% if errors.avatar %}
-              <div class="alert alert-danger mt-3" role="alert">
-                {{ errors.avatar }}
-              </div>
-              {% endif %}
-            </div>
-            <div class="mb-3">
-              <label for="name" class="form-label">Name</label>
-              <input
-                type="text"
-                class="form-control my-3"
-                name="name"
-                id="name"
-                value="{{ user.name }}" />
+          <section class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
+            <h1 class="text-center bold text-primary main-word py-5">
+              Update your profile
+            </h1>
+            <form
+              action="/update_profile"
+              method="post"
+              enctype="multipart/form-data">
+              <div class="mb-3">
+                <label for="avatar" class="form-label">Profile avatar</label>
+                <input
+                  type="file"
+                  class="form-control"
+                  name="avatar"
+                  id="avatar"
+                  accept="image/*" />
 
-              <!-- Display error -->
-              {% if errors.name %}
-              <div class="alert alert-danger mt-3" role="alert">
-                {{ errors.name }}
+                <!-- Display error -->
+                {% if errors.avatar %}
+                <div class="alert alert-danger mt-3" role="alert">
+                  {{ errors.avatar }}
+                </div>
+                {% endif %}
               </div>
-              {% endif %}
-            </div>
-            <div class="mb-3">
-              <label for="surname" class="form-label">Surname</label>
-              <input
-                type="text"
-                class="form-control my-3"
-                name="surname"
-                id="surname"
-                value="{{ user.surname }}" />
+              <div class="mb-3">
+                <label for="name" class="form-label">Name</label>
+                <input
+                  type="text"
+                  class="form-control my-3"
+                  name="name"
+                  id="name"
+                  value="{{ user.name }}" />
 
-              <!-- Display error -->
-              {% if errors.surname %}
-              <div class="alert alert-danger mt-3" role="alert">
-                {{ errors.surname }}
+                <!-- Display error -->
+                {% if errors.name %}
+                <div class="alert alert-danger mt-3" role="alert">
+                  {{ errors.name }}
+                </div>
+                {% endif %}
               </div>
-              {% endif %}
-            </div>
-            <div class="mb-3">
-              <label for="email" class="form-label">Email</label>
-              <input
-                type="email"
-                class="form-control my-3"
-                name="email"
-                id="email"
-                value="{{ user.email }}" />
+              <div class="mb-3">
+                <label for="surname" class="form-label">Surname</label>
+                <input
+                  type="text"
+                  class="form-control my-3"
+                  name="surname"
+                  id="surname"
+                  value="{{ user.surname }}" />
 
-              <!-- Display error -->
-              {% if errors.email %}
-              <div class="alert alert-danger mt-3" role="alert">
-                {{ errors.email }}
+                <!-- Display error -->
+                {% if errors.surname %}
+                <div class="alert alert-danger mt-3" role="alert">
+                  {{ errors.surname }}
+                </div>
+                {% endif %}
               </div>
-              {% endif %}
-            </div>
-            <div class="mb-3">
-              <label for="password" class="form-label">Password</label>
-              <input
-                type="password"
-                class="form-control my-3"
-                name="password"
-                id="password" />
+              <div class="mb-3">
+                <label for="email" class="form-label">Email</label>
+                <input
+                  type="email"
+                  class="form-control my-3"
+                  name="email"
+                  id="email"
+                  value="{{ user.email }}" />
 
-              <!-- Display error -->
-              {% if errors.password %}
-              <div class="alert alert-danger mt-3" role="alert">
-                {{ errors.password }}
+                <!-- Display error -->
+                {% if errors.email %}
+                <div class="alert alert-danger mt-3" role="alert">
+                  {{ errors.email }}
+                </div>
+                {% endif %}
               </div>
-              {% endif %}
-            </div>
-            <div class="mb-3">
-              <label for="confirmPassword" class="form-label"
-                >Confirm password</label
-              >
-              <input
-                type="password"
-                class="form-control my-3"
-                name="confirm_password"
-                id="confirmPassword" />
+              <div class="mb-3">
+                <label for="password" class="form-label">Password</label>
+                <input
+                  type="password"
+                  class="form-control my-3"
+                  name="password"
+                  id="password" />
 
-              <!-- Display error -->
-              {% if errors.confirm_password %}
-              <div class="alert alert-danger mt-3" role="alert">
-                {{ errors.confirm_password }}
+                <!-- Display error -->
+                {% if errors.password %}
+                <div class="alert alert-danger mt-3" role="alert">
+                  {{ errors.password }}
+                </div>
+                {% endif %}
               </div>
-              {% endif %}
-            </div>
-            <button type="submit" class="btn btn-lg btn-primary bold">
-              Submit
-            </button>
-          </form>
+              <div class="mb-3">
+                <label for="confirmPassword" class="form-label"
+                  >Confirm password</label
+                >
+                <input
+                  type="password"
+                  class="form-control my-3"
+                  name="confirm_password"
+                  id="confirmPassword" />
+
+                <!-- Display error -->
+                {% if errors.confirm_password %}
+                <div class="alert alert-danger mt-3" role="alert">
+                  {{ errors.confirm_password }}
+                </div>
+                {% endif %}
+              </div>
+              <button type="submit" class="btn btn-lg btn-primary bold">
+                Submit
+              </button>
+            </form>
+          </section>
         </div>
       </div>
     </main>
