@@ -44,7 +44,7 @@
                 <div class="col-md d-flex">
                   <div class="card card-block mb-2">
                     <a
-                      href="{{ url_for('friend_chat_page', channel_id=channel_id) }}"
+                      href="{{ url_for('friend_chat_page', channel_id=channel_id, friend_id=user.id) }}"
                       class="text-decoration-none">
                       <div class="card-body text-center">
                         <img

@@ -26,11 +26,18 @@
                   {{ message.created_at.strftime(' %H:%M, %Y-%m-%d') }}
                 </p>
                 <p class="pt-2 text-start">
+                  {% set sender = get_user(message.user_id) %} {% if sender.id
+                  == user.id %}
                   <img
                     class="smaller-user-image mx-2 float-start"
                     src="data:image/jpeg;base64,{{ user.avatar }}"
                     alt="{{ user.name }}'s avatar" />
-                  {% set sender = get_user(message.user_id) %}
+                  {% elif sender.id == friend.id %}
+                  <img
+                    class="smaller-user-image mx-2 float-start"
+                    src="data:image/jpeg;base64,{{ friend.avatar }}"
+                    alt="{{ friend.name }}'s avatar" />
+                  {% endif %}
                   <strong class="text-primary">{{ sender.name }}:</strong> {{
                   message.content }}
                 </p>
@@ -103,9 +110,9 @@
             {% endif %}
 
             <!-- Block friend -->
-            {% if friend.status == "accepted" %}
+            {% for user in users %}
             <button
-              class="btn btn-danger btn btn-danger btn-lg text-decoration-none text-dark bold mt-5 mx-3 mb-3 float-end"
+              class="btn btn-danger btn-lg text-decoration-none text-dark bold mt-5 mx-3 mb-3 float-end"
               onclick="document.getElementById('delete-confirmation').showModal()">
               Block
             </button>
@@ -118,7 +125,7 @@
                   onclick="DeleteConfirmationClose()">
                   <label for="cancel" class="btn-text">Cancel</label>
                 </button>
-                <a href="{{ url_for('block_friend', friend_id=friend.id) }}"
+                <a href="{{ url_for('block_friend', friend_id=user.id) }}"
                   ><button class="btn btn-danger text-dark">
                     <label for="delete" class="btn-text">Confirm</label>
                   </button></a
@@ -126,9 +133,8 @@
               </div>
             </dialog>
 
-            {% elif friend.status == "blocked" %}
             <button
-              class="btn btn-danger btn btn-success btn-lg text-decoration-none text-dark bold mt-5 mx-3 mb-3 float-end"
+              class="btn btn-success btn-lg text-decoration-none text-dark bold mt-5 mx-3 mb-3 float-end"
               onclick="document.getElementById('delete-confirmation').showModal()">
               Unblock
             </button>
@@ -141,14 +147,14 @@
                   onclick="DeleteConfirmationClose()">
                   <label for="cancel" class="btn-text">Cancel</label>
                 </button>
-                <a href="{{ url_for('block_friend', friend_id=friend.id) }}"
+                <a href="{{ url_for('block_friend', friend_id=user.id) }}"
                   ><button class="btn btn-danger text-dark">
                     <label for="delete" class="btn-text">Confirm</label>
                   </button></a
                 >
               </div>
             </dialog>
-            {% endif %}
+            {% endfor %}
           </section>
         </div>
       </div>
@@ -161,6 +167,7 @@
     <script>
       const client_name = "{{ user.name }}";
       const client_avatar = "{{ user.avatar }}";
+      const friend_avatar = "{{ friend.avatar }}";
       const channel_id = "{{ channel_id }}";
       const user_id = "{{ user.id }}";
 
