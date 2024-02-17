@@ -3,6 +3,7 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 from pathlib import Path
 from datetime import datetime
+import json
 from routes import router
 from database import SessionLocal
 from models import Message
@@ -24,32 +25,40 @@ app.mount(
 manager = ConnectionManager()
 
 
-@app.websocket("/ws/{channel_id}/{client_name}/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, channel_id: str, client_name: str, user_id: int):
+@app.websocket("/ws/{channel_id}/{user_name}/{user_id}")
+async def websocket_endpoint(
+    websocket: WebSocket, channel_id: str, user_name: str, user_id: int
+):
     await manager.connect(websocket)
     try:
         while True:
             data = await websocket.receive_text()
-            await manager.broadcast(
-                f"<strong class='text-primary'>{client_name}:</strong> {data}"
-            )
-            
+
+            # Create a message object in JSON format
+            message_object = {
+                "userId": user_id,
+                "senderName": user_name,
+                "content": data,
+            }
+
+            await manager.broadcast(json.dumps(message_object))
+
             db = SessionLocal()
-            
+
             new_message = Message(
-            content=data,
-            channel_id=channel_id,
-            created_at=datetime.now(),
-            user_id=user_id,
+                content=data,
+                channel_id=channel_id,
+                created_at=datetime.now(),
+                user_id=user_id,
             )
             db.add(new_message)
             db.commit()
 
             messages = db.query(Message).filter(Message.channel_id == channel_id).all()
-        
+
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        await manager.broadcast(f"<strong class='text-primary'>{client_name} left the chat</strong>")
+        await manager.broadcast(json.dumps({"type": "system", "content": f"{user_name} left the chat"}))
 
 
 app.include_router(router)

@@ -52,9 +52,17 @@
                           src="data:image/jpeg;base64,{{ user.avatar }}"
                           alt="{{ user.name }}'s avatar" />
                         <div class="card-body">
+                          {% if friend_status == "accepted" %}
                           <p class="card-title lead text-primary">
                             {{ user.name }} {{ user.surname }}
                           </p>
+                          {% else %}
+                          <p class="card-title lead text-danger">
+                            {{ user.name }} {{ user.surname }} 
+                            <p class="card-title lead text-danger bold">This user has
+                              been blocked</p>
+                          </p>
+                          {% endif %}
                         </div>
                       </div>
                     </a>
