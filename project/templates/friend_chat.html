@@ -109,7 +109,31 @@
             </div>
             {% endif %}
             <!-- Blocked user -->
-            {% else %}
+            {% else %} {% if messages %} {% for message in messages %}
+            <div class="card my-3">
+              <div class="card-body">
+                <p class="card-title">
+                  {{ message.created_at.strftime(' %H:%M, %Y-%m-%d') }}
+                </p>
+                <p class="pt-2 text-start">
+                  {% set sender = get_user(message.user_id) %} {% if sender.id
+                  == user.id %}
+                  <img
+                    class="smaller-user-image mx-2 float-start"
+                    src="data:image/jpeg;base64,{{ user.avatar }}"
+                    alt="{{ user.name }}'s avatar" />
+                  {% elif sender.id == friend.id %}
+                  <img
+                    class="smaller-user-image mx-2 float-start"
+                    src="data:image/jpeg;base64,{{ friend.avatar }}"
+                    alt="{{ friend.name }}'s avatar" />
+                  {% endif %}
+                  <strong class="text-primary">{{ sender.name }}:</strong> {{
+                  message.content }}
+                </p>
+              </div>
+            </div>
+            {% endfor %} {% endif %}
             <h1 class="mt-5 mb-5 text-center">
               This user has been blocked. If you want to continue the
               conversation, you can unblock this person.
@@ -182,7 +206,7 @@
                   onclick="DeleteConfirmationClose()">
                   <label for="cancel" class="btn-text">Cancel</label>
                 </button>
-                <a href="{{ url_for('block_friend', friend_id=friend.id) }}"
+                <a href="{{ url_for('unblock_friend', friend_id=friend.id) }}"
                   ><button class="btn btn-danger text-dark">
                     <label for="delete" class="btn-text">Confirm</label>
                   </button></a
@@ -207,6 +231,8 @@
       const channel_id = "{{ channel_id }}";
       const friend_id = parseInt("{{ friend.id }}", 10);
       const user_id = parseInt("{{ user.id }}", 10);
+      console.log(friend_id);
+      console.log(user_id);
 
       const ws = new WebSocket(
         `ws://localhost:8000/ws/${channel_id}/${user_name}/${user_id}`
@@ -249,35 +275,64 @@
 
         // Parse the incoming message as JSON
         const messageData = JSON.parse(event.data);
-        const senderId = messageData.userId;
-        const senderName = messageData.senderName;
-        console.log(senderName);
-        const messageContent = messageData.content;
 
-        // Determine which user's avatar to display
-        let avatar_data;
-        if (senderId === user_id) {
-          avatar_data = client_avatar;
-        } else if (senderId === friend_id) {
-          avatar_data = friend_avatar;
+        if (
+          messageData.content &&
+          messageData.content.includes("left the chat")
+        ) {
+          const cardElement = document.createElement("div");
+          cardElement.classList.add("card", "my-3");
+
+          const cardBodyElement = document.createElement("div");
+          cardBodyElement.classList.add("card-body");
+
+          const titleElement = document.createElement("p");
+          titleElement.classList.add("pt-2", "text-start", "text-primary");
+
+          usernameElement.textContent = messageData.senderName;
+          cardBodyElement.appendChild(usernameElement);
+
+          titleElement.textContent = messageData.content;
+          cardBodyElement.appendChild(titleElement);
+
+          cardElement.appendChild(cardBodyElement);
+
+          messages.appendChild(cardElement);
         } else {
-          avatarData = "default_avatar";
+          const senderId = messageData.userId;
+          const senderName = messageData.senderName;
+          console.log(senderName);
+          const messageContent = messageData.content;
+
+          // Determine which user's avatar to display
+          let avatar_data;
+          if (senderId === user_id) {
+            avatar_data = client_avatar;
+          } else if (senderId === friend_id) {
+            avatar_data = friend_avatar;
+          } else {
+            avatarData = "None";
+          }
+
+          user_avatar.src = `data:image/jpeg;base64,${avatar_data}`;
+          user_avatar.alt = `${senderName}'s avatar`;
+          messageBody.appendChild(user_avatar);
+
+          const usernameElement = document.createElement("strong");
+          usernameElement.classList.add("text-primary");
+          usernameElement.textContent = `${senderName}: `;
+          messageBody.appendChild(usernameElement);
+
+          // Create the message content element with normal text
+          const messageContentElement = document.createElement("label");
+          messageContentElement.textContent = messageContent;
+          messageBody.appendChild(messageContentElement);
+
+          messageBody.appendChild(message);
+          messageContainer.appendChild(messageBody);
+
+          messages.appendChild(messageContainer);
         }
-
-        user_avatar.src = `data:image/jpeg;base64,${avatar_data}`;
-        user_avatar.alt = `${senderName}'s avatar`;
-        messageBody.appendChild(user_avatar);
-
-        const usernameElement = document.createElement("strong");
-        usernameElement.classList.add("text-primary");
-        usernameElement.textContent = `${senderName}: `;
-        message.innerHTML = messageContent;
-        messageBody.appendChild(usernameElement);
-
-        messageBody.appendChild(message);
-        messageContainer.appendChild(messageBody);
-
-        messages.appendChild(messageContainer);
       };
 
       function sendMessage(event) {

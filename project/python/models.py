@@ -54,9 +54,10 @@ class Friend(Base):
     user1_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user2_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(String(10), nullable=False)
-    last_sent = Column(DateTime, nullable=False)
+    blocked_by_user = Column(Integer, ForeignKey("users.id"), nullable=True)
     user1 = relationship("User", foreign_keys=[user1_id])
     user2 = relationship("User", foreign_keys=[user2_id])
+    blocked_by = relationship("User", foreign_keys=[blocked_by_user])
 
 
 # Chatbot table

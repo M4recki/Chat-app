@@ -463,7 +463,9 @@ async def friend_requests(request: Request):
             .all()
         )
         for friend_request in friend_requests:
-            friend_request.user1.avatar = b64encode(friend_request.user1.avatar).decode()
+            friend_request.user1.avatar = b64encode(
+                friend_request.user1.avatar
+            ).decode()
 
         return templates.TemplateResponse(
             "friend_requests.html",
@@ -579,24 +581,20 @@ async def single_chat(request: Request):
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
         user = db.query(User).filter(User.id == user_id).first()
-        user.avatar = b64decode(user.avatar)
 
         users = (
-        db.query(User)
-        .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
-        .filter(
-            (Friend.status == "accepted") | (Friend.status == "blocked")
+            db.query(User)
+            .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
+            .filter((Friend.status == "accepted") | (Friend.status == "blocked"))
+            .all()
         )
-        .all()
-    )
 
         # Show only friends
 
         users = [user for user in users if user.id != user_id]
-
         channel_id = ""
-        for user in users:
 
+        for user in users:
             user.avatar = b64encode(user.avatar).decode()
 
             existing_channel = (
@@ -610,7 +608,9 @@ async def single_chat(request: Request):
             else:
                 existing_channel = (
                     db.query(Channel)
-                    .filter((Channel.user1_id == user.id) & (Channel.user2_id == user_id))
+                    .filter(
+                        (Channel.user1_id == user.id) & (Channel.user2_id == user_id)
+                    )
                     .first()
                 )
                 if existing_channel:
@@ -624,17 +624,17 @@ async def single_chat(request: Request):
                     db.add(new_channel)
                     db.commit()
                     break
-                
+
         friend_id = user.id
-                
+
         friend_status = (
-                db.query(Friend)
-                .filter(
-                    (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
-                    | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
-                )
-                .first()
+            db.query(Friend)
+            .filter(
+                (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
+                | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
             )
+            .first()
+        )
 
         friend_status_value = friend_status.status if friend_status else None
 
@@ -737,7 +737,7 @@ async def block_friend(request: Request, friend_id: int):
 
     Returns:
         _type_: _description_
-    """    ''''''
+    """ """"""
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -747,25 +747,26 @@ async def block_friend(request: Request, friend_id: int):
         existing_friendship = (
             db.query(Friend)
             .filter(
-                (Friend.user1_id == user_id) & (Friend.user2_id == friend_id) |
-                (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
+                (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
+                | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
             )
             .first()
         )
 
-        new_friendship = Friend(
+        if existing_friendship:
+            existing_friendship.status = "blocked"
+            db.commit()
+
+        updated_friendship = Friend(
             user1_id=user_id,
             user2_id=friend_id,
             status="blocked",
-            last_sent=datetime.now(),
         )
-        db.add(new_friendship)
         db.commit()
 
         return templates.TemplateResponse("single_chat.html", {"request": request})
     else:
         return templates.TemplateResponse("login.html", {"request": request})
-
 
 
 # Unblock friend
@@ -781,7 +782,7 @@ async def unblock_friend(request: Request, friend_id: int):
 
     Returns:
         _type_: _description_
-    """    ''''''
+    """ """"""
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -791,24 +792,28 @@ async def unblock_friend(request: Request, friend_id: int):
         existing_friendship = (
             db.query(Friend)
             .filter(
-                (Friend.user1_id == user_id) & (Friend.user2_id == friend_id) |
-                (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
+                (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
+                | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
             )
             .first()
         )
 
-        new_friendship = Friend(
+        if existing_friendship:
+            existing_friendship.status = "accepted"
+            db.commit()
+
+        updated_friendship = Friend(
             user1_id=user_id,
             user2_id=friend_id,
             status="accepted",
-            last_sent=datetime.now(),
+            blocked_by_user=friend_id,
         )
-        db.add(new_friendship)
         db.commit()
 
         return templates.TemplateResponse("single_chat.html", {"request": request})
     else:
         return templates.TemplateResponse("login.html", {"request": request})
+
 
 # Add friend
 
@@ -856,7 +861,6 @@ async def add_friend(request: Request, friend_id: int):
                 user1_id=user_id,
                 user2_id=friend_id,
                 status="pending",
-                last_sent=datetime.now(),
             )
             db.add(new_friendship)
             db.commit()
