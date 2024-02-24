@@ -101,11 +101,12 @@ def user_image(request: Request):
             user_id = s.loads(token, max_age=3600).get("user_id")
             db = SessionLocal()
             user = db.query(User).filter(User.id == user_id).first()
-            return {"user_image": b64encode(user.avatar).decode("utf-8")}
+            user.avatar = b64encode(user.avatar).decode()
+            return {"user_image": user.avatar}
         except:
-            return {"user_image": None}
+            return {"user_image": ""}
     else:
-        return {"user_image": None}
+        return {"user_image": ""}
 
 
 # User name
@@ -403,9 +404,13 @@ def logout(request: Request):
     Returns:
         _type_: _description_
     """
-    response = RedirectResponse(request.url_for("root"), status_code=303)
-    response.delete_cookie(key="access_token")
-    return response
+    token = request.cookies.get("access_token")
+    if token:
+        response = RedirectResponse(request.url_for("root"), status_code=303)
+        response.delete_cookie(key="access_token")
+        return response
+    else:
+        return templates.TemplateResponse("login.html", {"request": request})
 
 
 # Search user
@@ -427,7 +432,21 @@ async def search_user(request: Request):
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
-        users = db.query(User).filter(User.id != user_id).all()
+        # FIXME: Exclude users with status accepted and pending
+        users = (
+            db.query(User)
+            .filter(
+                User.id != user_id,
+                User.id.notin_(
+                    db.query(Friend.user2_id).filter(
+                        (Friend.user1_id == user_id) | (Friend.user2_id == user_id),
+                        Friend.status.in_(["accepted", "pending"]),
+                    )
+                ),
+            )
+            .all()
+        )
+
         for user in users:
             user.avatar = b64encode(user.avatar).decode()
         return templates.TemplateResponse(
@@ -585,7 +604,10 @@ async def single_chat(request: Request):
         users = (
             db.query(User)
             .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
-            .filter((Friend.status == "accepted") | (Friend.status == "blocked"))
+            .filter(
+                (Friend.status == "accepted")
+                & ((Friend.user1_id == user_id) | (Friend.user2_id == user_id))
+            )
             .all()
         )
 
@@ -595,8 +617,7 @@ async def single_chat(request: Request):
         channel_id = ""
 
         for user in users:
-            user.avatar = b64encode(user.avatar).decode()
-
+            # FIXME: Fix displaying messages with correct channel id
             existing_channel = (
                 db.query(Channel)
                 .filter((Channel.user1_id == user_id) & (Channel.user2_id == user.id))
@@ -636,6 +657,9 @@ async def single_chat(request: Request):
             .first()
         )
 
+        for user in users:
+            user.avatar = b64encode(user.avatar).decode()
+
         friend_status_value = friend_status.status if friend_status else None
 
         return templates.TemplateResponse(
@@ -643,8 +667,8 @@ async def single_chat(request: Request):
             {
                 "request": request,
                 "users": users,
-                "user": user,
                 "user.avatar": user.avatar,
+                "user": user,
                 "friend_status": friend_status_value,
                 "channel_id": channel_id,
             },

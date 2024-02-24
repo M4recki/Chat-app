@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 from pathlib import Path
 from datetime import datetime
-import json
+from json import dumps
 from routes import router
 from database import SessionLocal
 from models import Message
@@ -41,7 +41,7 @@ async def websocket_endpoint(
                 "content": data,
             }
 
-            await manager.broadcast(json.dumps(message_object))
+            await manager.broadcast(dumps(message_object))
 
             db = SessionLocal()
 
@@ -58,7 +58,7 @@ async def websocket_endpoint(
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        await manager.broadcast(json.dumps({"type": "system", "content": f"{user_name} left the chat"}))
+        await manager.broadcast(dumps({"type": "system", "content": f"{user_name} left the chat"}))
 
 
 app.include_router(router)
