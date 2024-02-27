@@ -55,6 +55,7 @@ class Friend(Base):
     user2_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(String(10), nullable=False)
     blocked_by_user = Column(Integer, ForeignKey("users.id"), nullable=True)
+    last_sent = Column(DateTime, nullable=False)
     user1 = relationship("User", foreign_keys=[user1_id])
     user2 = relationship("User", foreign_keys=[user2_id])
     blocked_by = relationship("User", foreign_keys=[blocked_by_user])

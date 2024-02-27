@@ -20,6 +20,7 @@ import smtplib
 from os import environ
 from PIL import Image
 from io import BytesIO
+from sqlalchemy.orm.exc import NoResultFound
 from base64 import b64encode, b64decode
 from uuid import uuid4
 from gpt4all import GPT4All
@@ -448,6 +449,8 @@ async def search_user(request: Request):
         )
 
         for user in users:
+            print(user.name)
+            print(user.id)
             user.avatar = b64encode(user.avatar).decode()
         return templates.TemplateResponse(
             "search_user.html", {"request": request, "users": users}
@@ -586,14 +589,6 @@ async def update_profile_data(
 
 @router.get("/single_chat", dependencies=[Depends(is_authenticated)])
 async def single_chat(request: Request):
-    """_summary_
-
-    Args:
-        request (Request): _description_
-
-    Returns:
-        _type_: _description_
-    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -601,73 +596,63 @@ async def single_chat(request: Request):
         user_id = s.loads(token, max_age=3600).get("user_id")
         user = db.query(User).filter(User.id == user_id).first()
 
-        users = (
+        friends = (
             db.query(User)
             .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
             .filter(
-                (Friend.status == "accepted")
-                & ((Friend.user1_id == user_id) | (Friend.user2_id == user_id))
+                Friend.status == "accepted",
+                ((Friend.user1_id == user_id) & (User.id == Friend.user2_id))
+                | ((Friend.user2_id == user_id) & (User.id == Friend.user1_id)),
             )
             .all()
         )
 
         # Show only friends
+        channel_id = None
+        friend_status_value = None
 
-        users = [user for user in users if user.id != user_id]
-        channel_id = ""
+        if friends:
+            for friend in friends:
+                friend_id = friend.id
 
-        for user in users:
-            # FIXME: Fix displaying messages with correct channel id
-            existing_channel = (
-                db.query(Channel)
-                .filter((Channel.user1_id == user_id) & (Channel.user2_id == user.id))
-                .first()
-            )
-            if existing_channel:
-                channel_id = existing_channel.channel_id
-                break
-            else:
                 existing_channel = (
                     db.query(Channel)
                     .filter(
-                        (Channel.user1_id == user.id) & (Channel.user2_id == user_id)
+                        ((Channel.user1_id == user_id) & (Channel.user2_id == friend_id))
+                        | ((Channel.user1_id == friend_id) & (Channel.user2_id == user_id))
                     )
                     .first()
                 )
+
                 if existing_channel:
                     channel_id = existing_channel.channel_id
-                    break
                 else:
                     channel_id = str(uuid4())
                     new_channel = Channel(
-                        channel_id=channel_id, user1_id=user_id, user2_id=user.id
+                        channel_id=channel_id, user1_id=user_id, user2_id=friend_id
                     )
                     db.add(new_channel)
                     db.commit()
-                    break
 
-        friend_id = user.id
+                friend.avatar = b64encode(friend.avatar).decode()
 
-        friend_status = (
-            db.query(Friend)
-            .filter(
-                (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
-                | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
-            )
-            .first()
-        )
+                friend_status = (
+                    db.query(Friend)
+                    .filter(
+                        ((Friend.user1_id == user_id) & (Friend.user2_id == friend_id))
+                        | ((Friend.user1_id == friend_id) & (Friend.user2_id == user_id))
+                    )
+                    .first()
+                )
 
-        for user in users:
-            user.avatar = b64encode(user.avatar).decode()
-
-        friend_status_value = friend_status.status if friend_status else None
+                friend_status_value = friend_status.status if friend_status else None
 
         return templates.TemplateResponse(
             "single_chat.html",
             {
                 "request": request,
-                "users": users,
-                "user.avatar": user.avatar,
+                "users": friends,
+                "user_avatar": b64encode(user.avatar).decode(),
                 "user": user,
                 "friend_status": friend_status_value,
                 "channel_id": channel_id,
@@ -675,6 +660,7 @@ async def single_chat(request: Request):
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})
+
 
 
 # Friend chat
@@ -855,36 +841,39 @@ async def add_friend(request: Request, friend_id: int):
 
     Returns:
         _type_: _description_
-    """
+    """    
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
-        existing_request = (
-            db.query(Friend)
-            .filter((Friend.user1_id == user_id) & (Friend.user2_id == friend_id))
-            .first()
-        )
+        try:
+            existing_request = (
+                db.query(Friend)
+                .filter((Friend.user1_id == user_id) & (Friend.user2_id == friend_id))
+                .one()
+            )
 
-        if existing_request and existing_request.status == "pending":
-            if datetime.now() - existing_request.last_sent > timedelta(days=14):
+            if existing_request.status == "pending":
+                if datetime.now() - existing_request.last_sent > timedelta(days=14):
+                    existing_request.last_sent = datetime.now()
+                    db.commit()
+                else:
+                    raise HTTPException(
+                        status_code=400, detail="Friend request already sent recently"
+                    )
+            elif existing_request.status == "denied":
+                existing_request.status = "pending"
                 existing_request.last_sent = datetime.now()
                 db.commit()
-            else:
-                raise HTTPException(
-                    status_code=400, detail="Friend request already sent recently"
-                )
-        elif existing_request and existing_request.status == "denied":
-            existing_request.status = "pending"
-            existing_request.last_sent = datetime.now()
-            db.commit()
-        else:
+
+        except NoResultFound:
             new_friendship = Friend(
                 user1_id=user_id,
                 user2_id=friend_id,
                 status="pending",
+                last_sent=datetime.now(),
             )
             db.add(new_friendship)
             db.commit()
