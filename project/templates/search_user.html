@@ -21,9 +21,10 @@
             <h1 class="mt-5 text-center">All users</h1>
             <div
               class="d-flex flex-nowrap overflow-auto mb-3 justify-content-center mt-4">
-
               <!-- List of all users -->
-              {% if users %} {% for user in users %}
+              {% if users %} {% for user in users %} {% if user.id not in
+              friend_status_map or (user.id in friend_status_map and
+              friend_status_map[user.id] not in ["accepted", "pending"]) %}
               <div class="card mb-2 me-3">
                 <div class="card-body text-center">
                   <img
@@ -42,13 +43,11 @@
                   </div>
                 </div>
               </div>
-              {% endfor %} {% else %}
-
+              {% endif %} {% endfor %} {% else %}
               <p class="text-center mt-4 lead col-12">
                 There are no users on this website at the moment.
               </p>
               {% endif %}
-              
             </div>
           </section>
         </div>

@@ -433,27 +433,31 @@ async def search_user(request: Request):
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
-        # FIXME: Exclude users with status accepted and pending
-        users = (
-            db.query(User)
-            .filter(
-                User.id != user_id,
-                User.id.notin_(
-                    db.query(Friend.user2_id).filter(
-                        (Friend.user1_id == user_id) | (Friend.user2_id == user_id),
-                        Friend.status.in_(["accepted", "pending"]),
-                    )
-                ),
-            )
+        users = db.query(User).filter(User.id != user_id).all()
+
+        friend_statuses = (
+            db.query(Friend)
+            .filter((Friend.user1_id == user_id) | (Friend.user2_id == user_id))
             .all()
         )
 
+        friend_status_map = {}
+        for friend in friend_statuses:
+            if friend.user1_id == user_id:
+                friend_status_map[friend.user2_id] = friend.status
+            else:
+                friend_status_map[friend.user1_id] = friend.status
+
         for user in users:
-            print(user.name)
-            print(user.id)
             user.avatar = b64encode(user.avatar).decode()
+
         return templates.TemplateResponse(
-            "search_user.html", {"request": request, "users": users}
+            "search_user.html",
+            {
+                "request": request,
+                "users": users,
+                "friend_status_map": friend_status_map,
+            },
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})
@@ -618,8 +622,14 @@ async def single_chat(request: Request):
                 existing_channel = (
                     db.query(Channel)
                     .filter(
-                        ((Channel.user1_id == user_id) & (Channel.user2_id == friend_id))
-                        | ((Channel.user1_id == friend_id) & (Channel.user2_id == user_id))
+                        (
+                            (Channel.user1_id == user_id)
+                            & (Channel.user2_id == friend_id)
+                        )
+                        | (
+                            (Channel.user1_id == friend_id)
+                            & (Channel.user2_id == user_id)
+                        )
                     )
                     .first()
                 )
@@ -640,7 +650,10 @@ async def single_chat(request: Request):
                     db.query(Friend)
                     .filter(
                         ((Friend.user1_id == user_id) & (Friend.user2_id == friend_id))
-                        | ((Friend.user1_id == friend_id) & (Friend.user2_id == user_id))
+                        | (
+                            (Friend.user1_id == friend_id)
+                            & (Friend.user2_id == user_id)
+                        )
                     )
                     .first()
                 )
@@ -660,7 +673,6 @@ async def single_chat(request: Request):
         )
     else:
         return templates.TemplateResponse("login.html", {"request": request})
-
 
 
 # Friend chat
@@ -841,7 +853,7 @@ async def add_friend(request: Request, friend_id: int):
 
     Returns:
         _type_: _description_
-    """    
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
