@@ -12,19 +12,19 @@
 
     <!-- Main content -->
     <main>
-      <div class="container-fluid">
+      <div class="container-fluid justify-content-center">
         <div class="row">
           <!-- Sidebar -->
           {% include "sidebar.html" %}
 
-          <section class="col-md-9 col-lg-10">
+          <section class="col-lg-10">
             <h1 class="mt-5 text-center">Your friends</h1>
 
             <!-- Add new friend -->
             <div class="d-flex overflow-auto justify-content-center mb-3 mt-4">
               <div class="row">
                 <div class="col-md d-flex">
-                  <div class="card card-block mb-2 me-3">
+                  <div class="card card-block mb-2 mx-3">
                     <a
                       href="{{ url_for('search_user') }}"
                       class="text-decoration-none">

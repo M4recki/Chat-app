@@ -1,14 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
-
     <!-- Head -->
     {% include "head.html" %}
 
     <title>Chat app - Friend requests</title>
   </head>
   <body>
-
     <!-- Navbar -->
     {% include "navbar.html" %}
 
@@ -16,15 +14,13 @@
     <main>
       <div class="container-fluid">
         <div class="row">
-
           <!-- Sidebar -->
           {% include "sidebar.html" %}
 
-          <section class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
+          <section class="ml-sm-auto col-lg-10 px-md-4">
             <h1 class="mt-5 text-center">Friend requests</h1>
             <div
               class="d-flex flex-nowrap overflow-auto mb-3 justify-content-center mt-4">
-
               <!-- Friend requests -->
               {% if friend_requests %} {% for friend_request in friend_requests
               %}
@@ -82,7 +78,6 @@
                 There are no friend requests at the moment.
               </p>
               {% endif %}
-              
             </div>
           </section>
         </div>

@@ -1,36 +1,75 @@
-<nav class="col-md-2 card-block bg-light sidebar vh-100">
-  <div class="sidebar-sticky">
-    <ul class="nav flex-column">
-      <li class="nav-item">
-        <a class="nav-link active my-3" href="{{ url_for('search_user') }}">
-          <i class="bi bi-search mx-2"></i>
-          Search user
-        </a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link active my-3" href="{{ url_for('friend_requests') }}">
-          <i class="bi bi-person-add mx-2"></i>
-          Friend requests
-        </a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link active my-3" href="{{ url_for('single_chat') }}">
-          <i class="bi bi-person mx-2"></i>
-          Individual chat
-        </a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link my-3" href="{{ url_for('chatbot') }}">
-          <i class="bi bi-robot mx-2"></i>
-          Chat with AI
-        </a>
-      </li>
-      <li class="nav-item">
-        <a class="nav-link my-3" href="{{ url_for('update_profile_page') }}">
-          <i class="bi bi-person-vcard mx-2"></i>
-          Update profile
-        </a>
-      </li>
-    </ul>
-  </div>
-</nav>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- CSS -->
+    <link
+      href="{{ url_for('static', path='/css/style.css') }}"
+      rel="stylesheet" />
+  </head>
+  <body>
+    <nav
+      class="nav navbar navbar-expand-lg col-lg-2 vh-25 text-dark bg-light align-items-center"
+      role="navigation"
+      aria-label="Main Navigation">
+      <button
+        class="navbar-toggler ms-3"
+        type="button"
+        data-bs-toggle="collapse"
+        data-bs-target="#sidebarNav"
+        aria-expanded="false"
+        aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div
+        class="collapse navbar-collapse justify-content-start"
+        id="sidebarNav">
+        <div class="sidebar-sticky">
+          <ul class="nav flex-column">
+            <li class="nav-item">
+              <a
+                class="nav-link active my-3"
+                href="{{ url_for('search_user') }}">
+                <i class="bi bi-search mx-2"></i>
+                Search user
+              </a>
+            </li>
+            <li class="nav-item">
+              <a
+                class="nav-link active my-3"
+                href="{{ url_for('friend_requests') }}">
+                <i class="bi bi-person-add mx-2"></i>
+                Friend requests
+              </a>
+            </li>
+            <li class="nav-item">
+              <a
+                class="nav-link active my-3"
+                href="{{ url_for('single_chat') }}">
+                <i class="bi bi-person mx-2"></i>
+                Individual chat
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link my-3" href="{{ url_for('chatbot') }}">
+                <i class="bi bi-robot mx-2"></i>
+                Chat with AI
+              </a>
+            </li>
+            <li class="nav-item">
+              <a
+                class="nav-link my-3"
+                href="{{ url_for('update_profile_page') }}">
+                <i class="bi bi-person-vcard mx-2"></i>
+                Update profile
+              </a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+  </body>
+</html>
