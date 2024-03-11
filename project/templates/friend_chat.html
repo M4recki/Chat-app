@@ -62,7 +62,9 @@
                       name="message"
                       autocomplete="off"
                       required></textarea>
-                    <label class="z-0 position-absolute" for="floatingTextarea">Your message:</label>
+                    <label class="z-0 position-absolute" for="floatingTextarea"
+                      >Your message:</label
+                    >
                   </div>
                   <div class="d-flex justify-content-center">
                     <button
@@ -95,7 +97,9 @@
                       name="message"
                       autocomplete="off"
                       required></textarea>
-                    <label class="z-0 position-absolute" for="floatingTextarea">Your message:</label>
+                    <label class="z-0 position-absolute" for="floatingTextarea"
+                      >Your message:</label
+                    >
                   </div>
                   <div class="d-flex justify-content-center">
                     <button
@@ -109,15 +113,16 @@
             </div>
             {% endif %}
             <!-- Blocked user -->
-            {% else %} {% if messages %} {% for message in messages %}
+            {% else %} {% if messages %} {% for message in messages %} {% set
+            sender = get_user(message.user_id) %} {% if sender.id == user.id or
+            sender.id == friend.id %}
             <div class="card my-3">
               <div class="card-body">
                 <p class="card-title">
                   {{ message.created_at.strftime(' %H:%M, %Y-%m-%d') }}
                 </p>
                 <p class="pt-2 text-start">
-                  {% set sender = get_user(message.user_id) %} {% if sender.id
-                  == user.id %}
+                  {% if sender.id == user.id %}
                   <img
                     class="smaller-user-image mx-2 float-start"
                     src="data:image/jpeg;base64,{{ user.avatar }}"
@@ -133,7 +138,8 @@
                 </p>
               </div>
             </div>
-            {% endfor %} {% endif %}
+            {% endif %} {% endfor %} {% endif %}
+
             <h1 class="mt-5 mb-5 text-center">
               This user has been blocked. If you want to continue the
               conversation, you can unblock this person.
@@ -154,7 +160,11 @@
                       autocomplete="off"
                       disabled
                       required></textarea>
-                    <label class="z-0 position-absolute" for="floatingTextareaDisabled">Your message:</label>
+                    <label
+                      class="z-0 position-absolute"
+                      for="floatingTextareaDisabled"
+                      >Your message:</label
+                    >
                   </div>
                   <div class="d-flex justify-content-center">
                     <button
@@ -229,10 +239,9 @@
       const client_avatar = "{{ user.avatar }}";
       const friend_avatar = "{{ friend.avatar }}";
       const channel_id = "{{ channel_id }}";
+      console.log(channel_id);
       const friend_id = parseInt("{{ friend.id }}", 10);
       const user_id = parseInt("{{ user.id }}", 10);
-      console.log(friend_id);
-      console.log(user_id);
 
       const ws = new WebSocket(
         `ws://localhost:8000/ws/${channel_id}/${user_name}/${user_id}`
@@ -301,7 +310,6 @@
         } else {
           const senderId = messageData.userId;
           const senderName = messageData.senderName;
-          console.log(senderName);
           const messageContent = messageData.content;
 
           // Determine which user's avatar to display

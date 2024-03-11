@@ -39,21 +39,21 @@
               </div>
 
               <!-- List of all friends -->
-              {% for user in users %}
+              {% for friend in friends %}
               <div class="row">
                 <div class="col-md d-flex">
                   <div class="card card-block mb-2 me-3">
                     <a
-                      href="{{ url_for('friend_chat_page', channel_id=channel_id, friend_id=user.id) }}"
+                      href="{{ url_for('friend_chat_page', channel_id=channel_ids[friend.id], friend_id=friend.id) }}"
                       class="text-decoration-none">
                       <div class="card-body text-center">
                         <img
                           class="card-img-top user-image mx-auto mt-3"
-                          src="data:image/jpeg;base64,{{ user.avatar }}"
-                          alt="{{ user.name }}'s avatar" />
+                          src="data:image/jpeg;base64,{{ friend.avatar }}"
+                          alt="{{ friend.name }}'s avatar" />
                         <div class="card-body">
                           <p class="card-title lead text-primary">
-                            {{ user.name }} {{ user.surname }}
+                            {{ friend.name }} {{ friend.surname }}
                           </p>
                         </div>
                       </div>

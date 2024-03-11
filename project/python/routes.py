@@ -10,6 +10,7 @@ from fastapi import (
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import RedirectResponse
 from werkzeug.security import generate_password_hash, check_password_hash
+from hashlib import sha256
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from itsdangerous.exc import SignatureExpired
 from pathlib import Path
@@ -22,7 +23,6 @@ from PIL import Image
 from io import BytesIO
 from sqlalchemy.orm.exc import NoResultFound
 from base64 import b64encode, b64decode
-from uuid import uuid4
 from gpt4all import GPT4All
 from database import SessionLocal
 from models import User, Friend, ChatbotMessage, Message, Channel
@@ -588,6 +588,14 @@ async def update_profile_data(
         return templates.TemplateResponse("login.html", {"request": request})
 
 
+# Generate random channel id
+
+
+def generate_channel_id(user1_id, user2_id):
+    unique_string = f"{user1_id}{user2_id}"
+    return sha256(unique_string.encode()).hexdigest()
+
+
 # Single chat
 
 
@@ -611,40 +619,34 @@ async def single_chat(request: Request):
             .all()
         )
 
-        # Show only friends
-        channel_id = None
         friend_status_value = None
+        channel_ids = {}
 
         if friends:
             for friend in friends:
                 friend_id = friend.id
+                friend.avatar = b64encode(friend.avatar)
 
                 existing_channel = (
                     db.query(Channel)
                     .filter(
-                        (
-                            (Channel.user1_id == user_id)
-                            & (Channel.user2_id == friend_id)
-                        )
-                        | (
-                            (Channel.user1_id == friend_id)
-                            & (Channel.user2_id == user_id)
-                        )
+                        (Channel.user1_id == user_id) & (Channel.user2_id == friend_id)
+                        | (Channel.user1_id == friend_id)
+                        & (Channel.user2_id == user_id)
                     )
                     .first()
                 )
 
                 if existing_channel:
-                    channel_id = existing_channel.channel_id
+                    channel_ids[friend_id] = existing_channel.channel_id
                 else:
-                    channel_id = str(uuid4())
+                    channel_id = generate_channel_id(user_id, friend_id)
                     new_channel = Channel(
                         channel_id=channel_id, user1_id=user_id, user2_id=friend_id
                     )
                     db.add(new_channel)
                     db.commit()
-
-                friend.avatar = b64encode(friend.avatar).decode()
+                    channel_ids[friend_id] = channel_id
 
                 friend_status = (
                     db.query(Friend)
@@ -660,19 +662,18 @@ async def single_chat(request: Request):
 
                 friend_status_value = friend_status.status if friend_status else None
 
+            print(user_id, friend_id, channel_ids)
         return templates.TemplateResponse(
             "single_chat.html",
             {
                 "request": request,
-                "users": friends,
-                "user_avatar": b64encode(user.avatar).decode(),
+                "friends": friends,
                 "user": user,
                 "friend_status": friend_status_value,
-                "channel_id": channel_id,
+                "channel_ids": channel_ids, # Pass the dictionary of channel_ids
             },
         )
-    else:
-        return templates.TemplateResponse("login.html", {"request": request})
+
 
 
 # Friend chat
@@ -921,7 +922,23 @@ async def accept_friend(request: Request, friend_id: int):
             .first()
         )
         friend.status = "accepted"
+
+        friends = (
+            db.query(User)
+            .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
+            .filter(
+                Friend.status == "accepted",
+                ((Friend.user1_id == user_id) & (User.id == Friend.user2_id))
+                | ((Friend.user2_id == user_id) & (User.id == Friend.user1_id)),
+            )
+            .all()
+        )
+
         db.commit()
+
+        for friend in friends:
+            friend.avatar = b64encode(friend.avatar).decode()
+
         return templates.TemplateResponse("single_chat.html", {"request": request})
     else:
         return templates.TemplateResponse("login.html", {"request": request})
@@ -953,7 +970,23 @@ async def deny_friend(request: Request, friend_id: int):
             .first()
         )
         friend.status = "denied"
+
+        friends = (
+            db.query(User)
+            .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
+            .filter(
+                Friend.status == "accepted",
+                ((Friend.user1_id == user_id) & (User.id == Friend.user2_id))
+                | ((Friend.user2_id == user_id) & (User.id == Friend.user1_id)),
+            )
+            .all()
+        )
+
+        for friend in friends:
+            friend.avatar = b64encode(friend.avatar).decode()
+
         db.commit()
+
         return templates.TemplateResponse("single_chat.html", {"request": request})
     else:
         return templates.TemplateResponse("login.html", {"request": request})
