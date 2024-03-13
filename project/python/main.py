@@ -8,6 +8,7 @@ from routes import router
 from database import SessionLocal
 from models import Message
 from connection_manager import ConnectionManager
+import json
 
 
 app = FastAPI()
@@ -29,24 +30,27 @@ manager = ConnectionManager()
 async def websocket_endpoint(
     websocket: WebSocket, channel_id: str, user_name: str, user_id: int
 ):
-    await manager.connect(websocket)
+    await manager.connect(websocket, channel_id)
     try:
         while True:
             data = await websocket.receive_text()
+            message_data = json.loads(data)
+            channel_id = message_data["channel_id"]
+            message = message_data["message"]
 
             # Create a message object in JSON format
             message_object = {
                 "userId": user_id,
                 "senderName": user_name,
-                "content": data,
+                "content": message,
             }
 
-            await manager.broadcast(dumps(message_object))
+            await manager.broadcast(dumps(message_object), channel_id)
 
             db = SessionLocal()
 
             new_message = Message(
-                content=data,
+                content=message,
                 channel_id=channel_id,
                 created_at=datetime.now(),
                 user_id=user_id,
@@ -57,8 +61,11 @@ async def websocket_endpoint(
             messages = db.query(Message).filter(Message.channel_id == channel_id).all()
 
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
-        await manager.broadcast(dumps({"type": "system", "content": f"{user_name} left the chat"}))
+        manager.disconnect(websocket, channel_id)
+        await manager.broadcast(
+            dumps({"type": "system", "content": f"{user_name} left the chat"}),
+            channel_id,
+        )
 
 
 app.include_router(router)
