@@ -178,6 +178,7 @@
               </div>
             </div>
             {% endif %}
+
             <!-- Block friend -->
             {% if friend_status == "accepted" %}
             <button
@@ -235,11 +236,9 @@
     <!-- WebSocket handling -->
     <script>
       const user_name = "{{ user.name }}";
-      const friend_name = "{{ friend.name }}";
       const client_avatar = "{{ user.avatar }}";
       const friend_avatar = "{{ friend.avatar }}";
       const channel_id = "{{ channel_id }}";
-      console.log(channel_id);
       const friend_id = parseInt("{{ friend.id }}", 10);
       const user_id = parseInt("{{ user.id }}", 10);
 
@@ -247,6 +246,7 @@
         `ws://localhost:8000/ws/${channel_id}/${user_name}/${user_id}`
       );
       ws.onmessage = function (event) {
+        console.log(event.data);
         const messages = document.getElementById("messages");
 
         const messageContainer = document.createElement("div");
@@ -283,6 +283,7 @@
         user_avatar.classList.add("smaller-user-image", "mx-2", "float-start");
 
         // Parse the incoming message as JSON
+
         const messageData = JSON.parse(event.data);
 
         if (
@@ -313,6 +314,7 @@
           const messageContent = messageData.content;
 
           // Determine which user's avatar to display
+
           let avatar_data;
           if (senderId === user_id) {
             avatar_data = client_avatar;
@@ -332,6 +334,7 @@
           messageBody.appendChild(usernameElement);
 
           // Create the message content element with normal text
+
           const messageContentElement = document.createElement("label");
           messageContentElement.textContent = messageContent;
           messageBody.appendChild(messageContentElement);

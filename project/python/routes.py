@@ -620,12 +620,13 @@ async def single_chat(request: Request):
         )
 
         friend_status_value = None
+        friend_avatar = None
         channel_ids = {}
 
         if friends:
             for friend in friends:
                 friend_id = friend.id
-                friend.avatar = b64encode(friend.avatar)
+                friend_avatar = b64encode(friend.avatar).decode()
 
                 existing_channel = (
                     db.query(Channel)
@@ -662,18 +663,17 @@ async def single_chat(request: Request):
 
                 friend_status_value = friend_status.status if friend_status else None
 
-            print(user_id, friend_id, channel_ids)
         return templates.TemplateResponse(
             "single_chat.html",
             {
                 "request": request,
                 "friends": friends,
                 "user": user,
+                "friend_avatar": friend_avatar,
                 "friend_status": friend_status_value,
-                "channel_ids": channel_ids, # Pass the dictionary of channel_ids
+                "channel_ids": channel_ids,
             },
         )
-
 
 
 # Friend chat
