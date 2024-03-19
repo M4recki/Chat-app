@@ -50,17 +50,6 @@ def authentication_in_header(request: Request):
 
 
 def is_authenticated(request: Request):
-    """_summary_
-
-    Args:
-        request (Request): _description_
-
-    Raises:
-        HTTPException: _description_
-
-    Returns:
-        _type_: _description_
-    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -68,11 +57,14 @@ def is_authenticated(request: Request):
             user_id = s.loads(token, max_age=3600).get("user_id")
             db = SessionLocal()
             user = db.query(User).filter(User.id == user_id).first()
+            if user:
+                return user
+            else:
+                raise HTTPException(status_code=401, detail="Not authenticated")
         except SignatureExpired:
-            request.cookies.clear()
-            return False
+            raise HTTPException(status_code=401, detail="Token expired")
     else:
-        return False
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
 
 # Get user id

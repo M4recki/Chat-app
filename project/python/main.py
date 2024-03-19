@@ -3,12 +3,11 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 from pathlib import Path
 from datetime import datetime
-from json import dumps
+from json import dumps, loads
 from routes import router
 from database import SessionLocal
 from models import Message
 from connection_manager import ConnectionManager
-import json
 
 
 app = FastAPI()
@@ -34,7 +33,7 @@ async def websocket_endpoint(
     try:
         while True:
             data = await websocket.receive_text()
-            message_data = json.loads(data)
+            message_data = loads(data)
             channel_id = message_data["channel_id"]
             message = message_data["message"]
 
