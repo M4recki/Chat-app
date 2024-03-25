@@ -3,3 +3,4 @@ __pycache__/
 .vscode/
 .pytest_cache/
 Chat_app.session.sql
+test.db

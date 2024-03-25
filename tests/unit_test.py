@@ -1,14 +1,4 @@
-from fastapi.testclient import TestClient
-from project.python.main import app
-import os
-import sys
-
-current_dir = os.path.dirname(os.path.abspath(__file__))
-
-root_dir = os.path.abspath(os.path.join(current_dir, ".."))
-
-
-client = TestClient(app)
+from config import client
 
 
 def test_read_main():
