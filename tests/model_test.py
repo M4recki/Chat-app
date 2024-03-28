@@ -1,24 +1,30 @@
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, DateTime, LargeBinary
-from sqlalchemy.orm import sessionmaker
-
-engine = create_engine("sqlite:///:memory:")
-metadata = MetaData()
-
-#FIXME:
-
-users_test = Table(
-    'users_test', metadata,
-    Column('id', Integer, primary_key=True),
-    Column('name', String(30)),
-    Column('username', String(30)),
-    Column('email', String(40)),
-    Column('password', String(30)),
-    Column('avatar', LargeBinary),
-    Column('created_at', DateTime)
+from sqlalchemy import (
+    create_engine,
+    Column,
+    Integer,
+    String,
+    DateTime,
+    LargeBinary,
 )
+from sqlalchemy.orm import sessionmaker, declarative_base
 
 
-metadata.create_all(engine)
+engine = create_engine("sqlite:///./test.db")
+
+Base = declarative_base()
+
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+class User(Base):
+    __tablename__ = "user_test"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(30))
+    surname = Column(String(30))
+    email = Column(String(40))
+    password = Column(String(30))
+    avatar = Column(LargeBinary())
+    created_at = Column(DateTime)
+
+
+Base.metadata.create_all(engine)
