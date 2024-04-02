@@ -16,6 +16,11 @@ client = TestClient(app)
 
 @contextmanager
 def session_scope():
+    """_summary_
+
+    Yields:
+        _type_: _description_
+    """
     session = sessionmaker(bind=engine)()
     try:
         yield session
@@ -28,6 +33,7 @@ def session_scope():
 
 
 def clear_tables():
+    """_summary_"""
     with session_scope() as session:
         for table in Base.metadata.sorted_tables:
             session.execute(text(f"DELETE FROM user_test;"))
@@ -36,6 +42,11 @@ def clear_tables():
 
 @pytest.fixture(scope="function", autouse=True)
 def test_db_session():
+    """_summary_
+
+    Yields:
+        _type_: _description_
+    """
     try:
         yield engine
     finally:

@@ -29,6 +29,14 @@ manager = ConnectionManager()
 async def websocket_endpoint(
     websocket: WebSocket, channel_id: str, user_name: str, user_id: int
 ):
+    """_summary_
+
+    Args:
+        websocket (WebSocket): _description_
+        channel_id (str): _description_
+        user_name (str): _description_
+        user_id (int): _description_
+    """    
     await manager.connect(websocket, channel_id)
     try:
         while True:
