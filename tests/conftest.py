@@ -36,7 +36,7 @@ def clear_tables():
     """_summary_"""
     with session_scope() as session:
         for table in Base.metadata.sorted_tables:
-            session.execute(text(f"DELETE FROM user_test;"))
+            session.execute(text("DELETE FROM user_test;"))
         session.commit()
 
 

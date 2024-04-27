@@ -23,7 +23,7 @@ from PIL import Image
 from io import BytesIO
 from sqlalchemy.orm.exc import NoResultFound
 from base64 import b64encode, b64decode
-from gpt4all import GPT4All
+from g4f.client import Client
 from database import SessionLocal
 from models import User, Friend, ChatbotMessage, Message, Channel
 
@@ -50,6 +50,17 @@ def authentication_in_header(request: Request):
 
 
 def is_authenticated(request: Request):
+    """_summary_
+
+    Args:
+        request (Request): _description_
+
+    Raises:
+        HTTPException: _description_
+
+    Returns:
+        _type_: _description_
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -57,14 +68,11 @@ def is_authenticated(request: Request):
             user_id = s.loads(token, max_age=3600).get("user_id")
             db = SessionLocal()
             user = db.query(User).filter(User.id == user_id).first()
-            if user:
-                return user
-            else:
-                raise HTTPException(status_code=401, detail="Not authenticated")
         except SignatureExpired:
-            raise HTTPException(status_code=401, detail="Token expired")
+            request.cookies.clear()
+            return False
     else:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+        return False
 
 
 # Get user id
@@ -988,19 +996,13 @@ async def deny_friend(request: Request, friend_id: int):
 
 
 def chatbot_response(user_input: str):
-    """_summary_
-
-    Args:
-        user_input (str): _description_
-
-    Returns:
-        _type_: _description_
-    """
-    model = GPT4All(model_name="gpt4all-falcon-q4_0.gguf")
-
-    with model.chat_session():
-        response = model.generate(prompt=f"{user_input}", temp=0)
-        return model.current_chat_session[2]["content"]
+    client = Client()
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": user_input}],
+    )
+    chatbot_response = response.choices[0].message.content
+    return chatbot_response
 
 
 @router.get("/chatbot", dependencies=[Depends(is_authenticated)])
@@ -1032,7 +1034,7 @@ async def chatbot_page(request: Request):
             {
                 "request": request,
                 "user": user,
-                "user.avatar": user.avatar,
+                "user_image": user.avatar,
                 "chatbot_messages": chatbot_messages,
             },
         )
