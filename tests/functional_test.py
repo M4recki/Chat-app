@@ -3,7 +3,12 @@ from conftest import client
 
 
 def test_send_email():
-    """_summary_"""
+    """
+    Test sending an email.
+
+    Sends a test email and asserts the POST
+    response status code is 200.
+    """
     name = "John Doe"
     email = "john@example.com"
     subject = "Test Subject"
@@ -20,7 +25,12 @@ def test_send_email():
 
 
 def test_chatbot_response():
-    """_summary_"""
+    """
+    Test the chatbot response.
+
+    Sends a test input and asserts the response
+    is a string that matches the input.
+    """
     user_input = "Say exactly these sentence without any additions: I am chatbot"
 
     response = chatbot_response(user_input)

@@ -4,6 +4,9 @@ from sqlalchemy.orm import declarative_base
 from sqlalchemy.engine import URL
 
 
+# Database setup
+
+
 SQLALCHEMY_DATABASE_URL = URL.create(
     drivername="postgresql",
     username="postgres",

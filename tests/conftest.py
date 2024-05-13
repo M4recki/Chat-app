@@ -16,10 +16,11 @@ client = TestClient(app)
 
 @contextmanager
 def session_scope():
-    """_summary_
+    """
+    Provide a transactional scope around a series of operations.
 
-    Yields:
-        _type_: _description_
+    Yields a database session for use in with block. The session is
+    automatically committed or rolled back based on exception.
     """
     session = sessionmaker(bind=engine)()
     try:
@@ -33,7 +34,11 @@ def session_scope():
 
 
 def clear_tables():
-    """_summary_"""
+    """
+    Clear contents of database tables before tests run.
+
+    Drops contents of all tables to ensure clean state for each test.
+    """
     with session_scope() as session:
         for table in Base.metadata.sorted_tables:
             session.execute(text("DELETE FROM user_test;"))
@@ -42,10 +47,11 @@ def clear_tables():
 
 @pytest.fixture(scope="function", autouse=True)
 def test_db_session():
-    """_summary_
+    """
+    Return a new database session for a test.
 
-    Yields:
-        _type_: _description_
+    Each test method will use a separate transaction, and tables
+    will be cleared between tests.
     """
     try:
         yield engine

@@ -34,13 +34,13 @@ router = APIRouter()
 
 
 def authentication_in_header(request: Request):
-    """_summary_
+    """Check if user is authenticated based on access token in header.
 
     Args:
-        request (Request): _description_
+        request (Request): The incoming request object.
 
     Returns:
-        _type_: _description_
+        dict: A dictionary with a boolean indicating if the user is authenticated
     """
     token = request.cookies.get("access_token")
     if token:
@@ -50,16 +50,16 @@ def authentication_in_header(request: Request):
 
 
 def is_authenticated(request: Request):
-    """_summary_
+    """Check if user is authenticated based on access token.
 
     Args:
-        request (Request): _description_
+        request (Request): The request object
 
     Raises:
-        HTTPException: _description_
+        HTTPException: Error description
 
     Returns:
-        _type_: _description_
+        bool: True if user is authenticated, False otherwise
     """
     token = request.cookies.get("access_token")
     if token:
@@ -87,14 +87,15 @@ def get_user(user_id):
 
 
 def user_image(request: Request):
-    """_summary_
+    """Get user image from database.
 
     Args:
-        request (Request): _description_
+        request (Request): The request object
 
     Returns:
-        _type_: _description_
+        dict: A dictionary with the user's image
     """
+
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -114,14 +115,15 @@ def user_image(request: Request):
 
 
 def user_name(request: Request):
-    """_summary_
+    """Get user name from database.
 
     Args:
-        request (Request): _description_
+        request (Request): The request object
 
     Returns:
-        _type_: _description_
+        dict: A dictionary with the user's name
     """
+
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -140,13 +142,13 @@ def user_name(request: Request):
 
 
 def current_year(request: Request):
-    """_summary_
+    """Get the current year.
 
     Args:
-        request (Request): _description_
+        request (Request): The request object
 
     Returns:
-        _type_: _description_
+        dict: A dictionary with the current year
     """
     return {"current_year": datetime.now().year}
 
@@ -161,13 +163,13 @@ templates = Jinja2Templates(
 
 @router.get("/")
 def root(request: Request):
-    """_summary_
+    """Render the home page.
 
     Args:
-        request (Request): _description_
+        request: The request object
 
     Returns:
-        _type_: _description_
+        Response: Home page template response
     """
     return templates.TemplateResponse("main_page.html", {"request": request})
 
@@ -177,13 +179,13 @@ def root(request: Request):
 
 @router.get("/sign_up", name="sign_up")
 def sign_up_page(request: Request):
-    """_summary_
+    """Render the sign up page.
 
     Args:
-        request (Request): _description_
+        request: The request object
 
     Returns:
-        _type_: _description_
+        Response: Sign up page template response
     """
     return templates.TemplateResponse(
         "sign_up.html", {"request": request, "errors": {}}
@@ -200,19 +202,19 @@ async def sign_up_data(
     confirm_password: str = Form(...),
     terms_conditions: bool = Form(...),
 ):
-    """_summary_
+    """Handle sign up form submission.
 
     Args:
-        request (Request): _description_
-        name (str, optional): _description_. Defaults to Form(...).
-        surname (str, optional): _description_. Defaults to Form(...).
-        email (str, optional): _description_. Defaults to Form(...).
-        password (str, optional): _description_. Defaults to Form(...).
-        confirm_password (str, optional): _description_. Defaults to Form(...).
-        terms_conditions (bool, optional): _description_. Defaults to Form(...).
+        request: The request object
+        name: The name form field
+        surname: The surname form field
+        email: The email form field
+        password: The password form field
+        confirm_password: The confirm password form field
+        terms_conditions: The terms and conditions form field
 
     Returns:
-        _type_: _description_
+        Response: Redirect to home or sign up template
     """
     db = SessionLocal()
     user = db.query(User).filter(User.email == email).first()
@@ -268,13 +270,13 @@ async def sign_up_data(
 
 @router.get("/login", name="login")
 def login_page(request: Request):
-    """_summary_
+    """Render the login page.
 
     Args:
-        request (Request): _description_
+        request: The request object
 
     Returns:
-        _type_: _description_
+        Response: Login page template response
     """
     return templates.TemplateResponse("login.html", {"request": request})
 
@@ -283,15 +285,15 @@ def login_page(request: Request):
 async def login_data(
     request: Request, email: str = Form(...), password: str = Form(...)
 ):
-    """_summary_
+    """Handle login form submission.
 
     Args:
-        request (Request): _description_
-        email (str, optional): _description_. Defaults to Form(...).
-        password (str, optional): _description_. Defaults to Form(...).
+        request: The request object
+        email: The email form field
+        password: The password form field
 
     Returns:
-        _type_: _description_
+        Response: Redirect or login template on validation errors
     """
     db = SessionLocal()
     user = db.query(User).filter(User.email == email).first()
@@ -323,12 +325,13 @@ async def login_data(
 
 
 def send_email(email_address, subject, message):
-    """_summary_
+    """Send an email using SMTP.
 
     Args:
-        email_address (_type_): _description_
-        subject (_type_): _description_
-        message (_type_): _description_
+        email_address: The sender's email address
+        subject: The email subject
+        message: The email body
+
     """
     email_receiver = environ.get("EMAIL_RECEIVER_TODO")
     password = environ.get("EMAIL_PASSWORD_CAFE")
@@ -349,13 +352,13 @@ def send_email(email_address, subject, message):
 
 @router.get("/contact", name="contact")
 def contact_page(request: Request):
-    """_summary_
+    """Render the contact page.
 
     Args:
-        request (Request): _description_
+        request: The request object
 
     Returns:
-        _type_: _description_
+        Response: Contact page template response
     """
     return templates.TemplateResponse("contact.html", {"request": request})
 
@@ -368,17 +371,17 @@ async def contact_data(
     subject: str = Form(...),
     message: str = Form(...),
 ):
-    """_summary_
+    """Handle contact form submission.
 
     Args:
-        request (Request): _description_
-        name (str, optional): _description_. Defaults to Form(...).
-        email (str, optional): _description_. Defaults to Form(...).
-        subject (str, optional): _description_. Defaults to Form(...).
-        message (str, optional): _description_. Defaults to Form(...).
+        request: The request object
+        name: The name form field
+        email: The email form field
+        subject: The subject form field
+        message: The message form field
 
     Returns:
-        _type_: _description_
+        Response: Redirect to home page on success
     """
     errors = {}
 
@@ -397,13 +400,13 @@ async def contact_data(
 
 @router.get("/logout", dependencies=[Depends(is_authenticated)])
 def logout(request: Request):
-    """_summary_
+    """Logout the currently authenticated user.
 
     Args:
-        request (Request): _description_
+        request: The request object
 
     Returns:
-        _type_: _description_
+        Response: Redirect to login or home page
     """
     token = request.cookies.get("access_token")
     if token:
@@ -419,13 +422,13 @@ def logout(request: Request):
 
 @router.get("/search_user", dependencies=[Depends(is_authenticated)])
 async def search_user(request: Request):
-    """_summary_
+    """Search for and return other users.
 
     Args:
-        request (Request): _description_
+        request: The request object
 
     Returns:
-        _type_: _description_
+        Response: User search template
     """
     token = request.cookies.get("access_token")
     if token:
@@ -468,13 +471,13 @@ async def search_user(request: Request):
 
 @router.get("/friend_requests", dependencies=[Depends(is_authenticated)])
 async def friend_requests(request: Request):
-    """_summary_
+    """Get pending friend requests for logged in user.
 
     Args:
-        request (Request): _description_
+        request: The request object
 
     Returns:
-        _type_: _description_
+        Response: Friend requests template
     """
     token = request.cookies.get("access_token")
     if token:
@@ -506,13 +509,13 @@ async def friend_requests(request: Request):
 
 @router.get("/update_profile", dependencies=[Depends(is_authenticated)])
 async def update_profile_page(request: Request):
-    """_summary_
+    """Render the update profile page.
 
     Args:
-        request (Request): _description_
+        request: The request object
 
     Returns:
-        _type_: _description_
+        Response: Update profile page template
     """
     token = request.cookies.get("access_token")
     if token:
@@ -539,6 +542,20 @@ async def update_profile_data(
     password: str = Form(None),
     confirm_password: str = Form(None),
 ):
+    """Handle update profile form submission.
+
+    Args:
+        request: The request object
+        avatar: The avatar upload field
+        name: The name form field
+        surname: The surname form field
+        email: The email form field
+        password: The password form field
+        confirm_password: The confirm password form field
+
+    Returns:
+        Response: Redirect or update profile template
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -592,6 +609,15 @@ async def update_profile_data(
 
 
 def generate_channel_id(user1_id, user2_id):
+    """Generate a unique channel ID.
+
+    Args:
+        user1_id: ID of first user
+        user2_id: ID of second user
+
+    Returns:
+        str: The generated channel ID
+    """
     unique_string = f"{user1_id}{user2_id}"
     return sha256(unique_string.encode()).hexdigest()
 
@@ -601,6 +627,14 @@ def generate_channel_id(user1_id, user2_id):
 
 @router.get("/single_chat", dependencies=[Depends(is_authenticated)])
 async def single_chat(request: Request):
+    """Display the user's chat channels.
+
+    Args:
+        request: The request object
+
+    Returns:
+        Response: Single chat template
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -687,17 +721,19 @@ async def friend_chat_page(
     channel_id: str,
     friend_id: int,
 ):
-    """_summary_
+    """
+    Retrieve chat messages for a friend chat channel.
 
     Args:
-        request (Request): _description_
-        channel_id (str): _description_
+        request (Request): The HTTP request object
+        channel_id (str): The ID of the chat channel
+        friend_id (int): The ID of the friend
 
     Raises:
-        HTTPException: _description_
+        HTTPException: If the channel is not found
 
     Returns:
-        _type_: _description_
+        TemplateResponse: Rendered template with chat context
     """
     token = request.cookies.get("access_token")
     if token:
@@ -752,15 +788,16 @@ async def friend_chat_page(
 
 @router.get("/block_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
 async def block_friend(request: Request, friend_id: int):
-    """_summary_
+    """
+    Block a friend from the user's friend list.
 
     Args:
-        request (Request): _description_
-        friend_id (int): _description_
+        request (Request): The HTTP request object
+        friend_id (int): The ID of the friend to block
 
     Returns:
-        _type_: _description_
-    """ """"""
+        TemplateResponse: Rendered template on success
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -797,15 +834,16 @@ async def block_friend(request: Request, friend_id: int):
 
 @router.get("/unblock_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
 async def unblock_friend(request: Request, friend_id: int):
-    """_summary_
+    """
+    Unblock a previously blocked friend.
 
     Args:
-        request (Request): _description_
-        friend_id (int): _description_
+        request (Request): The HTTP request object
+        friend_id (int): The ID of the friend to unblock
 
     Returns:
-        _type_: _description_
-    """ """"""
+        TemplateResponse: Rendered template on success
+    """
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -843,17 +881,21 @@ async def unblock_friend(request: Request, friend_id: int):
 
 @router.get("/add_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
 async def add_friend(request: Request, friend_id: int):
-    """_summary_
+    """
+    Add a friend request.
+
+    Checks if a pending or denied request already exists,
+    updates it if needed or creates a new one.
 
     Args:
-        request (Request): _description_
-        friend_id (int): _description_
+        request (Request): The HTTP request
+        friend_id (int): The ID of the friend
 
     Raises:
-        HTTPException: _description_
+        HTTPException: If request already sent recently
 
     Returns:
-        _type_: _description_
+        TemplateResponse: On success
     """
     token = request.cookies.get("access_token")
     if token:
@@ -901,15 +943,19 @@ async def add_friend(request: Request, friend_id: int):
 
 @router.get("/accept_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
 async def accept_friend(request: Request, friend_id: int):
-    """_summary_
+    """
+    Accept a pending friend request.
+
+    Updates the friend request status to accepted.
 
     Args:
-        request (Request): _description_
-        friend_id (int): _description_
+        request (Request): The HTTP request
+        friend_id (int): The ID of the friend
 
     Returns:
-        _type_: _description_
+        TemplateResponse: On success
     """
+
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(environ.get("Secret_key_chat"))
@@ -949,14 +995,17 @@ async def accept_friend(request: Request, friend_id: int):
 
 @router.get("/deny_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
 async def deny_friend(request: Request, friend_id: int):
-    """_summary_
+    """
+    Deny a pending friend request.
+
+    Updates the friend request status to denied.
 
     Args:
-        request (Request): _description_
-        friend_id (int): _description_
+        request (Request): The HTTP request
+        friend_id (int): The ID of the friend
 
     Returns:
-        _type_: _description_
+        TemplateResponse: On success
     """
     token = request.cookies.get("access_token")
     if token:
@@ -996,6 +1045,15 @@ async def deny_friend(request: Request, friend_id: int):
 
 
 def chatbot_response(user_input: str):
+    """
+    Get a response from the chatbot for the given user input.
+
+    Args:
+        user_input (str): The user's message
+
+    Returns:
+        str: The chatbot's response
+    """
     client = Client()
     response = client.chat.completions.create(
         model="gpt-4",
@@ -1007,13 +1065,16 @@ def chatbot_response(user_input: str):
 
 @router.get("/chatbot", dependencies=[Depends(is_authenticated)])
 async def chatbot_page(request: Request):
-    """_summary_
+    """
+    Render the chatbot chat page.
+
+    Retrieves the logged in user and their past chatbot messages.
 
     Args:
-        request (Request): _description_
+        request (Request): The HTTP request
 
     Returns:
-        _type_: _description_
+        TemplateResponse: The chatbot chat page
     """
     token = request.cookies.get("access_token")
     if token:
@@ -1044,14 +1105,17 @@ async def chatbot_page(request: Request):
 
 @router.post("/chatbot", dependencies=[Depends(is_authenticated)])
 async def chatbot(request: Request, message: str = Form(...)):
-    """_summary_
+    """
+    Send a new message to the chatbot.
+
+    Saves the user message and chatbot response to the database.
 
     Args:
-        request (Request): _description_
-        message (str, optional): _description_. Defaults to Form(...).
+        request (Request): The HTTP request
+        message (str): The user's message
 
     Returns:
-        _type_: _description_
+        TemplateResponse: The chatbot chat page
     """
     token = request.cookies.get("access_token")
     if token:
@@ -1100,13 +1164,14 @@ async def chatbot(request: Request, message: str = Form(...)):
 
 @router.get("/clear_chatbot_messages", dependencies=[Depends(is_authenticated)])
 async def clear_chatbot_messages(request: Request):
-    """_summary_
+    """
+    Clear all past chatbot messages for the user.
 
     Args:
-        request (Request): _description_
+        request (Request): The HTTP request
 
     Returns:
-        _type_: _description_
+        TemplateResponse: The chatbot chat page
     """
     token = request.cookies.get("access_token")
     if token:

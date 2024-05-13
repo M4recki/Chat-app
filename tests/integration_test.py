@@ -10,18 +10,21 @@ from model_test import User, TestingSessionLocal
 def create_user(
     db: Session, name: str, surname: str, email: str, password: str, avatar_path: str
 ):
-    """_summary_
+    """
+    Create a new user and save to the database.
+
+    Encodes the user avatar to base64.
 
     Args:
-        db (Session): _description_
-        name (str): _description_
-        surname (str): _description_
-        email (str): _description_
-        password (str): _description_
-        avatar_path (str): _description_
+        db (Session): The database session
+        name (str): The user's name
+        surname (str): The user's surname
+        email (str): The user's email
+        password (str): The user's password
+        avatar_path (str): Path to the user's avatar image
 
     Returns:
-        _type_: _description_
+        User: The new user object
     """
     img = Image.open(avatar_path)
     img_binary = BytesIO()
@@ -42,10 +45,15 @@ def create_user(
 
 
 def test_register_user(test_db_session):
-    """_summary_
+    """
+    Test registering a new user.
+
+    Creates a test user and asserts a successful
+    registration response and user is saved.
 
     Args:
-        test_db_session (_type_): _description_
+        test_db_session: The test database session
+
     """
     db = TestingSessionLocal()
     user = create_user(
@@ -74,10 +82,14 @@ def test_register_user(test_db_session):
 
 
 def test_login_user(test_db_session):
-    """_summary_
+    """
+    Test logging in a registered user.
+
+    Logs in a test user and asserts a successful
+    login response.
 
     Args:
-        test_db_session (_type_): _description_
+        test_db_session: The test database session
     """
     db = TestingSessionLocal()
     user = create_user(

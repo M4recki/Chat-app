@@ -29,14 +29,21 @@ manager = ConnectionManager()
 async def websocket_endpoint(
     websocket: WebSocket, channel_id: str, user_name: str, user_id: int
 ):
-    """_summary_
+    """
+    Handle incoming websocket connections.
+
+    Accepts the websocket connection and broadcasts received messages
+    to other clients in the channel. Saves messages to the database.
 
     Args:
-        websocket (WebSocket): _description_
-        channel_id (str): _description_
-        user_name (str): _description_
-        user_id (int): _description_
-    """    
+        websocket (WebSocket): The websocket connection
+        channel_id (str): The ID of the chat channel
+        user_name (str): The name of the connected user
+        user_id (int): The ID of the connected user
+
+    Raises:
+        WebSocketDisconnect: If the connection is closed
+    """
     await manager.connect(websocket, channel_id)
     try:
         while True:

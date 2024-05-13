@@ -7,6 +7,12 @@ from database import Base, engine
 
 
 class User(Base):
+    """
+    User model.
+
+    Represents a user in the system.
+    """
+
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
@@ -21,6 +27,12 @@ class User(Base):
 
 
 class Message(Base):
+    """
+    Message model.
+
+    Represents a message sent in a chat channel.
+    """
+
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True)
     content = Column(String(500), nullable=False)
@@ -35,6 +47,12 @@ class Message(Base):
 
 
 class Channel(Base):
+    """
+    Channel model.
+
+    Represents a chat channel between users.
+    """
+
     __tablename__ = "channels"
     id = Column(Integer, primary_key=True)
     channel_id = Column(String(100), nullable=False, unique=True)
@@ -48,6 +66,12 @@ class Channel(Base):
 
 
 class Friend(Base):
+    """
+    Friend model.
+
+    Represents a friendship between users.
+    """
+
     __tablename__ = "friends"
     id = Column(Integer, primary_key=True)
     user1_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -64,6 +88,12 @@ class Friend(Base):
 
 
 class ChatbotMessage(Base):
+    """
+    Chatbot message model.
+
+    Represents a message sent to the chatbot.
+    """
+
     __tablename__ = "chatbot_messages"
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)

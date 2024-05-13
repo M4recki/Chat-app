@@ -16,7 +16,15 @@ Base = declarative_base()
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+# Test user table
+
 class User(Base):
+    """
+    User model.
+
+    Represents a user in the test database.
+    """
+
     __tablename__ = "user_test"
     id = Column(Integer, primary_key=True)
     name = Column(String(30))
