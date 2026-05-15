@@ -4,7 +4,8 @@ from PIL import Image
 from io import BytesIO
 from conftest import client, test_db_session
 from sqlalchemy.orm import Session
-from model_test import User, TestingSessionLocal
+from models import User
+from model_test import TestingSessionLocal
 
 
 def create_user(

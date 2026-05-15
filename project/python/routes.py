@@ -8,26 +8,31 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, HTMLResponse
 from werkzeug.security import generate_password_hash, check_password_hash
 from hashlib import sha256
 from itsdangerous import URLSafeTimedSerializer as Serializer
-from itsdangerous.exc import SignatureExpired
+from itsdangerous.exc import SignatureExpired, BadSignature
 from pathlib import Path
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from ssl import create_default_context
-import smtplib
+from smtplib import SMTP_SSL
 from os import environ
-from PIL import Image
+from importlib import import_module
 from io import BytesIO
 from sqlalchemy.orm.exc import NoResultFound
 from base64 import b64encode, b64decode
-from g4f.client import Client
+import requests
 from database import SessionLocal
+from settings import settings
 from models import User, Friend, ChatbotMessage, Message, Channel
 
+Image = import_module("PIL.Image")
+
 router = APIRouter()
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_AVATAR_PATH = PROJECT_DIR / "static" / "img" / "default avatar.jpg"
 
 
 # Authentication
@@ -42,10 +47,17 @@ def authentication_in_header(request: Request):
     Returns:
         dict: A dictionary with a boolean indicating if the user is authenticated
     """
+    if not isinstance(request, Request):
+        return {"is_authenticated": False}
     token = request.cookies.get("access_token")
-    if token:
+    if not token:
+        return {"is_authenticated": False}
+
+    s = Serializer(settings.chat_secret_key)
+    try:
+        s.loads(token, max_age=settings.token_max_age)
         return {"is_authenticated": True}
-    else:
+    except (SignatureExpired, BadSignature):
         return {"is_authenticated": False}
 
 
@@ -62,17 +74,24 @@ def is_authenticated(request: Request):
         bool: True if user is authenticated, False otherwise
     """
     token = request.cookies.get("access_token")
-    if token:
-        s = Serializer(environ.get("Secret_key_chat"))
-        try:
-            user_id = s.loads(token, max_age=3600).get("user_id")
-            db = SessionLocal()
-            user = db.query(User).filter(User.id == user_id).first()
-        except SignatureExpired:
-            request.cookies.clear()
-            return False
-    else:
-        return False
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    s = Serializer(settings.chat_secret_key)
+    try:
+        user_id = s.loads(token, max_age=settings.token_max_age).get("user_id")
+    except SignatureExpired:
+        raise HTTPException(status_code=401, detail="Session expired")
+    except BadSignature:
+        raise HTTPException(status_code=401, detail="Invalid session token")
+
+    db = SessionLocal()
+    user = db.query(User).filter(User.id == user_id).first()
+    db.close()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return True
 
 
 # Get user id
@@ -95,16 +114,21 @@ def user_image(request: Request):
     Returns:
         dict: A dictionary with the user's image
     """
+    if not isinstance(request, Request):
+        return {"user_image": ""}
 
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         try:
             user_id = s.loads(token, max_age=3600).get("user_id")
             db = SessionLocal()
             user = db.query(User).filter(User.id == user_id).first()
-            user.avatar = b64encode(user.avatar).decode()
-            return {"user_image": user.avatar}
+            db.close()
+            if user and user.avatar:
+                user.avatar = b64encode(user.avatar).decode()
+                return {"user_image": user.avatar}
+            return {"user_image": ""}
         except:
             return {"user_image": ""}
     else:
@@ -123,15 +147,20 @@ def user_name(request: Request):
     Returns:
         dict: A dictionary with the user's name
     """
+    if not isinstance(request, Request):
+        return {"user_name": None}
 
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         try:
             user_id = s.loads(token, max_age=3600).get("user_id")
             db = SessionLocal()
             user = db.query(User).filter(User.id == user_id).first()
-            return {"user_name": user.name}
+            db.close()
+            if user:
+                return {"user_name": user.name}
+            return {"user_name": None}
         except:
             return {"user_name": None}
     else:
@@ -155,8 +184,37 @@ def current_year(request: Request):
 
 templates = Jinja2Templates(
     directory=Path(__file__).parent.parent / "templates",
-    context_processors=[current_year, authentication_in_header, user_image, user_name],
+    context_processors=[
+        authentication_in_header,
+        user_image,
+        user_name,
+        current_year,
+    ],
 )
+
+
+def render_template(name: str, request: Request, **kwargs):
+    """Render template with auto-injected context data.
+
+    Args:
+        name: Template filename
+        request: Request object
+        **kwargs: Additional context variables
+
+    Returns:
+        HTMLResponse with rendered template
+    """
+    context = {"request": request}
+    context.update(authentication_in_header(request))
+    context.update(user_image(request))
+    context.update(user_name(request))
+    context.update(current_year(request))
+    context.update(kwargs)
+    template = templates.get_template(name)
+    html_content = template.render(context)
+    
+    return HTMLResponse(content=html_content)
+
 
 # Main page
 
@@ -171,7 +229,7 @@ def root(request: Request):
     Returns:
         Response: Home page template response
     """
-    return templates.TemplateResponse("main_page.html", {"request": request})
+    return render_template("main_page.html", request)
 
 
 # Sign up
@@ -187,9 +245,7 @@ def sign_up_page(request: Request):
     Returns:
         Response: Sign up page template response
     """
-    return templates.TemplateResponse(
-        "sign_up.html", {"request": request, "errors": {}}
-    )
+    return render_template("sign_up.html", request, errors={})
 
 
 @router.post("/sign_up")
@@ -231,17 +287,15 @@ async def sign_up_data(
         errors["confirm_password"] = "Passwords do not match"
 
     if errors:
-        return templates.TemplateResponse(
-            "sign_up.html", {"request": request, "errors": errors}
-        )
+        return render_template("sign_up.html", request, errors=errors)
 
     hashed_password = generate_password_hash(
         password, method="pbkdf2:sha256", salt_length=6
     )
 
-    img = Image.open("project/static/img/default avatar.jpg")
     img_binary = BytesIO()
-    img.save(img_binary, format="JPEG")
+    with Image.open(DEFAULT_AVATAR_PATH) as img:
+        img.save(img_binary, format="JPEG")
     img_binary = img_binary.getvalue()
 
     new_user = User(
@@ -255,8 +309,7 @@ async def sign_up_data(
     db.add(new_user)
     db.commit()
 
-    SECRET_KEY = environ.get("Secret_key_chat")
-    s = Serializer(SECRET_KEY)
+    s = Serializer(settings.chat_secret_key)
     token = s.dumps({"user_id": new_user.id})
 
     response = RedirectResponse(request.url_for("single_chat"), status_code=303)
@@ -278,7 +331,7 @@ def login_page(request: Request):
     Returns:
         Response: Login page template response
     """
-    return templates.TemplateResponse("login.html", {"request": request})
+    return render_template("login.html", request)
 
 
 @router.post("/login")
@@ -307,12 +360,9 @@ async def login_data(
         errors["password"] = "Incorrect password. Please try again"
 
     if errors:
-        return templates.TemplateResponse(
-            "login.html", {"request": request, "errors": errors}
-        )
+        return render_template("login.html", request, errors=errors)
 
-    SECRET_KEY = environ.get("Secret_key_chat")
-    s = Serializer(SECRET_KEY)
+    s = Serializer(settings.chat_secret_key)
     token = s.dumps({"user_id": user.id})
 
     response = RedirectResponse(request.url_for("single_chat"), status_code=303)
@@ -333,8 +383,12 @@ def send_email(email_address, subject, message):
         message: The email body
 
     """
-    email_receiver = environ.get("EMAIL_RECEIVER_TODO")
-    password = environ.get("EMAIL_PASSWORD_CAFE")
+    # During tests sending real emails is disabled.
+    if environ.get("TESTING") == "1":
+        return
+
+    email_receiver = environ.get("EMAIL_RECEIVER")
+    password = environ.get("EMAIL_PASSWORD")
 
     email = EmailMessage()
 
@@ -345,7 +399,7 @@ def send_email(email_address, subject, message):
 
     context = create_default_context()
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
+    with SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
         smtp.login(email_receiver, password)
         smtp.sendmail(email_address, email_receiver, email.as_string())
 
@@ -360,7 +414,7 @@ def contact_page(request: Request):
     Returns:
         Response: Contact page template response
     """
-    return templates.TemplateResponse("contact.html", {"request": request})
+    return render_template("contact.html", request)
 
 
 @router.post("/contact")
@@ -390,12 +444,8 @@ async def contact_data(
 
     send_email(email, subject, message)
     flash_messages = ["Your message has been sent"]
-    return templates.TemplateResponse(
-        "main_page.html", {"request": request, "flash_messages": flash_messages}
-    )
 
-
-# Logout
+    return render_template("main_page.html", request, flash_messages=flash_messages)
 
 
 @router.get("/logout", dependencies=[Depends(is_authenticated)])
@@ -414,7 +464,7 @@ def logout(request: Request):
         response.delete_cookie(key="access_token")
         return response
     else:
-        return templates.TemplateResponse("login.html", {"request": request})
+        return render_template("login.html", request)
 
 
 # Search user
@@ -432,7 +482,7 @@ async def search_user(request: Request):
     """
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
@@ -455,6 +505,7 @@ async def search_user(request: Request):
             user.avatar = b64encode(user.avatar).decode()
 
         return templates.TemplateResponse(
+            request,
             "search_user.html",
             {
                 "request": request,
@@ -463,7 +514,7 @@ async def search_user(request: Request):
             },
         )
     else:
-        return templates.TemplateResponse("login.html", {"request": request})
+        return render_template("login.html", request)
 
 
 # Friend requests
@@ -481,7 +532,7 @@ async def friend_requests(request: Request):
     """
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
         user = db.query(User).filter(User.id == user_id).first()
@@ -497,11 +548,12 @@ async def friend_requests(request: Request):
             ).decode()
 
         return templates.TemplateResponse(
+            request,
             "friend_requests.html",
             {"request": request, "friend_requests": friend_requests},
         )
     else:
-        return templates.TemplateResponse("login.html", {"request": request})
+        return render_template("login.html", request)
 
 
 # Update profile
@@ -519,17 +571,18 @@ async def update_profile_page(request: Request):
     """
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
         user = db.query(User).filter(User.id == user_id).first()
 
         return templates.TemplateResponse(
+            request,
             "update_profile.html",
             {"request": request, "user": user, "errors": {}},
         )
     else:
-        return templates.TemplateResponse("login.html", {"request": request})
+        return render_template("login.html", request)
 
 
 @router.post("/update_profile", dependencies=[Depends(is_authenticated)])
@@ -558,7 +611,7 @@ async def update_profile_data(
     """
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
         user = db.query(User).filter(User.id == user_id).first()
@@ -573,6 +626,7 @@ async def update_profile_data(
 
         if errors:
             return templates.TemplateResponse(
+                request,
                 "update_profile.html",
                 {"request": request, "user": user, "errors": errors},
             )
@@ -596,13 +650,12 @@ async def update_profile_data(
         )
         db.commit()
 
-        SECRET_KEY = environ.get("Secret_key_chat")
-        s = Serializer(SECRET_KEY)
+        s = Serializer(settings.chat_secret_key)
         token = s.dumps({"user_id": user_id})
 
-        return templates.TemplateResponse("single_chat.html", {"request": request})
+        return render_template("single_chat.html", request)
     else:
-        return templates.TemplateResponse("login.html", {"request": request})
+        return render_template("login.html", request)
 
 
 # Generate random channel id
@@ -637,7 +690,7 @@ async def single_chat(request: Request):
     """
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
         user = db.query(User).filter(User.id == user_id).first()
@@ -698,6 +751,7 @@ async def single_chat(request: Request):
                 friend_status_value = friend_status.status if friend_status else None
 
         return templates.TemplateResponse(
+            request,
             "single_chat.html",
             {
                 "request": request,
@@ -737,7 +791,7 @@ async def friend_chat_page(
     """
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         db = SessionLocal()
 
         user_id = s.loads(token, max_age=3600).get("user_id")
@@ -766,6 +820,7 @@ async def friend_chat_page(
             raise HTTPException(status_code=404, detail="Channel not found")
 
         return templates.TemplateResponse(
+            request,
             "friend_chat.html",
             {
                 "request": request,
@@ -780,7 +835,7 @@ async def friend_chat_page(
             },
         )
     else:
-        return templates.TemplateResponse("login.html", {"request": request})
+        return render_template("login.html", request)
 
 
 # Block friend
@@ -800,7 +855,7 @@ async def block_friend(request: Request, friend_id: int):
     """
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
@@ -824,9 +879,9 @@ async def block_friend(request: Request, friend_id: int):
         )
         db.commit()
 
-        return templates.TemplateResponse("single_chat.html", {"request": request})
+        return render_template("single_chat.html", request)
     else:
-        return templates.TemplateResponse("login.html", {"request": request})
+        return render_template("login.html", request)
 
 
 # Unblock friend
@@ -846,7 +901,7 @@ async def unblock_friend(request: Request, friend_id: int):
     """
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
@@ -871,9 +926,9 @@ async def unblock_friend(request: Request, friend_id: int):
         )
         db.commit()
 
-        return templates.TemplateResponse("single_chat.html", {"request": request})
+        return render_template("single_chat.html", request)
     else:
-        return templates.TemplateResponse("login.html", {"request": request})
+        return render_template("login.html", request)
 
 
 # Add friend
@@ -899,7 +954,7 @@ async def add_friend(request: Request, friend_id: int):
     """
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
@@ -933,9 +988,9 @@ async def add_friend(request: Request, friend_id: int):
             db.add(new_friendship)
             db.commit()
 
-        return templates.TemplateResponse("single_chat.html", {"request": request})
+        return render_template("single_chat.html", request)
     else:
-        return templates.TemplateResponse("login.html", {"request": request})
+        return render_template("login.html", request)
 
 
 # Accept friend requests
@@ -958,7 +1013,7 @@ async def accept_friend(request: Request, friend_id: int):
 
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
@@ -985,9 +1040,9 @@ async def accept_friend(request: Request, friend_id: int):
         for friend in friends:
             friend.avatar = b64encode(friend.avatar).decode()
 
-        return templates.TemplateResponse("single_chat.html", {"request": request})
+        return render_template("single_chat.html", request)
     else:
-        return templates.TemplateResponse("login.html", {"request": request})
+        return render_template("login.html", request)
 
 
 # Deny friend requests
@@ -1009,7 +1064,7 @@ async def deny_friend(request: Request, friend_id: int):
     """
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
@@ -1036,12 +1091,9 @@ async def deny_friend(request: Request, friend_id: int):
 
         db.commit()
 
-        return templates.TemplateResponse("single_chat.html", {"request": request})
+        return render_template("single_chat.html", request)
     else:
-        return templates.TemplateResponse("login.html", {"request": request})
-
-
-# Ai chat
+        return render_template("login.html", request)
 
 
 def chatbot_response(user_input: str):
@@ -1054,13 +1106,73 @@ def chatbot_response(user_input: str):
     Returns:
         str: The chatbot's response
     """
-    client = Client()
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": user_input}],
-    )
-    chatbot_response = response.choices[0].message.content
-    return chatbot_response
+    # In testing skip external API calls and return deterministic result
+    if environ.get("TESTING") == "1":
+        if ":" in user_input:
+            return user_input.split(":", 1)[1].strip()
+        return "test-response"
+
+    api_key = settings.ai_key.strip().strip('"').strip("'")
+    if api_key.lower().startswith("bearer "):
+        api_key = api_key.split(" ", 1)[1].strip()
+    if not api_key or api_key.lower() in {"your-nvidia-api-key", "changeme"}:
+        return "Chatbot service is not configured"
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": "mistralai/mistral-large-3-675b-instruct-2512",
+        "messages": [{"role": "user", "content": user_input}],
+        "max_tokens": 512,
+        "temperature": 0.15,
+        "top_p": 1.0,
+        "frequency_penalty": 0.0,
+        "presence_penalty": 0.0,
+        "stream": False,
+    }
+
+    for timeout_seconds in (30, 60):
+        try:
+            response = requests.post(
+                "https://integrate.api.nvidia.com/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=timeout_seconds,
+            )
+
+            match response.status_code:
+                case 401:
+                    return "Chatbot API authorization failed. Check AI_KEY in .env"
+                case 403:
+                    return "Chatbot API access denied for this account or model"
+                case 404:
+                    return "Chatbot model is unavailable. Verify configured model name"
+                case 429:
+                    return "Chatbot API rate limit reached. Try again in a moment"
+                case code if code >= 500:
+                    return "Chatbot provider is temporarily unavailable"
+                case _:
+                    return "Chatbot provider is temporarily unavailable"
+
+            response.raise_for_status()
+            data = response.json()
+            choices = data.get("choices", [])
+            if not choices:
+                return "Chatbot returned an empty response"
+            message = choices[0].get("message", {}).get("content")
+            if not message:
+                return "Chatbot response format is not supported"
+            return message
+
+        except requests.Timeout:
+            continue
+        except (requests.RequestException, ValueError):
+            return "Chatbot service is temporarily unavailable"
+
+    return "Chatbot request timed out. Try again"
 
 
 @router.get("/chatbot", dependencies=[Depends(is_authenticated)])
@@ -1078,7 +1190,7 @@ async def chatbot_page(request: Request):
     """
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
@@ -1091,6 +1203,7 @@ async def chatbot_page(request: Request):
         )
 
         return templates.TemplateResponse(
+            request,
             "chatbot_chat.html",
             {
                 "request": request,
@@ -1100,7 +1213,7 @@ async def chatbot_page(request: Request):
             },
         )
     else:
-        return templates.TemplateResponse("login.html", {"request": request})
+        return render_template("login.html", request)
 
 
 @router.post("/chatbot", dependencies=[Depends(is_authenticated)])
@@ -1119,7 +1232,7 @@ async def chatbot(request: Request, message: str = Form(...)):
     """
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
@@ -1146,6 +1259,7 @@ async def chatbot(request: Request, message: str = Form(...)):
         )
 
         return templates.TemplateResponse(
+            request,
             "chatbot_chat.html",
             {
                 "request": request,
@@ -1156,7 +1270,7 @@ async def chatbot(request: Request, message: str = Form(...)):
             },
         )
     else:
-        return templates.TemplateResponse("login.html", {"request": request})
+        return render_template("login.html", request)
 
 
 # Clear past conversations with chatbot
@@ -1175,13 +1289,13 @@ async def clear_chatbot_messages(request: Request):
     """
     token = request.cookies.get("access_token")
     if token:
-        s = Serializer(environ.get("Secret_key_chat"))
+        s = Serializer(settings.chat_secret_key)
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
         db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user_id).delete()
         db.commit()
 
-        return templates.TemplateResponse("chatbot_chat.html", {"request": request})
+        return render_template("chatbot_chat.html", request)
     else:
-        return templates.TemplateResponse("login.html", {"request": request})
+        return render_template("login.html", request)

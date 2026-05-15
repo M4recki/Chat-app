@@ -1,0 +1,13 @@
+# Development and testing dependencies
+pytest>=7.3
+pytest-cov>=4.0
+pytest-asyncio>=0.21
+httpx>=0.24
+requests>=2.31
+
+# Linters / formatters / static analysis
+black>=24.3
+isort>=5.13
+flake8>=6.0
+mypy>=1.6
+pre-commit>=3.3

@@ -1,0 +1,67 @@
+"""
+Application settings and configuration management using Pydantic.
+
+This module provides centralized configuration handling with environment variable
+support, type validation, and sensible defaults.
+"""
+
+from pydantic import ConfigDict
+from pydantic_settings import BaseSettings
+from typing import Optional
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parents[2]
+ENV_FILE = BASE_DIR / ".env"
+
+
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables and .env file."""
+
+    model_config = ConfigDict(
+        env_file=ENV_FILE,
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+
+    # Database
+    database_url: str = "postgresql://postgres:postgres@localhost:5432/chatapp"
+
+    # Security
+    secret_key: str = "change-me-in-production"
+    chat_secret_key: str = "change-me-in-production"
+    token_max_age: int = 3600  # 1 hour in seconds
+
+    # Email
+    email_receiver: str = "admin@example.com"
+    email_password: str = ""
+    email_sender: str = "noreply@chatapp.example.com"
+
+    # AI
+    ai_key: str = ""
+
+    # Application
+    environment: str = "development"
+    debug: bool = True
+    testing: bool = False
+    app_name: str = "Chat App"
+    app_version: str = "1.0.0"
+
+    # Server
+    host: str = "0.0.0.0"
+    port: int = 8000
+    workers: int = 1
+    reload: bool = True
+
+    @property
+    def is_production(self) -> bool:
+        """Check if running in production environment."""
+        return self.environment.lower() == "production"
+
+    @property
+    def is_testing(self) -> bool:
+        """Check if running in test mode."""
+        return self.testing or self.environment.lower() == "testing"
+
+
+# Global settings instance
+settings = Settings()

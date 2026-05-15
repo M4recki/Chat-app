@@ -1,28 +1,40 @@
+from importlib import import_module
+from os import environ
+from sys import path
+from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
-from sqlalchemy.orm import sessionmaker, Session
-from database import Base
 from contextlib import contextmanager
-from model_test import engine
-from project.python.main import app
 
+project_root = Path(__file__).parent.parent
+path.insert(0, str(project_root))
+path.insert(0, str(project_root / "project" / "python"))
 
-# Test client
+from model_test import engine as test_engine, TestingSessionLocal
 
+prod_db = import_module("database")
+prod_db.engine = test_engine
+prod_db.SessionLocal = TestingSessionLocal
+
+import models
+
+environ["TESTING"] = "1"
+environ["CHAT_SECRET_KEY"] = "test-secret"
+
+from main import app
 
 client = TestClient(app)
 
 
 @contextmanager
 def session_scope():
-    """
-    Provide a transactional scope around a series of operations.
+    """Provide a transactional scope around a series of operations.
 
     Yields a database session for use in with block. The session is
     automatically committed or rolled back based on exception.
     """
-    session = sessionmaker(bind=engine)()
+    session = TestingSessionLocal()
     try:
         yield session
         session.commit()
@@ -34,26 +46,17 @@ def session_scope():
 
 
 def clear_tables():
-    """
-    Clear contents of database tables before tests run.
-
-    Drops contents of all tables to ensure clean state for each test.
-    """
-    with session_scope() as session:
-        for table in Base.metadata.sorted_tables:
-            session.execute(text("DELETE FROM user_test;"))
-        session.commit()
+    """Reset test database by dropping and recreating all tables."""
+    models.Base.metadata.drop_all(bind=test_engine)
+    models.Base.metadata.create_all(bind=test_engine)
 
 
 @pytest.fixture(scope="function", autouse=True)
 def test_db_session():
-    """
-    Return a new database session for a test.
-
-    Each test method will use a separate transaction, and tables
-    will be cleared between tests.
-    """
+    """Provide a fresh DB session to tests and ensure teardown/cleanup."""
+    session = TestingSessionLocal()
     try:
-        yield engine
+        yield session
     finally:
+        session.close()
         clear_tables()

@@ -13,7 +13,7 @@ SQLALCHEMY_DATABASE_URL = URL.create(
     password="postgres",
     host="localhost",
     database="Chat app",
-    port=5434,
+    port=5432,
 )
 
 engine = create_engine(

@@ -1,6 +1,6 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-import uvicorn
+from uvicorn import run
 from pathlib import Path
 from datetime import datetime
 from json import dumps, loads
@@ -9,7 +9,6 @@ from database import SessionLocal
 from models import Message
 from connection_manager import ConnectionManager
 
-
 app = FastAPI()
 
 app.mount(
@@ -17,10 +16,6 @@ app.mount(
     StaticFiles(directory=Path(__file__).parent.parent / "static"),
     name="static",
 )
-
-
-# Websocket
-
 
 manager = ConnectionManager()
 
@@ -85,4 +80,4 @@ async def websocket_endpoint(
 app.include_router(router)
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", reload=True)
+    run("main:app", reload=True)

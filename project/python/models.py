@@ -7,11 +7,7 @@ from database import Base, engine
 
 
 class User(Base):
-    """
-    User model.
-
-    Represents a user in the system.
-    """
+    """User in the system."""
 
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
@@ -27,11 +23,7 @@ class User(Base):
 
 
 class Message(Base):
-    """
-    Message model.
-
-    Represents a message sent in a chat channel.
-    """
+    """Message in a chat channel."""
 
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True)
@@ -47,11 +39,7 @@ class Message(Base):
 
 
 class Channel(Base):
-    """
-    Channel model.
-
-    Represents a chat channel between users.
-    """
+    """Chat channel between users."""
 
     __tablename__ = "channels"
     id = Column(Integer, primary_key=True)
@@ -66,11 +54,7 @@ class Channel(Base):
 
 
 class Friend(Base):
-    """
-    Friend model.
-
-    Represents a friendship between users.
-    """
+    """Friendship between users."""
 
     __tablename__ = "friends"
     id = Column(Integer, primary_key=True)
@@ -88,11 +72,7 @@ class Friend(Base):
 
 
 class ChatbotMessage(Base):
-    """
-    Chatbot message model.
-
-    Represents a message sent to the chatbot.
-    """
+    """Message exchange with chatbot."""
 
     __tablename__ = "chatbot_messages"
     id = Column(Integer, primary_key=True)

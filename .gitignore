@@ -4,3 +4,5 @@ __pycache__/
 .pytest_cache/
 Chat_app.session.sql
 test.db
+.env
+.coverage
