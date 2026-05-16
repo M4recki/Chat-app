@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -36,27 +36,34 @@
         <div
           class="collapse navbar-collapse justify-content-end"
           id="navbarNav">
-          <ul class="navbar-nav float-end pt-3 me-3">
-
+          <ul
+            class="navbar-nav float-end pt-3 me-3 gap-3 gap-lg-5 align-items-lg-center">
             <!-- Logged user -->
             {% if is_authenticated %}
-            <li class="nav-item lead bold">
-              <div class="position-relative">
-                <img
-                  src="data:image/jpeg;base64,{{ user_image }}"
-                  class="nav-img user-image mx-2 position-relative"
-                  alt="{{ user_name }}'s avatar"
-                  data-bs-toggle="dropdown"
-                  aria-expanded="false" />
-                <ul class="dropdown-menu dropdown-menu-end">
-                  <li><a class="dropdown-item" href="{{ url_for('update_profile_page') }}">Update profile</a></li>
-                </ul>
+            <li class="nav-item lead bold d-flex align-items-center">
+              <div class="d-flex align-items-center gap-2">
+                <div class="position-relative dropdown profile-avatar-menu">
+                  <img
+                    src="data:image/jpeg;base64,{{ user_image }}"
+                    class="nav-img user-image"
+                    alt="{{ user_name }}'s avatar"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false" />
+                  <ul
+                    class="dropdown-menu dropdown-menu-start profile-avatar-dropdown">
+                    <li>
+                      <a
+                        class="dropdown-item"
+                        href="{{ url_for('update_profile_page') }}"
+                        >Update profile</a
+                      >
+                    </li>
+                  </ul>
+                </div>
+                <p class="nav-link text-white mb-0 lh-1" role="tab">
+                  Welcome back, {{user_name}}! 👋
+                </p>
               </div>
-            </li>
-            <li class="nav-item lead bold">
-              <p class="nav-link text-white" role="tab">
-                Welcome back, {{user_name}}! 👋
-              </p>
             </li>
             <li class="nav-item lead bold">
               <a

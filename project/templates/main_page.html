@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <!-- Head -->
@@ -12,27 +12,31 @@
 
     <!-- Main content -->
     <main>
-      <div class="container w-50 float-start ps-5">
-        <div class="d-flex">
-          <h1 class="pt-5 bold lh-base text-primary">
-            Chat app -
-            <br />
-            effective communication solution
-          </h1>
+      <section class="container-fluid px-4 px-lg-5 py-5">
+        <div class="row align-items-center g-5 py-4">
+          <div class="col-lg-6">
+            <h1 class="display-5 bold lh-base text-primary">
+              Chat app -
+              <br />
+              effective communication solution
+            </h1>
+            <p class="pt-4 lead bold">
+              Chat app is a simple and versatile application that allows you to
+              send text messages with your loved ones. Thanks to its intuitive
+              operation and rich functions, Chat app provides a convenient and
+              safe environment for communication on PC computers and mobile
+              devices.
+            </p>
+          </div>
+          <div class="col-lg-6 text-center text-lg-end">
+            <img
+              src="{{ url_for('static', path='/img/community.png') }}"
+              class="img-fluid d-none d-md-inline community-chat-image"
+              alt="community-chat" />
+          </div>
         </div>
-        <p class="pt-4 lead bold">
-          Chat app is a simple and versatile application that allows you to send
-          text messages with your loved ones. Thanks to its intuitive operation
-          and rich functions, Chat app provides a convenient and safe
-          environment for communication on PC computers and mobile devices.
-        </p>
-      </div>
-      <div class="container w-50 float-end ps-5 pt-5">
-        <img
-          src="{{ url_for('static', path='/img/community.png') }}"
-          class="d-none d-md-inline community-chat-image"
-          alt="community-chat" />
-      </div>
+      </section>
+
       <div class="container pt-5 align-items-center d-flex flex-column">
         <h2 class="pt-5 bold text-primary">Main Features:</h2>
         <div class="row text-center pt-5">

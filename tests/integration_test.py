@@ -63,7 +63,7 @@ def test_register_user(test_db_session):
         "XXXXXXXX",
         "XXXXXXXX@gmail.com",
         "XXXXXXXX",
-        "project/static/img/default avatar.jpg",
+        "project/static/img/default avatar.png",
     )
 
     response = client.post(
@@ -99,7 +99,7 @@ def test_login_user(test_db_session):
         "XXXXXXXX",
         "XXXXXXXX@gmail.com",
         "XXXXXXXX",
-        "project/static/img/default avatar.jpg",
+        "project/static/img/default avatar.png",
     )
 
     response = client.post(

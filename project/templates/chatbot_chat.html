@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <!-- Head -->
@@ -18,6 +18,21 @@
           {% include "sidebar.html" %}
 
           <section class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
+            <div id="chatbot-loading-overlay" class="chatbot-loading-overlay">
+              <div class="card chatbot-loading-card shadow-lg border-0">
+                <div class="card-body text-center py-4">
+                  <div
+                    class="spinner-border text-primary mb-3"
+                    role="status"
+                    aria-hidden="true"></div>
+                  <h5 class="mb-2 text-primary">Chatbot is thinking 🧠</h5>
+                  <p class="mb-0 text-muted">
+                    Please wait a moment for a reply.
+                  </p>
+                </div>
+              </div>
+            </div>
+
             <!-- Chatbot and user messages -->
             {% if chatbot_messages %} {% for chatbot_message in chatbot_messages
             %}
@@ -51,18 +66,19 @@
                 <form
                   action="/chatbot"
                   method="POST"
-                  class="d-flex flex-column">
-                  <div class="form-floating">
-                    <textarea
-                      type="text"
-                      cols="0"
-                      id="message"
-                      class="form-control textarea-height textarea-height mx-3 mt-5"
-                      name="message"
-                      placeholder="Message our chatbot..."
-                      required></textarea>
-                    <label for="floatingTextarea">Your message:</label>
-                  </div>
+                  class="d-flex flex-column chatbot-form"
+                  data-chatbot-form>
+                  <label for="message" class="form-label mb-2 ms-3 text-muted">
+                    Your message:
+                  </label>
+                  <textarea
+                    cols="0"
+                    id="message"
+                    class="form-control chatbot-textarea mx-3"
+                    name="message"
+                    rows="1"
+                    placeholder="Message our chatbot..."
+                    required></textarea>
                   <div class="d-flex justify-content-center">
                     <button
                       class="btn btn-primary btn-lg text-decoration-none text-dark bold my-3"
@@ -86,17 +102,18 @@
                 <form
                   action="/chatbot"
                   method="POST"
-                  class="d-flex flex-column">
-                  <div class="form-floating">
-                    <textarea
-                      type="text"
-                      cols="0"
-                      id="message"
-                      class="form-control textarea-height mt-5"
-                      name="message"
-                      required></textarea>
-                    <label for="floatingTextarea">Your message:</label>
-                  </div>
+                  class="d-flex flex-column chatbot-form"
+                  data-chatbot-form>
+                  <label for="message" class="form-label mb-2 ms-3 text-muted">
+                    Your message:
+                  </label>
+                  <textarea
+                    cols="0"
+                    id="message"
+                    class="form-control chatbot-textarea mx-3"
+                    name="message"
+                    rows="1"
+                    required></textarea>
                   <div class="d-flex justify-content-center">
                     <button
                       class="btn btn-primary btn-lg text-decoration-none text-dark bold my-3"
@@ -112,7 +129,9 @@
             {% endif %}
             <button
               class="btn btn-danger btn btn-primary btn-lg text-decoration-none text-dark bold mt-5 mx-3 mb-3 float-end"
-              onclick="document.getElementById('delete-confirmation').showModal()">
+              onclick="
+                document.getElementById('delete-confirmation').showModal()
+              ">
               Delete conversation
             </button>
             <dialog id="delete-confirmation">

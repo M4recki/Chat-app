@@ -4,10 +4,10 @@ from uvicorn import run
 from pathlib import Path
 from datetime import datetime
 from json import dumps, loads
-from routes import router
-from database import SessionLocal
-from models import Message
-from connection_manager import ConnectionManager
+from .routes import router
+from .database import SessionLocal
+from .models import Message
+from .connection_manager import ConnectionManager
 
 app = FastAPI()
 
@@ -80,4 +80,4 @@ async def websocket_endpoint(
 app.include_router(router)
 
 if __name__ == "__main__":
-    run("main:app", reload=True)
+    run("python.main:app", reload=True)

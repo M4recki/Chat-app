@@ -1,7 +1,6 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, LargeBinary
 from sqlalchemy.orm import relationship
-from database import Base, engine
-
+from .database import Base, engine
 
 # User table
 

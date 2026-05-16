@@ -8,7 +8,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
 from werkzeug.security import generate_password_hash, check_password_hash
 from hashlib import sha256
 from itsdangerous import URLSafeTimedSerializer as Serializer
@@ -24,15 +24,15 @@ from io import BytesIO
 from sqlalchemy.orm.exc import NoResultFound
 from base64 import b64encode, b64decode
 import requests
-from database import SessionLocal
-from settings import settings
-from models import User, Friend, ChatbotMessage, Message, Channel
+from .database import SessionLocal
+from .settings import settings
+from .models import User, Friend, ChatbotMessage, Message, Channel
 
 Image = import_module("PIL.Image")
 
 router = APIRouter()
 PROJECT_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_AVATAR_PATH = PROJECT_DIR / "static" / "img" / "default avatar.jpg"
+DEFAULT_AVATAR_PATH = PROJECT_DIR / "static" / "img" / "default avatar.png"
 
 
 # Authentication
@@ -212,7 +212,7 @@ def render_template(name: str, request: Request, **kwargs):
     context.update(kwargs)
     template = templates.get_template(name)
     html_content = template.render(context)
-    
+
     return HTMLResponse(content=html_content)
 
 
@@ -294,7 +294,18 @@ async def sign_up_data(
     )
 
     img_binary = BytesIO()
+
     with Image.open(DEFAULT_AVATAR_PATH) as img:
+        if img.mode in ("RGBA", "LA") or (
+            img.mode == "P" and "transparency" in img.info
+        ):
+            background = Image.new("RGB", img.size, (255, 255, 255))
+            background.paste(
+                img, mask=img.getchannel("A") if "A" in img.getbands() else None
+            )
+            img = background
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
         img.save(img_binary, format="JPEG")
     img_binary = img_binary.getvalue()
 
@@ -1257,6 +1268,15 @@ async def chatbot(request: Request, message: str = Form(...)):
         chatbot_messages = (
             db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
         )
+
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "message": message,
+                    "response": response,
+                }
+            )
 
         return templates.TemplateResponse(
             request,
