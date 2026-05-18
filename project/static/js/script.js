@@ -15,37 +15,42 @@ function DeleteConfirmationClose() {
 // Chatbot form submission with loading overlay and error handling
 
 document.addEventListener("DOMContentLoaded", () => {
+    const messageTextareas = document.querySelectorAll(".chatbot-textarea");
+
+    messageTextareas.forEach((textarea) => {
+        const resizeTextarea = () => {
+            textarea.style.height = "auto";
+            const nextHeight = Math.min(textarea.scrollHeight, 224);
+            textarea.style.height = `${nextHeight}px`;
+        };
+
+        resizeTextarea();
+        textarea.addEventListener("input", resizeTextarea);
+
+        textarea.addEventListener("keydown", (event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                const parentForm = textarea.closest("form");
+
+                if (!parentForm) {
+                    return;
+                }
+
+                if (parentForm.requestSubmit) {
+                    parentForm.requestSubmit();
+                } else {
+                    parentForm.submit();
+                }
+            }
+        });
+    });
+
     const chatbotForm = document.querySelector("form[action='/chatbot']");
     if (!chatbotForm) {
         return;
     }
 
     const loadingOverlay = document.getElementById("chatbot-loading-overlay");
-    const chatbotTextarea = chatbotForm.querySelector("textarea[name='message']");
-    
-    if (!chatbotTextarea) {
-        return;
-    }
-
-    const resizeChatbotTextarea = () => {
-        chatbotTextarea.style.height = "auto";
-        const nextHeight = Math.min(chatbotTextarea.scrollHeight, 224);
-        chatbotTextarea.style.height = `${nextHeight}px`;
-    };
-
-    resizeChatbotTextarea();
-    chatbotTextarea.addEventListener("input", resizeChatbotTextarea);
-
-    chatbotTextarea.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" && !event.shiftKey) {
-            event.preventDefault();
-            if (chatbotForm.requestSubmit) {
-                chatbotForm.requestSubmit();
-            } else {
-                chatbotForm.submit();
-            }
-        }
-    });
 
     chatbotForm.addEventListener("submit", async (event) => {
         event.preventDefault();

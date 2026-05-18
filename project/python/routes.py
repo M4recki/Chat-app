@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 from email.message import EmailMessage
 from ssl import create_default_context
 from smtplib import SMTP_SSL
+import logging
 from os import environ
 from importlib import import_module
 from io import BytesIO
@@ -512,6 +513,35 @@ async def search_user(request: Request):
             else:
                 friend_status_map[friend.user1_id] = friend.status
 
+        # Generate channel IDs for accepted friends
+
+        channel_ids = {}
+        for other_user in users:
+            if friend_status_map.get(other_user.id) == "accepted":
+                existing_channel = (
+                    db.query(Channel)
+                    .filter(
+                        (Channel.user1_id == user_id)
+                        & (Channel.user2_id == other_user.id)
+                        | (Channel.user1_id == other_user.id)
+                        & (Channel.user2_id == user_id)
+                    )
+                    .first()
+                )
+
+                if existing_channel:
+                    channel_ids[other_user.id] = existing_channel.channel_id
+                else:
+                    channel_id = generate_channel_id(user_id, other_user.id)
+                    new_channel = Channel(
+                        channel_id=channel_id,
+                        user1_id=user_id,
+                        user2_id=other_user.id,
+                    )
+                    db.add(new_channel)
+                    db.commit()
+                    channel_ids[other_user.id] = channel_id
+
         for user in users:
             user.avatar = b64encode(user.avatar).decode()
 
@@ -522,6 +552,7 @@ async def search_user(request: Request):
                 "request": request,
                 "users": users,
                 "friend_status_map": friend_status_map,
+                "channel_ids": channel_ids,
             },
         )
     else:
@@ -720,11 +751,15 @@ async def single_chat(request: Request):
         friend_status_value = None
         friend_avatar = None
         channel_ids = {}
+        friend_avatars = {}
+
+        # Build a map of friend IDs to their friendship status
 
         if friends:
             for friend in friends:
                 friend_id = friend.id
                 friend_avatar = b64encode(friend.avatar).decode()
+                friend_avatars[friend_id] = friend_avatar
 
                 existing_channel = (
                     db.query(Channel)
@@ -768,7 +803,7 @@ async def single_chat(request: Request):
                 "request": request,
                 "friends": friends,
                 "user": user,
-                "friend_avatar": friend_avatar,
+                "friend_avatars": friend_avatars,
                 "friend_status": friend_status_value,
                 "channel_ids": channel_ids,
             },
@@ -1107,27 +1142,20 @@ async def deny_friend(request: Request, friend_id: int):
         return render_template("login.html", request)
 
 
-def chatbot_response(user_input: str):
-    """
-    Get a response from the chatbot for the given user input.
-
-    Args:
-        user_input (str): The user's message
-
-    Returns:
-        str: The chatbot's response
-    """
-    # In testing skip external API calls and return deterministic result
+def chatbot_response(user_input: str) -> str:
     if environ.get("TESTING") == "1":
         if ":" in user_input:
             return user_input.split(":", 1)[1].strip()
         return "test-response"
 
-    api_key = settings.ai_key.strip().strip('"').strip("'")
+    api_key = settings.ai_key.strip().strip('"\'')
     if api_key.lower().startswith("bearer "):
         api_key = api_key.split(" ", 1)[1].strip()
     if not api_key or api_key.lower() in {"your-nvidia-api-key", "changeme"}:
         return "Chatbot service is not configured"
+
+    log = logging.getLogger("chatbot")
+    debug = getattr(settings, "debug", False)
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -1145,16 +1173,21 @@ def chatbot_response(user_input: str):
         "stream": False,
     }
 
-    for timeout_seconds in (30, 60):
+    for timeout in (30, 60):
         try:
             response = requests.post(
                 "https://integrate.api.nvidia.com/v1/chat/completions",
                 headers=headers,
                 json=payload,
-                timeout=timeout_seconds,
+                timeout=timeout,
             )
 
+            if debug:
+                log.debug("Chatbot API response status: %s", response.status_code)
+
             match response.status_code:
+                case 200:
+                    pass
                 case 401:
                     return "Chatbot API authorization failed. Check AI_KEY in .env"
                 case 403:
@@ -1166,22 +1199,22 @@ def chatbot_response(user_input: str):
                 case code if code >= 500:
                     return "Chatbot provider is temporarily unavailable"
                 case _:
-                    return "Chatbot provider is temporarily unavailable"
+                    return f"Chatbot provider returned status {response.status_code}"
 
-            response.raise_for_status()
             data = response.json()
-            choices = data.get("choices", [])
-            if not choices:
-                return "Chatbot returned an empty response"
-            message = choices[0].get("message", {}).get("content")
+            message = data.get("choices", [{}])[0].get("message", {}).get("content")
             if not message:
-                return "Chatbot response format is not supported"
+                return "Chatbot returned an empty response"
             return message
 
         except requests.Timeout:
+            if debug:
+                log.warning("Chatbot API timeout with %ss", timeout)
             continue
-        except (requests.RequestException, ValueError):
-            return "Chatbot service is temporarily unavailable"
+        except (requests.RequestException, ValueError) as e:
+            if debug:
+                log.exception("Chatbot API error: %s", e)
+            return "Chatbot request failed"
 
     return "Chatbot request timed out. Try again"
 
@@ -1212,6 +1245,7 @@ async def chatbot_page(request: Request):
         chatbot_messages = (
             db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
         )
+        db.close()
 
         return templates.TemplateResponse(
             request,
@@ -1268,6 +1302,7 @@ async def chatbot(request: Request, message: str = Form(...)):
         chatbot_messages = (
             db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
         )
+        db.close()
 
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return JSONResponse(
@@ -1305,7 +1340,7 @@ async def clear_chatbot_messages(request: Request):
         request (Request): The HTTP request
 
     Returns:
-        TemplateResponse: The chatbot chat page
+        RedirectResponse: Redirect to chatbot page
     """
     token = request.cookies.get("access_token")
     if token:
@@ -1313,9 +1348,15 @@ async def clear_chatbot_messages(request: Request):
         db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
-        db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user_id).delete()
-        db.commit()
+        try:
+            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user_id).delete()
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            print(f"Error deleting chatbot messages: {e}")
+        finally:
+            db.close()
 
-        return render_template("chatbot_chat.html", request)
+        return RedirectResponse(url="/chatbot", status_code=303)
     else:
-        return render_template("login.html", request)
+        return RedirectResponse(url="/login", status_code=303)

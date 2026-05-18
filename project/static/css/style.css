@@ -12,6 +12,7 @@ main {
   flex: 1 0 auto;
   display: flow-root;
   width: 100%;
+  padding-bottom: 3rem;
 }
 
 /* Header color and position */
@@ -163,8 +164,6 @@ header {
 
 .sidebar-panel {
   background-color: #ffffff !important;
-  border-right: 1px solid #e9ecef;
-  box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.03);
   align-items: flex-start !important;
   justify-content: flex-start !important;
 }
@@ -179,6 +178,112 @@ header {
 
 .sidebar-sticky {
   width: 100%;
+}
+
+/* Sidebar content pages */
+
+.search-users-shell {
+  max-width: 76rem;
+}
+
+.search-users-header {
+  max-width: 42rem;
+  margin: 0 0 1.75rem;
+  width: 100%;
+}
+
+.sidebar-page-title {
+  margin: 0;
+  font-size: clamp(2rem, 2vw + 1rem, 2.75rem);
+  line-height: 1.1;
+}
+
+.sidebar-page-subtitle {
+  margin: 0.65rem 0 0;
+}
+
+.search-users-grid {
+  width: 100%;
+}
+
+.sidebar-list-card {
+  width: 100%;
+  max-width: 18rem;
+  min-height: 18rem;
+}
+
+.search-user-card {
+  border: 1px solid #e6edf7;
+  border-radius: 1.1rem;
+  box-shadow: 0 10px 28px rgba(13, 110, 253, 0.05);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.search-user-card:hover {
+  transform: translateY(-3px);
+  border-color: #d7e4fb;
+  box-shadow: 0 14px 34px rgba(13, 110, 253, 0.09);
+}
+
+.search-user-card-body {
+  padding: 1.15rem 1rem 1.25rem;
+}
+
+.search-user-card .card-body:last-child {
+  padding-bottom: 0;
+}
+
+.search-user-card p {
+  word-break: break-word;
+}
+
+.sidebar-user-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 7rem;
+  padding: 0.35rem 0.8rem;
+  margin-top: 0.25rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.sidebar-user-status-accepted {
+  color: #0d6efd;
+  background: rgba(13, 110, 253, 0.1);
+}
+
+.sidebar-user-status-pending {
+  color: #6c757d;
+  background: rgba(108, 117, 125, 0.1);
+}
+
+.sidebar-empty-state {
+  max-width: 28rem;
+  margin: 2rem auto 0;
+  padding: 2.1rem 1.5rem;
+  border: 1px dashed #d9e3f7;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  box-shadow: 0 8px 24px rgba(13, 110, 253, 0.06);
+}
+
+.sidebar-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: 0.75rem;
+  border-radius: 50%;
+  background: rgba(13, 110, 253, 0.1);
+  color: #0d6efd;
+  font-size: 1.35rem;
 }
 
 /* Chatbot loading overlay */
@@ -209,9 +314,7 @@ header {
 /* Footer */
 
 .footer-bg-color {
-  margin-top: auto;
-  background-color: #ffffff;
-  border-top: 1px solid #f1f3f5;
+  border-top: none;
 }
 
 /* Friends page alignment */

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <!-- Head -->
@@ -17,38 +17,69 @@
           <!-- Sidebar -->
           {% include "sidebar.html" %}
 
-          <section class="ml-sm-auto col-lg-10 px-md-4">
-            <h1 class="mt-5 text-center">All users</h1>
-            <div
-              class="d-flex flex-nowrap overflow-auto mb-3 justify-content-center mt-4">
-              <!-- List of all users -->
-              {% if users %} {% for user in users %} {% if user.id not in
-              friend_status_map or (user.id in friend_status_map and
-              friend_status_map[user.id] not in ["accepted", "pending"]) %}
-              <div class="card mb-2 me-3">
-                <div class="card-body text-center">
-                  <img
-                    class="card-img-top user-image mx-auto mt-3"
-                    src="data:image/jpeg;base64,{{ user.avatar }}"
-                    alt="{{ user.name }}'s avatar" />
-                  <div class="card-body">
-                    <p class="card-title lead">
-                      {{ user.name }} {{ user.surname }}
-                    </p>
-                    <a
-                      href="{{ url_for('add_friend', friend_id=user.id) }}"
-                      class="btn btn-primary mt-3"
-                      >Add friend</a
-                    >
+          <section
+            class="ml-sm-auto col-lg-10 px-md-4 py-4 sidebar-page-shell search-users-shell px-3 d-flex flex-column align-items-center">
+            <div class="search-users-header text-center">
+              <h1 class="sidebar-page-title">All users</h1>
+              <p class="lead text-muted sidebar-page-subtitle">
+                Browse the people currently available on the platform.
+              </p>
+            </div>
+
+            {% set visible_users = namespace(count=0) %} {% if users %}
+            <div class="row justify-content-center g-4 search-users-grid">
+              {% for user in users %} {% set visible_users.count =
+              visible_users.count + 1 %}
+              <div
+                class="col-12 col-sm-6 col-xl-4 d-flex justify-content-center">
+                <div class="card sidebar-list-card search-user-card">
+                  <div class="card-body text-center search-user-card-body">
+                    <img
+                      class="card-img-top user-image mx-auto mt-2"
+                      src="data:image/jpeg;base64,{{ user.avatar }}"
+                      alt="{{ user.name }}'s avatar" />
+                    <div class="card-body px-2 pb-2">
+                      <p class="card-title lead mb-2">
+                        {{ user.name }} {{ user.surname }}
+                      </p>
+                      {% if friend_status_map.get(user.id) == 'accepted' %}
+                      <div
+                        class="sidebar-user-status sidebar-user-status-accepted">
+                        Friend
+                      </div>
+                      <a
+                        href="{{ url_for('friend_chat_page', channel_id=channel_ids[user.id], friend_id=user.id) }}"
+                        class="btn btn-outline-primary mt-3 w-100">
+                        Open chat
+                      </a>
+                      {% elif friend_status_map.get(user.id) == 'pending' %}
+                      <div
+                        class="sidebar-user-status sidebar-user-status-pending">
+                        Request sent
+                      </div>
+                      <button class="btn btn-secondary mt-3 w-100" disabled>
+                        Request pending
+                      </button>
+                      {% else %}
+                      <a
+                        href="{{ url_for('add_friend', friend_id=user.id) }}"
+                        class="btn btn-primary mt-3 w-100">
+                        Add friend
+                      </a>
+                      {% endif %}
+                    </div>
                   </div>
                 </div>
               </div>
-              {% endif %} {% endfor %} {% else %}
-              <p class="text-center mt-4 lead col-12">
-                There are no users on this website at the moment.
-              </p>
-              {% endif %}
+              {% endfor %}
             </div>
+            {% endif %} {% if visible_users.count == 0 %}
+            <div class="sidebar-empty-state text-center">
+              <i class="bi bi-people sidebar-empty-icon"></i>
+              <h2 class="h4 mb-2">No users yet</h2>
+              <p class="lead mb-0 text-muted">There are no users currently.</p>
+            </div>
+            {% endif %}
           </section>
         </div>
       </div>

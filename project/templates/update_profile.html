@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <!-- Head -->
@@ -17,10 +17,9 @@
           <!-- Sidebar -->
           {% include "sidebar.html" %}
 
-          <section class="col-md-9 ml-sm-auto col-lg-10 px-md-4">
-            <h1 class="text-center bold text-primary main-word py-5">
-              Update your profile
-            </h1>
+          <section
+            class="col-md-9 ml-sm-auto col-lg-10 px-md-4 py-4 sidebar-page-shell">
+            <h1 class="text-center bold main-word py-5">Update your profile</h1>
             <form
               action="/update_profile"
               method="post"

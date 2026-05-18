@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <!-- Head -->
@@ -17,68 +17,79 @@
           <!-- Sidebar -->
           {% include "sidebar.html" %}
 
-          <section class="ml-sm-auto col-lg-10 px-md-4">
-            <h1 class="mt-5 text-center">Friend requests</h1>
-            <div
-              class="d-flex flex-nowrap overflow-auto mb-3 justify-content-center mt-4">
-              <!-- Friend requests -->
-              {% if friend_requests %} {% for friend_request in friend_requests
-              %}
+          <section
+            class="ml-sm-auto col-lg-10 px-md-4 py-4 sidebar-page-shell search-users-shell px-3 d-flex flex-column align-items-center">
+            <div class="search-users-header text-center">
+              <h1 class="sidebar-page-title">Friend requests</h1>
+              <p class="lead text-muted sidebar-page-subtitle">
+                Review and manage pending invitations.
+              </p>
+            </div>
 
-              <div class="card mb-2 me-3">
-                <div class="card-body text-center">
-                  <img
-                    class="card-img-top user-image mx-auto mt-3"
-                    src="data:image/jpeg;base64,{{ friend_request.user1.avatar }}"
-                    alt="{{ friend_request.user1.name }}'s avatar" />
-                  <div class="card-body">
-                    <p class="card-title lead">
-                      {{ friend_request.user1.name }} {{
-                      friend_request.user1.surname }}
-                    </p>
+            {% if friend_requests %}
+            <div class="row justify-content-center g-4 search-users-grid w-100">
+              {% for friend_request in friend_requests %}
+              <div
+                class="col-12 col-sm-6 col-xl-4 d-flex justify-content-center">
+                <div class="card sidebar-list-card search-user-card">
+                  <div class="card-body text-center search-user-card-body">
+                    <img
+                      class="card-img-top user-image mx-auto mt-2"
+                      src="data:image/jpeg;base64,{{ friend_request.user1.avatar }}"
+                      alt="{{ friend_request.user1.name }}'s avatar" />
+                    <div class="card-body px-2 pb-2">
+                      <p class="card-title lead mb-2">
+                        {{ friend_request.user1.name }} {{
+                        friend_request.user1.surname }}
+                      </p>
+                      <p class="text-muted mb-3">Wants to be your friend.</p>
+                      <div class="d-grid gap-2">
+                        <a
+                          href="{{ url_for('accept_friend', friend_id=friend_request.user1_id) }}"
+                          class="btn btn-success">
+                          Accept
+                        </a>
+                        <button
+                          class="btn btn-outline-danger"
+                          onclick="document.getElementById('delete-confirmation-{{ friend_request.user1_id }}').showModal()">
+                          Reject
+                        </button>
+                      </div>
+                    </div>
                   </div>
+                  <dialog
+                    id="delete-confirmation-{{ friend_request.user1_id }}">
+                    Are you sure you want to reject this friend request?
+                    <div
+                      class="button-container my-5 d-flex justify-content-center">
+                      <button
+                        class="btn btn-success me-3 text-dark"
+                        id="close-dialog"
+                        onclick="DeleteConfirmationClose()">
+                        <label for="cancel" class="btn-text">Cancel</label>
+                      </button>
+                      <a
+                        href="{{ url_for('deny_friend', friend_id=friend_request.user1_id) }}">
+                        <button class="btn btn-danger text-dark">
+                          <label for="delete" class="btn-text">Confirm</label>
+                        </button>
+                      </a>
+                    </div>
+                  </dialog>
                 </div>
-                <p class="mx-3">
-                  {{ friend_request.user1.name }} wants to be your friend.
-                </p>
-                <a
-                  href="{{ url_for('accept_friend', friend_id=friend_request.user1_id) }}"
-                  class="btn btn-success mt-3 mx-3"
-                  >Accept</a
-                >
-                <button
-                  class="btn btn-danger mt-3 mx-3 mb-3"
-                  onclick="document.getElementById('delete-confirmation').showModal()">
-                  <label for="delete" class="btn-text">Reject</label>
-                </button>
-                <dialog id="delete-confirmation">
-                  Are you sure you want to reject this friend request?
-                  <div
-                    class="button-container my-5 d-flex justify-content-center">
-                    <button
-                      class="btn btn-success me-3 text-dark"
-                      id="close-dialog"
-                      onclick="DeleteConfirmationClose()">
-                      <label for="cancel" class="btn-text">Cancel</label>
-                    </button>
-                    <a
-                      href="{{ url_for('deny_friend', friend_id=friend_request.user1_id) }}"
-                      ><button class="btn btn-danger text-dark">
-                        <label for="delete" class="btn-text">Confirm</label>
-                      </button></a
-                    >
-                  </div>
-                </dialog>
               </div>
+              {% endfor %}
+            </div>
+            {% else %}
 
-              <!-- No friend requests -->
-              {% endfor %} {% else %}
-
-              <p class="text-center mt-4 lead col-12">
+            <div class="sidebar-empty-state text-center">
+              <i class="bi bi-person-x sidebar-empty-icon"></i>
+              <h2 class="h4 mb-2">No pending requests</h2>
+              <p class="lead mb-0 text-muted">
                 There are no friend requests at the moment.
               </p>
-              {% endif %}
             </div>
+            {% endif %}
           </section>
         </div>
       </div>

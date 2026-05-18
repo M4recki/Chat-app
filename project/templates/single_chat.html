@@ -17,53 +17,68 @@
           <!-- Sidebar -->
           {% include "sidebar.html" %}
 
-          <section class="col-lg-10 friends-layout">
-            <h1 class="mt-5 text-center">Your friends</h1>
+          <section
+            class="ml-sm-auto col-lg-10 px-md-4 py-4 sidebar-page-shell search-users-shell px-3 d-flex flex-column align-items-center">
+            <div class="search-users-header text-center">
+              <h1 class="sidebar-page-title">Your friends</h1>
+              <p class="lead text-muted sidebar-page-subtitle">
+                Start a conversation or add a new friend.
+              </p>
+            </div>
 
-            <!-- Add new friend -->
-            <div class="d-flex overflow-auto justify-content-center mb-3 mt-4">
-              <div class="row">
-                <div class="col-md d-flex">
-                  <div class="card card-block mb-2 mx-3">
-                    <a
-                      href="{{ url_for('search_user') }}"
-                      class="text-decoration-none">
-                      <div class="card-body text-center">
-                        <i
-                          class="bi bi-person-plus icon-size card-img-top mt-3 mx-auto"></i>
-                        <p class="card-title lead mt-4">Add new friend</p>
-                      </div>
-                    </a>
-                  </div>
+            {% if friends %}
+            <div class="row justify-content-center g-4 search-users-grid w-100">
+              <div
+                class="col-12 col-sm-6 col-xl-4 d-flex justify-content-center">
+                <div class="card sidebar-list-card search-user-card">
+                  <a
+                    href="{{ url_for('search_user') }}"
+                    class="text-decoration-none text-body">
+                    <div class="card-body text-center search-user-card-body">
+                      <i class="bi bi-person-plus icon-size mt-2"></i>
+                      <p class="card-title lead mt-4 mb-2">Add new friend</p>
+                      <p class="text-muted mb-0">
+                        Find someone already registered.
+                      </p>
+                    </div>
+                  </a>
                 </div>
               </div>
 
-              <!-- List of all friends -->
               {% for friend in friends %}
-              <div class="row">
-                <div class="col-md d-flex">
-                  <div class="card card-block mb-2 me-3">
-                    <a
-                      href="{{ url_for('friend_chat_page', channel_id=channel_ids[friend.id], friend_id=friend.id) }}"
-                      class="text-decoration-none">
-                      <div class="card-body text-center">
-                        <img
-                          class="card-img-top user-image mx-auto mt-3"
-                          src="data:image/jpeg;base64,{{ friend_avatar }}"
-                          alt="{{ friend.name }}'s avatar" />
-                        <div class="card-body">
-                          <p class="card-title lead text-primary">
-                            {{ friend.name }} {{ friend.surname }}
-                          </p>
-                        </div>
+              <div
+                class="col-12 col-sm-6 col-xl-4 d-flex justify-content-center">
+                <div class="card sidebar-list-card search-user-card">
+                  <a
+                    href="{{ url_for('friend_chat_page', channel_id=channel_ids[friend.id], friend_id=friend.id) }}"
+                    class="text-decoration-none text-body">
+                    <div class="card-body text-center search-user-card-body">
+                      <img
+                        class="card-img-top user-image mx-auto mt-2"
+                        src="data:image/jpeg;base64,{{ friend_avatars[friend.id] }}"
+                        alt="{{ friend.name }}'s avatar" />
+                      <div class="card-body px-2 pb-2">
+                        <p class="card-title lead text-primary mb-2">
+                          {{ friend.name }} {{ friend.surname }}
+                        </p>
+                        <p class="text-muted mb-0">Open your conversation.</p>
                       </div>
-                    </a>
-                  </div>
+                    </div>
+                  </a>
                 </div>
               </div>
-
               {% endfor %}
             </div>
+
+            {% else %}
+            <div class="sidebar-empty-state text-center">
+              <i class="bi bi-chat-dots sidebar-empty-icon"></i>
+              <h2 class="h4 mb-2">No friends yet</h2>
+              <p class="lead mb-0 text-muted">
+                Add your first friend to start chatting.
+              </p>
+            </div>
+            {% endif %}
           </section>
         </div>
       </div>
