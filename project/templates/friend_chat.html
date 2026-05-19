@@ -63,7 +63,7 @@
                       name="message"
                       autocomplete="off"
                       required></textarea>
-                    <label class="z-0 position-absolute" for="floatingTextarea"
+                    <label class="z-0 position-absolute" for="messageText"
                       >Your message:</label
                     >
                   </div>
@@ -98,7 +98,7 @@
                       name="message"
                       autocomplete="off"
                       required></textarea>
-                    <label class="z-0 position-absolute" for="floatingTextarea"
+                    <label class="z-0 position-absolute" for="messageText"
                       >Your message:</label
                     >
                   </div>
@@ -196,12 +196,10 @@
                   class="btn btn-success me-3 text-dark"
                   id="close-dialog"
                   onclick="DeleteConfirmationClose()">
-                  <label for="cancel" class="btn-text">Cancel</label>
+                  Cancel
                 </button>
                 <a href="{{ url_for('block_friend', friend_id=friend.id) }}"
-                  ><button class="btn btn-danger text-dark">
-                    <label for="delete" class="btn-text">Confirm</label>
-                  </button></a
+                  ><button class="btn btn-danger text-dark">Confirm</button></a
                 >
               </div>
             </dialog>
@@ -220,12 +218,10 @@
                   class="btn btn-success me-3 text-dark"
                   id="close-dialog"
                   onclick="DeleteConfirmationClose()">
-                  <label for="cancel" class="btn-text">Cancel</label>
+                  Cancel
                 </button>
                 <a href="{{ url_for('unblock_friend', friend_id=friend.id) }}"
-                  ><button class="btn btn-danger text-dark">
-                    <label for="delete" class="btn-text">Confirm</label>
-                  </button></a
+                  ><button class="btn btn-danger text-dark">Confirm</button></a
                 >
               </div>
             </dialog>

@@ -24,7 +24,7 @@ from importlib import import_module
 from io import BytesIO
 from sqlalchemy.orm.exc import NoResultFound
 from base64 import b64encode, b64decode
-import requests
+from openai import OpenAI
 from .database import SessionLocal
 from .settings import settings
 from .models import User, Friend, ChatbotMessage, Message, Channel
@@ -100,7 +100,35 @@ def is_authenticated(request: Request):
 
 def get_user(user_id):
     db = SessionLocal()
-    return db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id).first()
+    db.close()
+    return user
+
+
+def get_user_from_request(request: Request, max_age: int = 3600):
+    token = request.cookies.get("access_token")
+    if not token:
+        return None, None
+
+    s = Serializer(settings.chat_secret_key)
+    try:
+        user_id = s.loads(token, max_age=max_age).get("user_id")
+    except (SignatureExpired, BadSignature):
+        return None, None
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+    finally:
+        db.close()
+
+    return user, user_id
+
+
+def encode_avatar(user):
+    if user and user.avatar:
+        return b64encode(user.avatar).decode()
+    return ""
 
 
 # User image
@@ -119,21 +147,25 @@ def user_image(request: Request):
         return {"user_image": ""}
 
     token = request.cookies.get("access_token")
-    if token:
-        s = Serializer(settings.chat_secret_key)
-        try:
-            user_id = s.loads(token, max_age=3600).get("user_id")
-            db = SessionLocal()
-            user = db.query(User).filter(User.id == user_id).first()
-            db.close()
-            if user and user.avatar:
-                user.avatar = b64encode(user.avatar).decode()
-                return {"user_image": user.avatar}
-            return {"user_image": ""}
-        except:
-            return {"user_image": ""}
-    else:
+    if not token:
         return {"user_image": ""}
+
+    s = Serializer(settings.chat_secret_key)
+    try:
+        user_id = s.loads(token, max_age=3600).get("user_id")
+    except (SignatureExpired, BadSignature):
+        return {"user_image": ""}
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+    finally:
+        db.close()
+
+    if user and user.avatar:
+        user.avatar = b64encode(user.avatar).decode()
+        return {"user_image": user.avatar}
+    return {"user_image": ""}
 
 
 # User name
@@ -152,20 +184,24 @@ def user_name(request: Request):
         return {"user_name": None}
 
     token = request.cookies.get("access_token")
-    if token:
-        s = Serializer(settings.chat_secret_key)
-        try:
-            user_id = s.loads(token, max_age=3600).get("user_id")
-            db = SessionLocal()
-            user = db.query(User).filter(User.id == user_id).first()
-            db.close()
-            if user:
-                return {"user_name": user.name}
-            return {"user_name": None}
-        except:
-            return {"user_name": None}
-    else:
+    if not token:
         return {"user_name": None}
+
+    s = Serializer(settings.chat_secret_key)
+    try:
+        user_id = s.loads(token, max_age=3600).get("user_id")
+    except (SignatureExpired, BadSignature):
+        return {"user_name": None}
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+    finally:
+        db.close()
+
+    if user:
+        return {"user_name": user.name}
+    return {"user_name": None}
 
 
 # Current year in footer
@@ -295,19 +331,8 @@ async def sign_up_data(
     )
 
     img_binary = BytesIO()
-
     with Image.open(DEFAULT_AVATAR_PATH) as img:
-        if img.mode in ("RGBA", "LA") or (
-            img.mode == "P" and "transparency" in img.info
-        ):
-            background = Image.new("RGB", img.size, (255, 255, 255))
-            background.paste(
-                img, mask=img.getchannel("A") if "A" in img.getbands() else None
-            )
-            img = background
-        elif img.mode != "RGB":
-            img = img.convert("RGB")
-        img.save(img_binary, format="JPEG")
+        img.save(img_binary, format="PNG")
     img_binary = img_binary.getvalue()
 
     new_user = User(
@@ -513,35 +538,6 @@ async def search_user(request: Request):
             else:
                 friend_status_map[friend.user1_id] = friend.status
 
-        # Generate channel IDs for accepted friends
-
-        channel_ids = {}
-        for other_user in users:
-            if friend_status_map.get(other_user.id) == "accepted":
-                existing_channel = (
-                    db.query(Channel)
-                    .filter(
-                        (Channel.user1_id == user_id)
-                        & (Channel.user2_id == other_user.id)
-                        | (Channel.user1_id == other_user.id)
-                        & (Channel.user2_id == user_id)
-                    )
-                    .first()
-                )
-
-                if existing_channel:
-                    channel_ids[other_user.id] = existing_channel.channel_id
-                else:
-                    channel_id = generate_channel_id(user_id, other_user.id)
-                    new_channel = Channel(
-                        channel_id=channel_id,
-                        user1_id=user_id,
-                        user2_id=other_user.id,
-                    )
-                    db.add(new_channel)
-                    db.commit()
-                    channel_ids[other_user.id] = channel_id
-
         for user in users:
             user.avatar = b64encode(user.avatar).decode()
 
@@ -552,7 +548,6 @@ async def search_user(request: Request):
                 "request": request,
                 "users": users,
                 "friend_status_map": friend_status_map,
-                "channel_ids": channel_ids,
             },
         )
     else:
@@ -611,20 +606,15 @@ async def update_profile_page(request: Request):
     Returns:
         Response: Update profile page template
     """
-    token = request.cookies.get("access_token")
-    if token:
-        s = Serializer(settings.chat_secret_key)
-        db = SessionLocal()
-        user_id = s.loads(token, max_age=3600).get("user_id")
-        user = db.query(User).filter(User.id == user_id).first()
-
-        return templates.TemplateResponse(
-            request,
-            "update_profile.html",
-            {"request": request, "user": user, "errors": {}},
-        )
-    else:
+    user, _ = get_user_from_request(request)
+    if not user:
         return render_template("login.html", request)
+
+    return templates.TemplateResponse(
+        request,
+        "update_profile.html",
+        {"request": request, "user": user, "errors": {}},
+    )
 
 
 @router.post("/update_profile", dependencies=[Depends(is_authenticated)])
@@ -651,53 +641,46 @@ async def update_profile_data(
     Returns:
         Response: Redirect or update profile template
     """
-    token = request.cookies.get("access_token")
-    if token:
-        s = Serializer(settings.chat_secret_key)
-        db = SessionLocal()
-        user_id = s.loads(token, max_age=3600).get("user_id")
-        user = db.query(User).filter(User.id == user_id).first()
-
-        errors = {}
-
-        if password is not None and not password.isalnum():
-            errors["password"] = "Password must contain only letters and numbers"
-
-        if password != confirm_password:
-            errors["confirm_password"] = "Passwords do not match"
-
-        if errors:
-            return templates.TemplateResponse(
-                request,
-                "update_profile.html",
-                {"request": request, "user": user, "errors": errors},
-            )
-
-        if avatar and avatar.content_type:
-            if avatar.content_type not in ["image/jpeg", "image/png"]:
-                errors["avatar"] = "Avatar must be a JPEG or PNG file"
-            else:
-                avatar_data = await avatar.read()
-                img_binary = BytesIO()
-                img_binary.write(avatar_data)
-                user.avatar = img_binary.getvalue()
-
-        updated_user = User(
-            id=user_id,
-            name=name,
-            surname=surname,
-            email=email,
-            password=password,
-            avatar=user.avatar,
-        )
-        db.commit()
-
-        s = Serializer(settings.chat_secret_key)
-        token = s.dumps({"user_id": user_id})
-
-        return render_template("single_chat.html", request)
-    else:
+    user, user_id = get_user_from_request(request)
+    if not user:
         return render_template("login.html", request)
+
+    db = SessionLocal()
+    errors = {}
+
+    if password is not None and not password.isalnum():
+        errors["password"] = "Password must contain only letters and numbers"
+
+    if password != confirm_password:
+        errors["confirm_password"] = "Passwords do not match"
+
+    if errors:
+        return templates.TemplateResponse(
+            request,
+            "update_profile.html",
+            {"request": request, "user": user, "errors": errors},
+        )
+
+    if avatar and avatar.content_type:
+        if avatar.content_type not in ["image/jpeg", "image/png"]:
+            errors["avatar"] = "Avatar must be a JPEG or PNG file"
+        else:
+            avatar_data = await avatar.read()
+            img_binary = BytesIO()
+            img_binary.write(avatar_data)
+            user.avatar = img_binary.getvalue()
+
+    updated_user = User(
+        id=user_id,
+        name=name,
+        surname=surname,
+        email=email,
+        password=password,
+        avatar=user.avatar,
+    )
+    db.commit()
+
+    return render_template("single_chat.html", request)
 
 
 # Generate random channel id
@@ -730,84 +713,75 @@ async def single_chat(request: Request):
     Returns:
         Response: Single chat template
     """
-    token = request.cookies.get("access_token")
-    if token:
-        s = Serializer(settings.chat_secret_key)
-        db = SessionLocal()
-        user_id = s.loads(token, max_age=3600).get("user_id")
-        user = db.query(User).filter(User.id == user_id).first()
+    user, user_id = get_user_from_request(request)
+    if not user:
+        return render_template("login.html", request)
 
-        friends = (
-            db.query(User)
-            .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
-            .filter(
-                Friend.status == "accepted",
-                ((Friend.user1_id == user_id) & (User.id == Friend.user2_id))
-                | ((Friend.user2_id == user_id) & (User.id == Friend.user1_id)),
+    db = SessionLocal()
+
+    friends = (
+        db.query(User)
+        .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
+        .filter(
+            Friend.status == "accepted",
+            ((Friend.user1_id == user_id) & (User.id == Friend.user2_id))
+            | ((Friend.user2_id == user_id) & (User.id == Friend.user1_id)),
+        )
+        .all()
+    )
+
+    friend_status_value = None
+    friend_avatars = {}
+    channel_ids = {}
+
+    if friends:
+        for friend in friends:
+            friend_id = friend.id
+            friend_avatars[friend_id] = b64encode(friend.avatar).decode()
+
+            existing_channel = (
+                db.query(Channel)
+                .filter(
+                    (Channel.user1_id == user_id) & (Channel.user2_id == friend_id)
+                    | (Channel.user1_id == friend_id) & (Channel.user2_id == user_id)
+                )
+                .first()
             )
-            .all()
-        )
 
-        friend_status_value = None
-        friend_avatar = None
-        channel_ids = {}
-        friend_avatars = {}
-
-        # Build a map of friend IDs to their friendship status
-
-        if friends:
-            for friend in friends:
-                friend_id = friend.id
-                friend_avatar = b64encode(friend.avatar).decode()
-                friend_avatars[friend_id] = friend_avatar
-
-                existing_channel = (
-                    db.query(Channel)
-                    .filter(
-                        (Channel.user1_id == user_id) & (Channel.user2_id == friend_id)
-                        | (Channel.user1_id == friend_id)
-                        & (Channel.user2_id == user_id)
-                    )
-                    .first()
+            if existing_channel:
+                channel_ids[friend_id] = existing_channel.channel_id
+            else:
+                channel_id = generate_channel_id(user_id, friend_id)
+                new_channel = Channel(
+                    channel_id=channel_id, user1_id=user_id, user2_id=friend_id
                 )
+                db.add(new_channel)
+                db.commit()
+                channel_ids[friend_id] = channel_id
 
-                if existing_channel:
-                    channel_ids[friend_id] = existing_channel.channel_id
-                else:
-                    channel_id = generate_channel_id(user_id, friend_id)
-                    new_channel = Channel(
-                        channel_id=channel_id, user1_id=user_id, user2_id=friend_id
-                    )
-                    db.add(new_channel)
-                    db.commit()
-                    channel_ids[friend_id] = channel_id
-
-                friend_status = (
-                    db.query(Friend)
-                    .filter(
-                        ((Friend.user1_id == user_id) & (Friend.user2_id == friend_id))
-                        | (
-                            (Friend.user1_id == friend_id)
-                            & (Friend.user2_id == user_id)
-                        )
-                    )
-                    .first()
+            friend_status = (
+                db.query(Friend)
+                .filter(
+                    ((Friend.user1_id == user_id) & (Friend.user2_id == friend_id))
+                    | ((Friend.user1_id == friend_id) & (Friend.user2_id == user_id))
                 )
+                .first()
+            )
 
-                friend_status_value = friend_status.status if friend_status else None
+            friend_status_value = friend_status.status if friend_status else None
 
-        return templates.TemplateResponse(
-            request,
-            "single_chat.html",
-            {
-                "request": request,
-                "friends": friends,
-                "user": user,
-                "friend_avatars": friend_avatars,
-                "friend_status": friend_status_value,
-                "channel_ids": channel_ids,
-            },
-        )
+    return templates.TemplateResponse(
+        request,
+        "single_chat.html",
+        {
+            "request": request,
+            "friends": friends,
+            "user": user,
+            "friend_avatars": friend_avatars,
+            "friend_status": friend_status_value,
+            "channel_ids": channel_ids,
+        },
+    )
 
 
 # Friend chat
@@ -835,53 +809,50 @@ async def friend_chat_page(
     Returns:
         TemplateResponse: Rendered template with chat context
     """
-    token = request.cookies.get("access_token")
-    if token:
-        s = Serializer(settings.chat_secret_key)
-        db = SessionLocal()
-
-        user_id = s.loads(token, max_age=3600).get("user_id")
-        user = db.query(User).filter(User.id == user_id).first()
-        user.avatar = b64encode(user.avatar).decode()
-
-        friend = db.query(User).filter(User.id == friend_id).first()
-        friend.avatar = b64encode(friend.avatar).decode()
-
-        messages = db.query(Message).filter(Message.channel_id == channel_id).all()
-
-        channel = db.query(Channel).filter(Channel.channel_id == channel_id).first()
-
-        friend_status = (
-            db.query(Friend)
-            .filter(
-                (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
-                | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
-            )
-            .first()
-        )
-
-        friend_status_value = friend_status.status if friend_status else None
-
-        if not channel:
-            raise HTTPException(status_code=404, detail="Channel not found")
-
-        return templates.TemplateResponse(
-            request,
-            "friend_chat.html",
-            {
-                "request": request,
-                "user": user,
-                "user.avatar": user.avatar,
-                "friend": friend,
-                "friend_status": friend_status_value,
-                "friend.avatar": friend.avatar,
-                "messages": messages,
-                "channel_id": channel_id,
-                "get_user": get_user,
-            },
-        )
-    else:
+    user, user_id = get_user_from_request(request)
+    if not user:
         return render_template("login.html", request)
+
+    db = SessionLocal()
+
+    user.avatar = encode_avatar(user)
+
+    friend = db.query(User).filter(User.id == friend_id).first()
+    friend.avatar = encode_avatar(friend)
+
+    messages = db.query(Message).filter(Message.channel_id == channel_id).all()
+
+    channel = db.query(Channel).filter(Channel.channel_id == channel_id).first()
+
+    friend_status = (
+        db.query(Friend)
+        .filter(
+            (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
+            | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
+        )
+        .first()
+    )
+
+    friend_status_value = friend_status.status if friend_status else None
+
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    return templates.TemplateResponse(
+        request,
+        "friend_chat.html",
+        {
+            "request": request,
+            "user": user,
+            "user.avatar": user.avatar,
+            "friend": friend,
+            "friend_status": friend_status_value,
+            "friend.avatar": friend.avatar,
+            "messages": messages,
+            "channel_id": channel_id,
+            "get_user": get_user,
+        },
+    )
 
 
 # Block friend
@@ -1142,81 +1113,81 @@ async def deny_friend(request: Request, friend_id: int):
         return render_template("login.html", request)
 
 
-def chatbot_response(user_input: str) -> str:
+# Chatbot
+# TODO: Add optional memory of past messages and system instructions to chatbot_response function, markdown formatting support in chatbot responses and smoketest + edge case tests for chatbot functionality
+
+
+def chatbot_response(user_input: str):
+    """
+    Get a response from the chatbot for the given user input.
+
+    Args:
+        user_input (str): The user's message
+
+    Returns:
+        str: The chatbot's response
+    """
+    # In testing skip external API calls and return deterministic result
     if environ.get("TESTING") == "1":
         if ":" in user_input:
             return user_input.split(":", 1)[1].strip()
         return "test-response"
 
-    api_key = settings.ai_key.strip().strip('"\'')
+    api_key = settings.ai_key.strip().strip('"').strip("'")
     if api_key.lower().startswith("bearer "):
         api_key = api_key.split(" ", 1)[1].strip()
     if not api_key or api_key.lower() in {"your-nvidia-api-key", "changeme"}:
         return "Chatbot service is not configured"
 
-    log = logging.getLogger("chatbot")
-    debug = getattr(settings, "debug", False)
+    client = OpenAI(
+        base_url="https://integrate.api.nvidia.com/v1",
+        api_key=api_key,
+    )
+    completion = client.chat.completions.create(
+        model="stepfun-ai/step-3.5-flash",
+        messages=[{"role": "user", "content": user_input}],
+        temperature=1,
+        top_p=0.9,
+        max_tokens=16384,
+        stream=False,
+    )
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json",
-        "Content-Type": "application/json",
+    message = completion.choices[0].message
+    content = message.content if message else None
+    if not content:
+        return "Chatbot returned an empty response"
+
+    return content
+
+
+# Helper functions for chatbot context and JSON responses
+
+
+def chatbot_context(user, chatbot_messages, **extra):
+    context = {
+        "request": extra.pop("request"),
+        "user": user,
+        "message": extra.pop("message", ""),
+        "response": extra.pop("response", ""),
+        "chatbot_messages": chatbot_messages,
     }
-    payload = {
-        "model": "mistralai/mistral-large-3-675b-instruct-2512",
-        "messages": [{"role": "user", "content": user_input}],
-        "max_tokens": 512,
-        "temperature": 0.15,
-        "top_p": 1.0,
-        "frequency_penalty": 0.0,
-        "presence_penalty": 0.0,
-        "stream": False,
-    }
+    context.update(extra)
+    return context
 
-    for timeout in (30, 60):
-        try:
-            response = requests.post(
-                "https://integrate.api.nvidia.com/v1/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=timeout,
-            )
 
-            if debug:
-                log.debug("Chatbot API response status: %s", response.status_code)
+def chatbot_json_error(status_code: int, payload: dict):
+    return JSONResponse(status_code=status_code, content=payload)
 
-            match response.status_code:
-                case 200:
-                    pass
-                case 401:
-                    return "Chatbot API authorization failed. Check AI_KEY in .env"
-                case 403:
-                    return "Chatbot API access denied for this account or model"
-                case 404:
-                    return "Chatbot model is unavailable. Verify configured model name"
-                case 429:
-                    return "Chatbot API rate limit reached. Try again in a moment"
-                case code if code >= 500:
-                    return "Chatbot provider is temporarily unavailable"
-                case _:
-                    return f"Chatbot provider returned status {response.status_code}"
 
-            data = response.json()
-            message = data.get("choices", [{}])[0].get("message", {}).get("content")
-            if not message:
-                return "Chatbot returned an empty response"
-            return message
-
-        except requests.Timeout:
-            if debug:
-                log.warning("Chatbot API timeout with %ss", timeout)
-            continue
-        except (requests.RequestException, ValueError) as e:
-            if debug:
-                log.exception("Chatbot API error: %s", e)
-            return "Chatbot request failed"
-
-    return "Chatbot request timed out. Try again"
+def chatbot_json_success(message: str, response: str, created_at: datetime):
+    return JSONResponse(
+        status_code=200,
+        content={
+            "message": message,
+            "response": response,
+            "created_at": created_at.strftime(" %H:%M, %Y-%m-%d"),
+        },
+    )
 
 
 @router.get("/chatbot", dependencies=[Depends(is_authenticated)])
@@ -1232,33 +1203,30 @@ async def chatbot_page(request: Request):
     Returns:
         TemplateResponse: The chatbot chat page
     """
-    token = request.cookies.get("access_token")
-    if token:
-        s = Serializer(settings.chat_secret_key)
-        db = SessionLocal()
-        user_id = s.loads(token, max_age=3600).get("user_id")
-
-        user = db.query(User).filter(User.id == user_id).first()
-
-        user.avatar = b64encode(user.avatar).decode()
-
-        chatbot_messages = (
-            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
-        )
-        db.close()
-
-        return templates.TemplateResponse(
-            request,
-            "chatbot_chat.html",
-            {
-                "request": request,
-                "user": user,
-                "user_image": user.avatar,
-                "chatbot_messages": chatbot_messages,
-            },
-        )
-    else:
+    user, user_id = get_user_from_request(request)
+    if not user:
         return render_template("login.html", request)
+
+    db = SessionLocal()
+    user.avatar = encode_avatar(user)
+
+    chatbot_messages = (
+        db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
+    )
+
+    return templates.TemplateResponse(
+        request,
+        "chatbot_chat.html",
+        {
+            "request": request,
+            "user": user,
+            "user_image": user.avatar,
+            "chatbot_messages": chatbot_messages,
+        },
+    )
+
+
+# Handle chatbot message submission
 
 
 @router.post("/chatbot", dependencies=[Depends(is_authenticated)])
@@ -1275,57 +1243,68 @@ async def chatbot(request: Request, message: str = Form(...)):
     Returns:
         TemplateResponse: The chatbot chat page
     """
-    token = request.cookies.get("access_token")
-    if token:
-        s = Serializer(settings.chat_secret_key)
-        db = SessionLocal()
-        user_id = s.loads(token, max_age=3600).get("user_id")
+    user, user_id = get_user_from_request(request)
+    if not user:
+        return render_template("login.html", request)
 
-        user = db.query(User).filter(User.id == user_id).first()
+    db = SessionLocal()
+    is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
-        errors = {}
+    errors = {}
+    if len(message) <= 0:
+        errors["message"] = "Message cannot be empty"
 
-        if len(message) <= 0:
-            errors["message"] = "Message cannot be empty"
-
-        response = chatbot_response(message)
-
-        chatbot_message = ChatbotMessage(
-            user_id=user.id,
-            message=message,
-            response=response,
-            created_at=datetime.now(),
-        )
-        db.add(chatbot_message)
-        db.commit()
-
-        chatbot_messages = (
-            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
-        )
-        db.close()
-
-        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return JSONResponse(
-                {
-                    "ok": True,
-                    "message": message,
-                    "response": response,
-                }
-            )
-
+    if errors:
+        if is_ajax:
+            return chatbot_json_error(400, {"error": "validation", "details": errors})
         return templates.TemplateResponse(
             request,
             "chatbot_chat.html",
-            {
-                "request": request,
-                "user": user,
-                "message": message,
-                "response": response,
-                "chatbot_messages": chatbot_messages,
-            },
+            chatbot_context(user, [], request=request, message=message, errors=errors),
         )
-    else:
-        return render_template("login.html", request)
+
+    try:
+        response = chatbot_response(message)
+    except Exception as exc:
+        logging.exception("Chatbot request failed")
+        error_payload = {
+            "error": "chatbot",
+            "message": "Chatbot service failed. Check server logs.",
+            "error_type": exc.__class__.__name__,
+        }
+        if is_ajax:
+            return chatbot_json_error(502, error_payload)
+        return templates.TemplateResponse(
+            request,
+            "chatbot_chat.html",
+            chatbot_context(
+                user, [], request=request, message=message, errors=error_payload
+            ),
+        )
+
+    chatbot_message = ChatbotMessage(
+        user_id=user.id,
+        message=message,
+        response=response,
+        created_at=datetime.now(),
+    )
+    db.add(chatbot_message)
+    db.commit()
+
+    if is_ajax:
+        return chatbot_json_success(message, response, chatbot_message.created_at)
+
+    chatbot_messages = (
+        db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
+    )
+
+    return templates.TemplateResponse(
+        request,
+        "chatbot_chat.html",
+        chatbot_context(
+            user, chatbot_messages, request=request, message=message, response=response
+        ),
+    )
 
 
 # Clear past conversations with chatbot
@@ -1340,23 +1319,24 @@ async def clear_chatbot_messages(request: Request):
         request (Request): The HTTP request
 
     Returns:
-        RedirectResponse: Redirect to chatbot page
+        TemplateResponse: The chatbot chat page
     """
-    token = request.cookies.get("access_token")
-    if token:
-        s = Serializer(settings.chat_secret_key)
-        db = SessionLocal()
-        user_id = s.loads(token, max_age=3600).get("user_id")
+    user, user_id = get_user_from_request(request)
+    if not user:
+        return render_template("login.html", request)
 
-        try:
-            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user_id).delete()
-            db.commit()
-        except Exception as e:
-            db.rollback()
-            print(f"Error deleting chatbot messages: {e}")
-        finally:
-            db.close()
+    db = SessionLocal()
 
-        return RedirectResponse(url="/chatbot", status_code=303)
-    else:
-        return RedirectResponse(url="/login", status_code=303)
+    db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user_id).delete()
+    db.commit()
+
+    return templates.TemplateResponse(
+        request,
+        "chatbot_chat.html",
+        chatbot_context(
+            user,
+            [],
+            request=request,
+            user_image=encode_avatar(user),
+        ),
+    )

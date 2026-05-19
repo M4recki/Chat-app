@@ -18,6 +18,7 @@ A real-time chat application built with FastAPI, WebSockets, and PostgreSQL. Thi
 - **Real-time**: WebSockets for live messaging
 - **Frontend**: Jinja2 templates, HTML/CSS/JavaScript
 - **Security**: Password hashing (werkzeug), JWT-like tokens (itsdangerous)
+- **AI**: OpenAI client (NVIDIA Integrate API)
 - **Testing**: pytest with SQLite in-memory database
 
 ## Requirements
@@ -174,7 +175,15 @@ tests/
 - `SECRET_KEY_CHAT`: Alternative secret for chat tokens
 - `EMAIL_RECEIVER_TODO`: Email address to receive contact form submissions
 - `EMAIL_PASSWORD_CAFE`: App password for Gmail SMTP
+- `AI_KEY`: NVIDIA Integrate API key for chatbot access
 - `TESTING`: Set to "1" during test runs (auto-set by conftest.py)
+
+### Chatbot Configuration
+
+Chatbot uses the NVIDIA Integrate API via the OpenAI Python client.
+
+- Set `AI_KEY` in `.env` to your NVIDIA API key.
+- The model and base URL are configured in [project/python/routes.py](project/python/routes.py).
 
 ## CI/CD
 

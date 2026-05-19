@@ -18,7 +18,10 @@
           {% include "sidebar.html" %}
 
           <section
-            class="col-md-9 ml-sm-auto col-lg-10 px-md-4 py-4 sidebar-page-shell">
+            class="col-md-9 ml-sm-auto col-lg-10 px-md-4 py-4 sidebar-page-shell"
+            data-chatbot-thread
+            data-user-name="{{ user.name }}"
+            data-user-image="data:image/jpeg;base64,{{ user_image }}">
             <div id="chatbot-loading-overlay" class="chatbot-loading-overlay">
               <div class="card chatbot-loading-card shadow-lg border-0">
                 <div class="card-body text-center py-4">
@@ -35,33 +38,35 @@
             </div>
 
             <!-- Chatbot and user messages -->
-            {% if chatbot_messages %} {% for chatbot_message in chatbot_messages
-            %}
-            <div class="card mt-3">
-              <div class="card-body">
-                <p class="card-title">
-                  {{ chatbot_message.created_at.strftime(' %H:%M, %Y-%m-%d') }}
-                </p>
-                <p class="py-3 text-start">
-                  <img
-                    class="smaller-user-image me-1"
-                    src="data:image/jpeg;base64,{{ user_image }}"
-                    alt="{{ user.name }}'s avatar" />
-                  <strong class="text-primary">{{ user.name }}:</strong> {{
-                  chatbot_message.message }}
-                </p>
-                {% if chatbot_message.response %}
-                <p class="mt-3 text-start">
-                  <strong class="text-primary"
-                    ><i class="bi bi-robot"></i> Chatbot:</strong
-                  >
-                  {{ chatbot_message.response }}
-                </p>
-                {% endif %}
+            {% if chatbot_messages %}
+            <div id="chatbot-messages">
+              {% for chatbot_message in chatbot_messages %}
+              <div class="card mt-3">
+                <div class="card-body">
+                  <p class="card-title">
+                    {{ chatbot_message.created_at.strftime(' %H:%M, %Y-%m-%d')
+                    }}
+                  </p>
+                  <p class="py-3 text-start">
+                    <img
+                      class="smaller-user-image me-1"
+                      src="data:image/jpeg;base64,{{ user_image }}"
+                      alt="{{ user.name }}'s avatar" />
+                    <strong class="text-primary">{{ user.name }}:</strong> {{
+                    chatbot_message.message }}
+                  </p>
+                  {% if chatbot_message.response %}
+                  <p class="mt-3 text-start">
+                    <strong class="text-primary"
+                      ><i class="bi bi-robot"></i> Chatbot:</strong
+                    >
+                    {{ chatbot_message.response }}
+                  </p>
+                  {% endif %}
+                </div>
               </div>
+              {% endfor %}
             </div>
-
-            {% endfor %}
             <div class="card mt-3">
               <div class="card-body">
                 <form
@@ -93,7 +98,7 @@
 
             <!-- No previous conversation with chatbot -->
             {% else %}
-            <h1 class="mt-5 mb-5 text-center">
+            <h1 id="chatbot-empty-state" class="mt-5 mb-5 text-center">
               <strong class="me-3 text-primary"
                 ><i class="bi bi-robot"></i> Chatbot:</strong
               >How can I help you today?
@@ -142,12 +147,10 @@
                   class="btn btn-success me-3 text-dark"
                   id="close-dialog"
                   onclick="DeleteConfirmationClose()">
-                  <label for="cancel" class="btn-text">Cancel</label>
+                  Cancel
                 </button>
                 <a href="{{ url_for('clear_chatbot_messages') }}"
-                  ><button class="btn btn-danger text-dark">
-                    <label for="delete" class="btn-text">Confirm</label>
-                  </button></a
+                  ><button class="btn btn-danger text-dark">Confirm</button></a
                 >
               </div>
             </dialog>

@@ -9,20 +9,19 @@ from contextlib import contextmanager
 
 project_root = Path(__file__).parent.parent
 path.insert(0, str(project_root))
-path.insert(0, str(project_root / "project" / "python"))
 
-from model_test import engine as test_engine, TestingSessionLocal
+from tests.model_test import engine as test_engine, TestingSessionLocal
 
-prod_db = import_module("database")
+prod_db = import_module("project.python.database")
 prod_db.engine = test_engine
 prod_db.SessionLocal = TestingSessionLocal
 
-import models
+from project.python import models
 
 environ["TESTING"] = "1"
 environ["CHAT_SECRET_KEY"] = "test-secret"
 
-from main import app
+from project.python.main import app
 
 client = TestClient(app)
 

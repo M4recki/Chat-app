@@ -4,8 +4,8 @@ from PIL import Image
 from io import BytesIO
 from conftest import client, test_db_session
 from sqlalchemy.orm import Session
-from models import User
-from model_test import TestingSessionLocal
+from project.python.models import User
+from tests.model_test import TestingSessionLocal
 
 
 def create_user(
@@ -28,6 +28,10 @@ def create_user(
         User: The new user object
     """
     img = Image.open(avatar_path)
+    
+    # Convert RGBA to RGB for JPEG format
+    if img.mode == "RGBA":
+        img = img.convert("RGB")
     img_binary = BytesIO()
     img.save(img_binary, format="JPEG")
     img_binary = img_binary.getvalue()
