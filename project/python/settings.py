@@ -38,6 +38,7 @@ class Settings(BaseSettings):
 
     # AI
     ai_key: str = ""
+    chatbot_history_limit: int = 8
 
     # Application
     environment: str = "development"

@@ -80,7 +80,7 @@
                   <textarea
                     cols="0"
                     id="message"
-                    class="form-control chatbot-textarea mx-3"
+                    class="form-control chat_textarea mx-3"
                     name="message"
                     rows="1"
                     placeholder="Message our chatbot..."
@@ -116,7 +116,7 @@
                   <textarea
                     cols="0"
                     id="message"
-                    class="form-control chatbot-textarea mx-3"
+                    class="form-control chat_textarea mx-3"
                     name="message"
                     rows="1"
                     required></textarea>
@@ -134,24 +134,27 @@
             <!-- Delete conversation -->
             {% endif %}
             <button
+              type="button"
               class="btn btn-danger btn btn-primary btn-lg text-decoration-none text-dark bold mt-5 mx-3 mb-3 float-end"
-              onclick="
-                document.getElementById('delete-confirmation').showModal()
-              ">
+              id="open-delete-confirmation">
               Delete conversation
             </button>
             <dialog id="delete-confirmation">
               Are you sure you want to delete previous conversation?
               <div class="button-container my-5 d-flex justify-content-center">
                 <button
+                  type="button"
                   class="btn btn-success me-3 text-dark"
                   id="close-dialog"
                   onclick="DeleteConfirmationClose()">
                   Cancel
                 </button>
-                <a href="{{ url_for('clear_chatbot_messages') }}"
-                  ><button class="btn btn-danger text-dark">Confirm</button></a
-                >
+                <button
+                  type="button"
+                  class="btn btn-danger text-dark"
+                  id="confirm-delete-conversation">
+                  Confirm
+                </button>
               </div>
             </dialog>
           </section>

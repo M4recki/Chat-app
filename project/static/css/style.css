@@ -130,7 +130,7 @@ header {
 
 /* Chatbot textarea */
 
-.chatbot-textarea {
+.chat_textarea {
   min-height: 3rem;
   height: auto;
   max-height: 14rem;
@@ -328,4 +328,102 @@ header {
     margin-left: clamp(-6rem, -5vw, -3rem);
     padding-right: clamp(1rem, 2vw, 3rem);
   }
+}
+
+/* Markdown styles for chatbot responses */
+
+.chat_textarea {
+  resize: vertical;
+  max-height: 200px;
+}
+
+/* Markdown content styling */
+.card-body
+  > div:has(> div > *:is(h1, h2, h3, h4, h5, h6, p, ul, ol, blockquote, code)) {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.card-body div[class*="mt-"] h1,
+.card-body div[class*="mt-"] h2,
+.card-body div[class*="mt-"] h3,
+.card-body div[class*="mt-"] h4,
+.card-body div[class*="mt-"] h5,
+.card-body div[class*="mt-"] h6 {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.card-body div[class*="mt-"] h1 {
+  font-size: 1.75rem;
+}
+
+.card-body div[class*="mt-"] h2 {
+  font-size: 1.5rem;
+}
+
+.card-body div[class*="mt-"] h3 {
+  font-size: 1.25rem;
+}
+
+.card-body div[class*="mt-"] h4 {
+  font-size: 1.1rem;
+}
+
+.card-body div[class*="mt-"] p {
+  margin-bottom: 0.5rem;
+}
+
+.card-body div[class*="mt-"] ul,
+.card-body div[class*="mt-"] ol {
+  margin-bottom: 0.5rem;
+  margin-left: 1.5rem;
+}
+
+.card-body div[class*="mt-"] li {
+  margin-bottom: 0.25rem;
+}
+
+.card-body div[class*="mt-"] code {
+  background-color: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  padding: 0.2rem 0.4rem;
+  font-family: "Courier New", monospace;
+  font-size: 0.9em;
+  color: #d63384;
+}
+
+.card-body div[class*="mt-"] pre {
+  background-color: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  overflow-x: auto;
+}
+
+.card-body div[class*="mt-"] pre code {
+  background-color: transparent;
+  border: none;
+  padding: 0;
+  color: #333;
+}
+
+.card-body div[class*="mt-"] blockquote {
+  border-left: 4px solid #0d6efd;
+  padding-left: 1rem;
+  margin: 0.5rem 0;
+  color: #666;
+  font-style: italic;
+}
+
+.card-body div[class*="mt-"] a {
+  color: #0d6efd;
+  text-decoration: none;
+}
+
+.card-body div[class*="mt-"] a:hover {
+  text-decoration: underline;
 }

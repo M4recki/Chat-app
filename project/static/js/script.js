@@ -12,10 +12,51 @@ function DeleteConfirmationClose() {
     dialog.close();
 }
 
-// Chatbot form submission with loading overlay and error handling
+// Chatbot form submission with loading overlay, error handling and dynamic message appending
 
 document.addEventListener("DOMContentLoaded", () => {
-    const messageTextareas = document.querySelectorAll(".chatbot-textarea");
+    const messageTextareas = document.querySelectorAll(".chat_textarea");
+    const openDeleteConfirmation = document.getElementById("open-delete-confirmation");
+    const confirmDeleteConversation = document.getElementById("confirm-delete-conversation");
+    const deleteConfirmationDialog = document.getElementById("delete-confirmation");
+    const closeDeleteConfirmation = document.getElementById("close-dialog");
+
+    if (openDeleteConfirmation && deleteConfirmationDialog) {
+        openDeleteConfirmation.addEventListener("click", () => {
+            deleteConfirmationDialog.showModal();
+        });
+    }
+
+    if (closeDeleteConfirmation && deleteConfirmationDialog) {
+        closeDeleteConfirmation.addEventListener("click", () => {
+            deleteConfirmationDialog.close();
+        });
+    }
+
+    // Handle conversation deletion with confirmation dialog and error handling
+
+    if (confirmDeleteConversation) {
+        confirmDeleteConversation.addEventListener("click", async () => {
+            try {
+                const response = await fetch("/clear_chatbot_messages", {
+                    method: "POST",
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    credentials: "same-origin",
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Request failed with status ${response.status}`);
+                }
+
+                window.location.href = "/chatbot";
+            } catch (error) {
+                console.error(error);
+                alert("Could not delete the conversation. Please try again.");
+            }
+        });
+    }
 
     messageTextareas.forEach((textarea) => {
         const resizeTextarea = () => {
@@ -103,8 +144,8 @@ document.addEventListener("DOMContentLoaded", () => {
         cardBody.appendChild(userMessage);
 
         if (payload.response) {
-            const botMessage = document.createElement("p");
-            botMessage.className = "mt-3 text-start";
+            const botContainer = document.createElement("div");
+            botContainer.className = "mt-3 text-start";
 
             const botStrong = document.createElement("strong");
             botStrong.className = "text-primary";
@@ -114,9 +155,46 @@ document.addEventListener("DOMContentLoaded", () => {
             botStrong.appendChild(botIcon);
             botStrong.appendChild(document.createTextNode(" Chatbot: "));
 
-            botMessage.appendChild(botStrong);
-            botMessage.appendChild(document.createTextNode(payload.response));
-            cardBody.appendChild(botMessage);
+            botContainer.appendChild(botStrong);
+
+            // Convert Markdown to HTML and sanitize for security
+            try {
+                let htmlContent = payload.response;
+
+                // Use marked if available
+                if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
+                    htmlContent = marked.parse(payload.response);
+                } else if (typeof marked !== 'undefined' && typeof marked === 'function') {
+                    htmlContent = marked(payload.response);
+                }
+
+                // Sanitize with DOMPurify if available, otherwise use as-is
+                let cleanHtml = htmlContent;
+                if (typeof DOMPurify !== 'undefined') {
+                    cleanHtml = DOMPurify.sanitize(htmlContent);
+                } else {
+                    // Fallback: escape HTML to prevent XSS
+                    const div = document.createElement('div');
+                    div.textContent = htmlContent;
+                    cleanHtml = div.innerHTML;
+                }
+
+                const botMessage = document.createElement("div");
+                botMessage.className = "mt-2";
+                botMessage.innerHTML = cleanHtml;
+
+                botContainer.appendChild(botMessage);
+            } catch (error) {
+
+                // Fallback if markdown parsing fails
+                console.error('Markdown parsing error:', error);
+                const botMessage = document.createElement("p");
+                botMessage.className = "mt-2";
+                botMessage.textContent = payload.response;
+                botContainer.appendChild(botMessage);
+            }
+
+            cardBody.appendChild(botContainer);
         }
 
         card.appendChild(cardBody);

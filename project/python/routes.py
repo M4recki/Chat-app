@@ -532,11 +532,41 @@ async def search_user(request: Request):
         )
 
         friend_status_map = {}
+        channel_ids = {}
         for friend in friend_statuses:
             if friend.user1_id == user_id:
-                friend_status_map[friend.user2_id] = friend.status
+                friend_id = friend.user2_id
             else:
-                friend_status_map[friend.user1_id] = friend.status
+                friend_id = friend.user1_id
+
+            friend_status_map[friend_id] = friend.status
+
+            if friend.status == "accepted":
+                existing_channel = (
+                    db.query(Channel)
+                    .filter(
+                        (
+                            (Channel.user1_id == user_id)
+                            & (Channel.user2_id == friend_id)
+                        )
+                        | (
+                            (Channel.user1_id == friend_id)
+                            & (Channel.user2_id == user_id)
+                        )
+                    )
+                    .first()
+                )
+
+                if existing_channel:
+                    channel_ids[friend_id] = existing_channel.channel_id
+                else:
+                    channel_id = generate_channel_id(user_id, friend_id)
+                    new_channel = Channel(
+                        channel_id=channel_id, user1_id=user_id, user2_id=friend_id
+                    )
+                    db.add(new_channel)
+                    db.commit()
+                    channel_ids[friend_id] = channel_id
 
         for user in users:
             user.avatar = b64encode(user.avatar).decode()
@@ -548,6 +578,7 @@ async def search_user(request: Request):
                 "request": request,
                 "users": users,
                 "friend_status_map": friend_status_map,
+                "channel_ids": channel_ids,
             },
         )
     else:
@@ -1114,10 +1145,40 @@ async def deny_friend(request: Request, friend_id: int):
 
 
 # Chatbot
-# TODO: Add optional memory of past messages and system instructions to chatbot_response function, markdown formatting support in chatbot responses and smoketest + edge case tests for chatbot functionality
 
 
-def chatbot_response(user_input: str):
+def build_chatbot_messages(user_input: str, previous_messages=None):
+    """
+    Build the message history for the chatbot API request.
+
+    Args:
+        user_input (str): The current user input message
+            previous_messages (list, optional): A list of previous messages
+
+    Returns:
+        list: The list of messages for the chatbot API request
+    """
+    system_prompt = (
+        "You are the Chat App assistant. "
+        "Use the provided conversation history as memory for this user. "
+        "If the user asks whether you remember earlier messages, answer based on the "
+        "history in this chat context. "
+        "Do not claim you cannot remember previous messages when prior context is present."
+    )
+
+    messages = [{"role": "system", "content": system_prompt}]
+    if previous_messages:
+        for item in previous_messages:
+            if item.message:
+                messages.append({"role": "user", "content": item.message})
+            if item.response:
+                messages.append({"role": "assistant", "content": item.response})
+
+    messages.append({"role": "user", "content": user_input})
+    return messages
+
+
+def chatbot_response(user_input: str, previous_messages=None):
     """
     Get a response from the chatbot for the given user input.
 
@@ -1143,9 +1204,11 @@ def chatbot_response(user_input: str):
         base_url="https://integrate.api.nvidia.com/v1",
         api_key=api_key,
     )
+    messages = build_chatbot_messages(user_input, previous_messages)
+
     completion = client.chat.completions.create(
         model="stepfun-ai/step-3.5-flash",
-        messages=[{"role": "user", "content": user_input}],
+        messages=messages,
         temperature=1,
         top_p=0.9,
         max_tokens=16384,
@@ -1263,8 +1326,18 @@ async def chatbot(request: Request, message: str = Form(...)):
             chatbot_context(user, [], request=request, message=message, errors=errors),
         )
 
+    history_limit = max(0, settings.chatbot_history_limit)
+    recent_history = (
+        db.query(ChatbotMessage)
+        .filter(ChatbotMessage.user_id == user.id)
+        .order_by(ChatbotMessage.created_at.desc())
+        .limit(history_limit)
+        .all()
+    )
+    recent_history.reverse()
+
     try:
-        response = chatbot_response(message)
+        response = chatbot_response(message, previous_messages=recent_history)
     except Exception as exc:
         logging.exception("Chatbot request failed")
         error_payload = {
@@ -1310,7 +1383,7 @@ async def chatbot(request: Request, message: str = Form(...)):
 # Clear past conversations with chatbot
 
 
-@router.get("/clear_chatbot_messages", dependencies=[Depends(is_authenticated)])
+@router.post("/clear_chatbot_messages", dependencies=[Depends(is_authenticated)])
 async def clear_chatbot_messages(request: Request):
     """
     Clear all past chatbot messages for the user.

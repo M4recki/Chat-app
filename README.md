@@ -176,6 +176,7 @@ tests/
 - `EMAIL_RECEIVER_TODO`: Email address to receive contact form submissions
 - `EMAIL_PASSWORD_CAFE`: App password for Gmail SMTP
 - `AI_KEY`: NVIDIA Integrate API key for chatbot access
+- `CHATBOT_HISTORY_LIMIT`: Number of previous chatbot exchanges included as memory context
 - `TESTING`: Set to "1" during test runs (auto-set by conftest.py)
 
 ### Chatbot Configuration
@@ -183,6 +184,7 @@ tests/
 Chatbot uses the NVIDIA Integrate API via the OpenAI Python client.
 
 - Set `AI_KEY` in `.env` to your NVIDIA API key.
+- Set `CHATBOT_HISTORY_LIMIT` (e.g. `8`) to control memory window size.
 - The model and base URL are configured in [project/python/routes.py](project/python/routes.py).
 
 ## CI/CD

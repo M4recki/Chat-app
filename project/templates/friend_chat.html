@@ -54,19 +54,16 @@
                   action=""
                   onsubmit="sendMessage(event)"
                   class="d-flex flex-column">
-                  <div class="form-floating">
-                    <textarea
-                      type="text"
-                      cols="0"
-                      id="messageText"
-                      class="form-control chatbot-textarea mx-3 mt-5"
-                      name="message"
-                      autocomplete="off"
-                      required></textarea>
-                    <label class="z-0 position-absolute" for="messageText"
-                      >Your message:</label
-                    >
-                  </div>
+                  <label for="message" class="form-label mb-2 ms-3 text-muted">
+                    Your message:
+                  </label>
+                  <textarea
+                    cols="0"
+                    id="message"
+                    class="form-control chat_textarea mx-3"
+                    name="message"
+                    rows="1"
+                    required></textarea>
                   <div class="d-flex justify-content-center">
                     <button
                       class="btn btn-primary btn-lg text-decoration-none text-dark bold my-3"
@@ -94,7 +91,7 @@
                       type="text"
                       cols="0"
                       id="messageText"
-                      class="form-control chatbot-textarea mt-5"
+                      class="form-control chat_textarea mt-5"
                       name="message"
                       autocomplete="off"
                       required></textarea>
@@ -156,7 +153,7 @@
                       type="text"
                       cols="0"
                       id="floatingTextareaDisabled"
-                      class="form-control chatbot-textarea mt-5"
+                      class="form-control chat_textarea mt-5"
                       name="message"
                       autocomplete="off"
                       disabled
@@ -300,6 +297,8 @@
           const titleElement = document.createElement("p");
           titleElement.classList.add("pt-2", "text-start", "text-primary");
 
+          const usernameElement = document.createElement("strong");
+          usernameElement.classList.add("text-primary");
           usernameElement.textContent = messageData.senderName;
           cardBodyElement.appendChild(usernameElement);
 
@@ -347,8 +346,25 @@
         }
       };
 
+      // Send message function
+
       function sendMessage(event) {
-        const input = document.getElementById("messageText");
+        const form = event.currentTarget;
+        const input =
+          form.querySelector('textarea[name="message"]') ||
+          document.getElementById("messageText") ||
+          document.getElementById("message");
+
+        if (!input) {
+          event.preventDefault();
+          return;
+        }
+
+        if (!input.value.trim()) {
+          event.preventDefault();
+          return;
+        }
+
         ws.send(
           JSON.stringify({ channel_id: channel_id, message: input.value }),
         );
