@@ -56,17 +56,41 @@
                     chatbot_message.message }}
                   </p>
                   {% if chatbot_message.response %}
-                  <p class="mt-3 text-start">
+                  <div class="mt-3 text-start">
                     <strong class="text-primary"
                       ><i class="bi bi-robot"></i> Chatbot:</strong
                     >
-                    {{ chatbot_message.response }}
-                  </p>
+                    <div class="chatbot-response-content" data-chatbot-response>
+                      {{- chatbot_message.response | trim -}}
+                    </div>
+                  </div>
                   {% endif %}
                 </div>
               </div>
               {% endfor %}
             </div>
+            {% if errors %}
+            <div
+              id="chatbot-status"
+              class="alert alert-danger mt-3"
+              role="alert">
+              <strong>
+                {{ errors.message if errors.message else "Chatbot error" }}
+              </strong>
+              {% if errors.error_type %}
+              <div class="small mt-2 text-muted">{{ errors.error_type }}</div>
+              {% endif %} {% if errors.details %}
+              <pre class="mb-0 mt-2 small text-wrap">
+{{ errors.details | tojson(indent=2) }}
+              </pre>
+              {% endif %}
+            </div>
+            {% else %}
+            <div
+              id="chatbot-status"
+              class="alert d-none mt-3"
+              role="alert"></div>
+            {% endif %}
             <div class="card mt-3">
               <div class="card-body">
                 <form
@@ -103,6 +127,28 @@
                 ><i class="bi bi-robot"></i> Chatbot:</strong
               >How can I help you today?
             </h1>
+            {% if errors %}
+            <div
+              id="chatbot-status"
+              class="alert alert-danger mt-3"
+              role="alert">
+              <strong>
+                {{ errors.message if errors.message else "Chatbot error" }}
+              </strong>
+              {% if errors.error_type %}
+              <div class="small mt-2 text-muted">{{ errors.error_type }}</div>
+              {% endif %} {% if errors.details %}
+              <pre class="mb-0 mt-2 small text-wrap">
+{{ errors.details | tojson(indent=2) }}
+              </pre>
+              {% endif %}
+            </div>
+            {% else %}
+            <div
+              id="chatbot-status"
+              class="alert d-none mt-3"
+              role="alert"></div>
+            {% endif %}
             <div class="card mt-3">
               <div class="card-body">
                 <form

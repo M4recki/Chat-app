@@ -5,7 +5,7 @@ from pathlib import Path
 from datetime import datetime
 from json import dumps, loads
 from .routes import router
-from .database import SessionLocal
+from .database import session_scope
 from .models import Message
 from .connection_manager import ConnectionManager
 
@@ -56,18 +56,19 @@ async def websocket_endpoint(
 
             await manager.broadcast(dumps(message_object), channel_id)
 
-            db = SessionLocal()
+            with session_scope() as db:
+                new_message = Message(
+                    content=message,
+                    channel_id=channel_id,
+                    created_at=datetime.now(),
+                    user_id=user_id,
+                )
+                db.add(new_message)
+                db.commit()
 
-            new_message = Message(
-                content=message,
-                channel_id=channel_id,
-                created_at=datetime.now(),
-                user_id=user_id,
-            )
-            db.add(new_message)
-            db.commit()
-
-            messages = db.query(Message).filter(Message.channel_id == channel_id).all()
+                messages = (
+                    db.query(Message).filter(Message.channel_id == channel_id).all()
+                )
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, channel_id)

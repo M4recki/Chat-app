@@ -25,7 +25,7 @@ from io import BytesIO
 from sqlalchemy.orm.exc import NoResultFound
 from base64 import b64encode, b64decode
 from openai import OpenAI
-from .database import SessionLocal
+from .database import session_scope
 from .settings import settings
 from .models import User, Friend, ChatbotMessage, Message, Channel
 
@@ -86,23 +86,12 @@ def is_authenticated(request: Request):
     except BadSignature:
         raise HTTPException(status_code=401, detail="Invalid session token")
 
-    db = SessionLocal()
-    user = db.query(User).filter(User.id == user_id).first()
-    db.close()
+    with session_scope() as db:
+        user = db.query(User).filter(User.id == user_id).first()
 
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return True
-
-
-# Get user id
-
-
-def get_user(user_id):
-    db = SessionLocal()
-    user = db.query(User).filter(User.id == user_id).first()
-    db.close()
-    return user
 
 
 def get_user_from_request(request: Request, max_age: int = 3600):
@@ -116,13 +105,16 @@ def get_user_from_request(request: Request, max_age: int = 3600):
     except (SignatureExpired, BadSignature):
         return None, None
 
-    db = SessionLocal()
-    try:
+    with session_scope() as db:
         user = db.query(User).filter(User.id == user_id).first()
-    finally:
-        db.close()
 
     return user, user_id
+
+
+def get_user(user_id):
+    with session_scope() as db:
+        user = db.query(User).filter(User.id == user_id).first()
+    return user
 
 
 def encode_avatar(user):
@@ -156,11 +148,8 @@ def user_image(request: Request):
     except (SignatureExpired, BadSignature):
         return {"user_image": ""}
 
-    db = SessionLocal()
-    try:
+    with session_scope() as db:
         user = db.query(User).filter(User.id == user_id).first()
-    finally:
-        db.close()
 
     if user and user.avatar:
         user.avatar = b64encode(user.avatar).decode()
@@ -193,11 +182,8 @@ def user_name(request: Request):
     except (SignatureExpired, BadSignature):
         return {"user_name": None}
 
-    db = SessionLocal()
-    try:
+    with session_scope() as db:
         user = db.query(User).filter(User.id == user_id).first()
-    finally:
-        db.close()
 
     if user:
         return {"user_name": user.name}
@@ -309,42 +295,42 @@ async def sign_up_data(
     Returns:
         Response: Redirect to home or sign up template
     """
-    db = SessionLocal()
-    user = db.query(User).filter(User.email == email).first()
+    with session_scope() as db:
+        user = db.query(User).filter(User.email == email).first()
 
-    errors = {}
+        errors = {}
 
-    if user:
-        errors["email"] = "User with this email already exists"
+        if user:
+            errors["email"] = "User with this email already exists"
 
-    if not password.isalnum():
-        errors["password"] = "Password must contain only letters and numbers"
+        if not password.isalnum():
+            errors["password"] = "Password must contain only letters and numbers"
 
-    if password != confirm_password:
-        errors["confirm_password"] = "Passwords do not match"
+        if password != confirm_password:
+            errors["confirm_password"] = "Passwords do not match"
 
-    if errors:
-        return render_template("sign_up.html", request, errors=errors)
+        if errors:
+            return render_template("sign_up.html", request, errors=errors)
 
-    hashed_password = generate_password_hash(
-        password, method="pbkdf2:sha256", salt_length=6
-    )
+        hashed_password = generate_password_hash(
+            password, method="pbkdf2:sha256", salt_length=6
+        )
 
-    img_binary = BytesIO()
-    with Image.open(DEFAULT_AVATAR_PATH) as img:
-        img.save(img_binary, format="PNG")
-    img_binary = img_binary.getvalue()
+        img_binary = BytesIO()
+        with Image.open(DEFAULT_AVATAR_PATH) as img:
+            img.save(img_binary, format="PNG")
+        img_binary = img_binary.getvalue()
 
-    new_user = User(
-        name=name,
-        surname=surname,
-        email=email,
-        password=hashed_password,
-        avatar=img_binary,
-        created_at=datetime.now(),
-    )
-    db.add(new_user)
-    db.commit()
+        new_user = User(
+            name=name,
+            surname=surname,
+            email=email,
+            password=hashed_password,
+            avatar=img_binary,
+            created_at=datetime.now(),
+        )
+        db.add(new_user)
+        db.commit()
 
     s = Serializer(settings.chat_secret_key)
     token = s.dumps({"user_id": new_user.id})
@@ -385,22 +371,22 @@ async def login_data(
     Returns:
         Response: Redirect or login template on validation errors
     """
-    db = SessionLocal()
-    user = db.query(User).filter(User.email == email).first()
+    with session_scope() as db:
+        user = db.query(User).filter(User.email == email).first()
 
-    errors = {}
+        errors = {}
 
-    if not user:
-        errors["email"] = "User with this email does not exist"
+        if not user:
+            errors["email"] = "User with this email does not exist"
 
-    elif not check_password_hash(user.password, password):
-        errors["password"] = "Incorrect password. Please try again"
+        elif not check_password_hash(user.password, password):
+            errors["password"] = "Incorrect password. Please try again"
 
-    if errors:
-        return render_template("login.html", request, errors=errors)
+        if errors:
+            return render_template("login.html", request, errors=errors)
 
-    s = Serializer(settings.chat_secret_key)
-    token = s.dumps({"user_id": user.id})
+        s = Serializer(settings.chat_secret_key)
+        token = s.dumps({"user_id": user.id})
 
     response = RedirectResponse(request.url_for("single_chat"), status_code=303)
     response.set_cookie(key="access_token", value=token, httponly=True)
@@ -520,56 +506,56 @@ async def search_user(request: Request):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(settings.chat_secret_key)
-        db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
-        users = db.query(User).filter(User.id != user_id).all()
+        with session_scope() as db:
+            users = db.query(User).filter(User.id != user_id).all()
 
-        friend_statuses = (
-            db.query(Friend)
-            .filter((Friend.user1_id == user_id) | (Friend.user2_id == user_id))
-            .all()
-        )
+            friend_statuses = (
+                db.query(Friend)
+                .filter((Friend.user1_id == user_id) | (Friend.user2_id == user_id))
+                .all()
+            )
 
-        friend_status_map = {}
-        channel_ids = {}
-        for friend in friend_statuses:
-            if friend.user1_id == user_id:
-                friend_id = friend.user2_id
-            else:
-                friend_id = friend.user1_id
-
-            friend_status_map[friend_id] = friend.status
-
-            if friend.status == "accepted":
-                existing_channel = (
-                    db.query(Channel)
-                    .filter(
-                        (
-                            (Channel.user1_id == user_id)
-                            & (Channel.user2_id == friend_id)
-                        )
-                        | (
-                            (Channel.user1_id == friend_id)
-                            & (Channel.user2_id == user_id)
-                        )
-                    )
-                    .first()
-                )
-
-                if existing_channel:
-                    channel_ids[friend_id] = existing_channel.channel_id
+            friend_status_map = {}
+            channel_ids = {}
+            for friend in friend_statuses:
+                if friend.user1_id == user_id:
+                    friend_id = friend.user2_id
                 else:
-                    channel_id = generate_channel_id(user_id, friend_id)
-                    new_channel = Channel(
-                        channel_id=channel_id, user1_id=user_id, user2_id=friend_id
-                    )
-                    db.add(new_channel)
-                    db.commit()
-                    channel_ids[friend_id] = channel_id
+                    friend_id = friend.user1_id
 
-        for user in users:
-            user.avatar = b64encode(user.avatar).decode()
+                friend_status_map[friend_id] = friend.status
+
+                if friend.status == "accepted":
+                    existing_channel = (
+                        db.query(Channel)
+                        .filter(
+                            (
+                                (Channel.user1_id == user_id)
+                                & (Channel.user2_id == friend_id)
+                            )
+                            | (
+                                (Channel.user1_id == friend_id)
+                                & (Channel.user2_id == user_id)
+                            )
+                        )
+                        .first()
+                    )
+
+                    if existing_channel:
+                        channel_ids[friend_id] = existing_channel.channel_id
+                    else:
+                        channel_id = generate_channel_id(user_id, friend_id)
+                        new_channel = Channel(
+                            channel_id=channel_id, user1_id=user_id, user2_id=friend_id
+                        )
+                        db.add(new_channel)
+                        db.commit()
+                        channel_ids[friend_id] = channel_id
+
+            for user in users:
+                user.avatar = b64encode(user.avatar).decode()
 
         return templates.TemplateResponse(
             request,
@@ -601,19 +587,19 @@ async def friend_requests(request: Request):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(settings.chat_secret_key)
-        db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
-        user = db.query(User).filter(User.id == user_id).first()
+        with session_scope() as db:
+            user = db.query(User).filter(User.id == user_id).first()
 
-        friend_requests = (
-            db.query(Friend)
-            .filter(Friend.user2_id == user_id, Friend.status == "pending")
-            .all()
-        )
-        for friend_request in friend_requests:
-            friend_request.user1.avatar = b64encode(
-                friend_request.user1.avatar
-            ).decode()
+            friend_requests = (
+                db.query(Friend)
+                .filter(Friend.user2_id == user_id, Friend.status == "pending")
+                .all()
+            )
+            for friend_request in friend_requests:
+                friend_request.user1.avatar = b64encode(
+                    friend_request.user1.avatar
+                ).decode()
 
         return templates.TemplateResponse(
             request,
@@ -676,7 +662,6 @@ async def update_profile_data(
     if not user:
         return render_template("login.html", request)
 
-    db = SessionLocal()
     errors = {}
 
     if password is not None and not password.isalnum():
@@ -701,15 +686,14 @@ async def update_profile_data(
             img_binary.write(avatar_data)
             user.avatar = img_binary.getvalue()
 
-    updated_user = User(
-        id=user_id,
-        name=name,
-        surname=surname,
-        email=email,
-        password=password,
-        avatar=user.avatar,
-    )
-    db.commit()
+    with session_scope() as db:
+        updated_user = db.query(User).filter(User.id == user_id).first()
+        updated_user.name = name
+        updated_user.surname = surname
+        updated_user.email = email
+        updated_user.password = password
+        updated_user.avatar = user.avatar
+        db.commit()
 
     return render_template("single_chat.html", request)
 
@@ -748,58 +732,61 @@ async def single_chat(request: Request):
     if not user:
         return render_template("login.html", request)
 
-    db = SessionLocal()
-
-    friends = (
-        db.query(User)
-        .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
-        .filter(
-            Friend.status == "accepted",
-            ((Friend.user1_id == user_id) & (User.id == Friend.user2_id))
-            | ((Friend.user2_id == user_id) & (User.id == Friend.user1_id)),
+    with session_scope() as db:
+        friends = (
+            db.query(User)
+            .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
+            .filter(
+                Friend.status == "accepted",
+                ((Friend.user1_id == user_id) & (User.id == Friend.user2_id))
+                | ((Friend.user2_id == user_id) & (User.id == Friend.user1_id)),
+            )
+            .all()
         )
-        .all()
-    )
 
-    friend_status_value = None
-    friend_avatars = {}
-    channel_ids = {}
+        friend_status_value = None
+        friend_avatars = {}
+        channel_ids = {}
 
-    if friends:
-        for friend in friends:
-            friend_id = friend.id
-            friend_avatars[friend_id] = b64encode(friend.avatar).decode()
+        if friends:
+            for friend in friends:
+                friend_id = friend.id
+                friend_avatars[friend_id] = b64encode(friend.avatar).decode()
 
-            existing_channel = (
-                db.query(Channel)
-                .filter(
-                    (Channel.user1_id == user_id) & (Channel.user2_id == friend_id)
-                    | (Channel.user1_id == friend_id) & (Channel.user2_id == user_id)
+                existing_channel = (
+                    db.query(Channel)
+                    .filter(
+                        (Channel.user1_id == user_id) & (Channel.user2_id == friend_id)
+                        | (Channel.user1_id == friend_id)
+                        & (Channel.user2_id == user_id)
+                    )
+                    .first()
                 )
-                .first()
-            )
 
-            if existing_channel:
-                channel_ids[friend_id] = existing_channel.channel_id
-            else:
-                channel_id = generate_channel_id(user_id, friend_id)
-                new_channel = Channel(
-                    channel_id=channel_id, user1_id=user_id, user2_id=friend_id
+                if existing_channel:
+                    channel_ids[friend_id] = existing_channel.channel_id
+                else:
+                    channel_id = generate_channel_id(user_id, friend_id)
+                    new_channel = Channel(
+                        channel_id=channel_id, user1_id=user_id, user2_id=friend_id
+                    )
+                    db.add(new_channel)
+                    db.commit()
+                    channel_ids[friend_id] = channel_id
+
+                friend_status = (
+                    db.query(Friend)
+                    .filter(
+                        ((Friend.user1_id == user_id) & (Friend.user2_id == friend_id))
+                        | (
+                            (Friend.user1_id == friend_id)
+                            & (Friend.user2_id == user_id)
+                        )
+                    )
+                    .first()
                 )
-                db.add(new_channel)
-                db.commit()
-                channel_ids[friend_id] = channel_id
 
-            friend_status = (
-                db.query(Friend)
-                .filter(
-                    ((Friend.user1_id == user_id) & (Friend.user2_id == friend_id))
-                    | ((Friend.user1_id == friend_id) & (Friend.user2_id == user_id))
-                )
-                .first()
-            )
-
-            friend_status_value = friend_status.status if friend_status else None
+                friend_status_value = friend_status.status if friend_status else None
 
     return templates.TemplateResponse(
         request,
@@ -844,30 +831,29 @@ async def friend_chat_page(
     if not user:
         return render_template("login.html", request)
 
-    db = SessionLocal()
+    with session_scope() as db:
+        user.avatar = encode_avatar(user)
 
-    user.avatar = encode_avatar(user)
+        friend = db.query(User).filter(User.id == friend_id).first()
+        friend.avatar = encode_avatar(friend)
 
-    friend = db.query(User).filter(User.id == friend_id).first()
-    friend.avatar = encode_avatar(friend)
+        messages = db.query(Message).filter(Message.channel_id == channel_id).all()
 
-    messages = db.query(Message).filter(Message.channel_id == channel_id).all()
+        channel = db.query(Channel).filter(Channel.channel_id == channel_id).first()
 
-    channel = db.query(Channel).filter(Channel.channel_id == channel_id).first()
-
-    friend_status = (
-        db.query(Friend)
-        .filter(
-            (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
-            | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
+        friend_status = (
+            db.query(Friend)
+            .filter(
+                (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
+                | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
+            )
+            .first()
         )
-        .first()
-    )
 
-    friend_status_value = friend_status.status if friend_status else None
+        friend_status_value = friend_status.status if friend_status else None
 
-    if not channel:
-        raise HTTPException(status_code=404, detail="Channel not found")
+        if not channel:
+            raise HTTPException(status_code=404, detail="Channel not found")
 
     return templates.TemplateResponse(
         request,
@@ -904,28 +890,29 @@ async def block_friend(request: Request, friend_id: int):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(settings.chat_secret_key)
-        db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
-        existing_friendship = (
-            db.query(Friend)
-            .filter(
-                (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
-                | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
+        with session_scope() as db:
+            existing_friendship = (
+                db.query(Friend)
+                .filter(
+                    (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
+                    | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
+                )
+                .first()
             )
-            .first()
-        )
 
-        if existing_friendship:
-            existing_friendship.status = "blocked"
+            if existing_friendship:
+                existing_friendship.status = "blocked"
+                db.commit()
+
+            updated_friendship = Friend(
+                user1_id=user_id,
+                user2_id=friend_id,
+                status="blocked",
+            )
+            db.add(updated_friendship)
             db.commit()
-
-        updated_friendship = Friend(
-            user1_id=user_id,
-            user2_id=friend_id,
-            status="blocked",
-        )
-        db.commit()
 
         return render_template("single_chat.html", request)
     else:
@@ -950,29 +937,30 @@ async def unblock_friend(request: Request, friend_id: int):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(settings.chat_secret_key)
-        db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
-        existing_friendship = (
-            db.query(Friend)
-            .filter(
-                (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
-                | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
+        with session_scope() as db:
+            existing_friendship = (
+                db.query(Friend)
+                .filter(
+                    (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
+                    | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
+                )
+                .first()
             )
-            .first()
-        )
 
-        if existing_friendship:
-            existing_friendship.status = "accepted"
+            if existing_friendship:
+                existing_friendship.status = "accepted"
+                db.commit()
+
+            updated_friendship = Friend(
+                user1_id=user_id,
+                user2_id=friend_id,
+                status="accepted",
+                blocked_by_user=friend_id,
+            )
+            db.add(updated_friendship)
             db.commit()
-
-        updated_friendship = Friend(
-            user1_id=user_id,
-            user2_id=friend_id,
-            status="accepted",
-            blocked_by_user=friend_id,
-        )
-        db.commit()
 
         return render_template("single_chat.html", request)
     else:
@@ -1003,38 +991,41 @@ async def add_friend(request: Request, friend_id: int):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(settings.chat_secret_key)
-        db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
-        try:
-            existing_request = (
-                db.query(Friend)
-                .filter((Friend.user1_id == user_id) & (Friend.user2_id == friend_id))
-                .one()
-            )
+        with session_scope() as db:
+            try:
+                existing_request = (
+                    db.query(Friend)
+                    .filter(
+                        (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
+                    )
+                    .one()
+                )
 
-            if existing_request.status == "pending":
-                if datetime.now() - existing_request.last_sent > timedelta(days=14):
+                if existing_request.status == "pending":
+                    if datetime.now() - existing_request.last_sent > timedelta(days=14):
+                        existing_request.last_sent = datetime.now()
+                        db.commit()
+                    else:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Friend request already sent recently",
+                        )
+                elif existing_request.status == "denied":
+                    existing_request.status = "pending"
                     existing_request.last_sent = datetime.now()
                     db.commit()
-                else:
-                    raise HTTPException(
-                        status_code=400, detail="Friend request already sent recently"
-                    )
-            elif existing_request.status == "denied":
-                existing_request.status = "pending"
-                existing_request.last_sent = datetime.now()
-                db.commit()
 
-        except NoResultFound:
-            new_friendship = Friend(
-                user1_id=user_id,
-                user2_id=friend_id,
-                status="pending",
-                last_sent=datetime.now(),
-            )
-            db.add(new_friendship)
-            db.commit()
+            except NoResultFound:
+                new_friendship = Friend(
+                    user1_id=user_id,
+                    user2_id=friend_id,
+                    status="pending",
+                    last_sent=datetime.now(),
+                )
+                db.add(new_friendship)
+                db.commit()
 
         return render_template("single_chat.html", request)
     else:
@@ -1062,31 +1053,33 @@ async def accept_friend(request: Request, friend_id: int):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(settings.chat_secret_key)
-        db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
-        friend = (
-            db.query(Friend)
-            .filter(Friend.user1_id == friend_id, Friend.user2_id == user_id)
-            .first()
-        )
-        friend.status = "accepted"
-
-        friends = (
-            db.query(User)
-            .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
-            .filter(
-                Friend.status == "accepted",
-                ((Friend.user1_id == user_id) & (User.id == Friend.user2_id))
-                | ((Friend.user2_id == user_id) & (User.id == Friend.user1_id)),
+        with session_scope() as db:
+            friend = (
+                db.query(Friend)
+                .filter(Friend.user1_id == friend_id, Friend.user2_id == user_id)
+                .first()
             )
-            .all()
-        )
+            friend.status = "accepted"
 
-        db.commit()
+            friends = (
+                db.query(User)
+                .join(
+                    Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id)
+                )
+                .filter(
+                    Friend.status == "accepted",
+                    ((Friend.user1_id == user_id) & (User.id == Friend.user2_id))
+                    | ((Friend.user2_id == user_id) & (User.id == Friend.user1_id)),
+                )
+                .all()
+            )
 
-        for friend in friends:
-            friend.avatar = b64encode(friend.avatar).decode()
+            db.commit()
+
+            for friend in friends:
+                friend.avatar = b64encode(friend.avatar).decode()
 
         return render_template("single_chat.html", request)
     else:
@@ -1113,31 +1106,33 @@ async def deny_friend(request: Request, friend_id: int):
     token = request.cookies.get("access_token")
     if token:
         s = Serializer(settings.chat_secret_key)
-        db = SessionLocal()
         user_id = s.loads(token, max_age=3600).get("user_id")
 
-        friend = (
-            db.query(Friend)
-            .filter(Friend.user1_id == friend_id, Friend.user2_id == user_id)
-            .first()
-        )
-        friend.status = "denied"
-
-        friends = (
-            db.query(User)
-            .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
-            .filter(
-                Friend.status == "accepted",
-                ((Friend.user1_id == user_id) & (User.id == Friend.user2_id))
-                | ((Friend.user2_id == user_id) & (User.id == Friend.user1_id)),
+        with session_scope() as db:
+            friend = (
+                db.query(Friend)
+                .filter(Friend.user1_id == friend_id, Friend.user2_id == user_id)
+                .first()
             )
-            .all()
-        )
+            friend.status = "denied"
 
-        for friend in friends:
-            friend.avatar = b64encode(friend.avatar).decode()
+            friends = (
+                db.query(User)
+                .join(
+                    Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id)
+                )
+                .filter(
+                    Friend.status == "accepted",
+                    ((Friend.user1_id == user_id) & (User.id == Friend.user2_id))
+                    | ((Friend.user2_id == user_id) & (User.id == Friend.user1_id)),
+                )
+                .all()
+            )
 
-        db.commit()
+            for friend in friends:
+                friend.avatar = b64encode(friend.avatar).decode()
+
+            db.commit()
 
         return render_template("single_chat.html", request)
     else:
@@ -1203,24 +1198,34 @@ def chatbot_response(user_input: str, previous_messages=None):
     client = OpenAI(
         base_url="https://integrate.api.nvidia.com/v1",
         api_key=api_key,
+        timeout=settings.chatbot_timeout_seconds,
+        max_retries=settings.chatbot_max_retries,
     )
     messages = build_chatbot_messages(user_input, previous_messages)
 
-    completion = client.chat.completions.create(
-        model="stepfun-ai/step-3.5-flash",
-        messages=messages,
-        temperature=1,
-        top_p=0.9,
-        max_tokens=16384,
-        stream=False,
-    )
+    last_error = None
+    for model_name in settings.chatbot_models:
+        try:
+            completion = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=0.8,
+                top_p=0.9,
+                max_tokens=settings.chatbot_max_tokens,
+                stream=False,
+            )
 
-    message = completion.choices[0].message
-    content = message.content if message else None
-    if not content:
-        return "Chatbot returned an empty response"
+            message = completion.choices[0].message
+            content = message.content if message else None
+            if content:
+                return content
+            last_error = f"Model {model_name} returned an empty response"
+        except Exception as exc:
+            last_error = f"Model {model_name} failed: {exc}"
+            if getattr(settings, "debug", False):
+                logging.getLogger("chatbot").exception(last_error)
 
-    return content
+    return last_error or "Chatbot service is temporarily unavailable"
 
 
 # Helper functions for chatbot context and JSON responses
@@ -1270,12 +1275,12 @@ async def chatbot_page(request: Request):
     if not user:
         return render_template("login.html", request)
 
-    db = SessionLocal()
     user.avatar = encode_avatar(user)
 
-    chatbot_messages = (
-        db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
-    )
+    with session_scope() as db:
+        chatbot_messages = (
+            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
+        )
 
     return templates.TemplateResponse(
         request,
@@ -1310,7 +1315,6 @@ async def chatbot(request: Request, message: str = Form(...)):
     if not user:
         return render_template("login.html", request)
 
-    db = SessionLocal()
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
     errors = {}
@@ -1327,24 +1331,35 @@ async def chatbot(request: Request, message: str = Form(...)):
         )
 
     history_limit = max(0, settings.chatbot_history_limit)
-    recent_history = (
-        db.query(ChatbotMessage)
-        .filter(ChatbotMessage.user_id == user.id)
-        .order_by(ChatbotMessage.created_at.desc())
-        .limit(history_limit)
-        .all()
-    )
-    recent_history.reverse()
+    with session_scope() as db:
+        recent_history = (
+            db.query(ChatbotMessage)
+            .filter(ChatbotMessage.user_id == user.id)
+            .order_by(ChatbotMessage.created_at.desc())
+            .limit(history_limit)
+            .all()
+        )
+        recent_history.reverse()
 
     try:
         response = chatbot_response(message, previous_messages=recent_history)
     except Exception as exc:
-        logging.exception("Chatbot request failed")
-        error_payload = {
-            "error": "chatbot",
-            "message": "Chatbot service failed. Check server logs.",
-            "error_type": exc.__class__.__name__,
-        }
+        if exc.__class__.__name__ == "ChatbotServiceError" and hasattr(exc, "details"):
+            logging.warning("Chatbot request failed: %s", exc)
+            error_payload = {
+                "error": "chatbot",
+                "message": str(exc),
+                "error_type": exc.__class__.__name__,
+                "details": exc.details,
+            }
+        else:
+            logging.exception("Chatbot request failed")
+            error_payload = {
+                "error": "chatbot",
+                "message": "Chatbot service failed. Check server logs.",
+                "error_type": exc.__class__.__name__,
+            }
+
         if is_ajax:
             return chatbot_json_error(502, error_payload)
         return templates.TemplateResponse(
@@ -1361,15 +1376,17 @@ async def chatbot(request: Request, message: str = Form(...)):
         response=response,
         created_at=datetime.now(),
     )
-    db.add(chatbot_message)
-    db.commit()
+    with session_scope() as db:
+        db.add(chatbot_message)
+        db.commit()
 
     if is_ajax:
         return chatbot_json_success(message, response, chatbot_message.created_at)
 
-    chatbot_messages = (
-        db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
-    )
+    with session_scope() as db:
+        chatbot_messages = (
+            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
+        )
 
     return templates.TemplateResponse(
         request,
@@ -1398,10 +1415,9 @@ async def clear_chatbot_messages(request: Request):
     if not user:
         return render_template("login.html", request)
 
-    db = SessionLocal()
-
-    db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user_id).delete()
-    db.commit()
+    with session_scope() as db:
+        db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user_id).delete()
+        db.commit()
 
     return templates.TemplateResponse(
         request,

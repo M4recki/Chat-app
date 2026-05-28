@@ -96,6 +96,105 @@ document.addEventListener("DOMContentLoaded", () => {
     const loadingOverlay = document.getElementById("chatbot-loading-overlay");
     const chatbotThread = document.querySelector("[data-chatbot-thread]");
     const emptyState = document.getElementById("chatbot-empty-state");
+    const chatbotStatus = document.getElementById("chatbot-status");
+
+    const clearChatbotStatus = () => {
+        if (!chatbotStatus) {
+            return;
+        }
+
+        chatbotStatus.className = "alert d-none mt-3";
+        chatbotStatus.innerHTML = "";
+    };
+
+    // Show chatbot status messages (errors or info) in a consistent format
+
+    const showChatbotStatus = (title, details, variant = "danger") => {
+        if (!chatbotStatus) {
+            return;
+        }
+
+        chatbotStatus.className = `alert alert-${variant} mt-3`;
+        chatbotStatus.innerHTML = "";
+
+        const heading = document.createElement("strong");
+        heading.textContent = title || "Chatbot error";
+        chatbotStatus.appendChild(heading);
+
+        if (details) {
+            const detailBlock = document.createElement("pre");
+            detailBlock.className = "mb-0 mt-2 small text-wrap";
+            detailBlock.textContent =
+                typeof details === "string" ? details : JSON.stringify(details, null, 2);
+            chatbotStatus.appendChild(detailBlock);
+        }
+    };
+
+    const normalizeChatbotMarkdown = (sourceText) => {
+        const text = (sourceText || "").replace(/\r\n/g, "\n");
+        const lines = text.split("\n");
+
+        while (lines.length && !lines[0].trim()) {
+            lines.shift();
+        }
+
+        while (lines.length && !lines[lines.length - 1].trim()) {
+            lines.pop();
+        }
+
+        const indents = lines
+            .filter((line) => line.trim())
+            .map((line) => line.match(/^\s*/)?.[0].length || 0);
+
+        const minIndent = indents.length ? Math.min(...indents) : 0;
+
+        return lines.map((line) => line.slice(minIndent)).join("\n").trim();
+    };
+
+    // Render chatbot responses that may contain markdown, ensuring any existing content is processed on page load
+
+    const renderChatbotMarkdown = (element, sourceText) => {
+        if (!element) {
+            return;
+        }
+
+        let htmlContent = normalizeChatbotMarkdown(sourceText);
+
+        try {
+            if (typeof marked !== "undefined" && typeof marked.parse === "function") {
+                htmlContent = marked.parse(htmlContent);
+            } else if (typeof marked !== "undefined" && typeof marked === "function") {
+                htmlContent = marked(htmlContent);
+            }
+
+            if (typeof DOMPurify !== "undefined") {
+                htmlContent = DOMPurify.sanitize(htmlContent);
+            } else {
+                const div = document.createElement("div");
+                div.textContent = htmlContent;
+                htmlContent = div.innerHTML;
+            }
+        } catch (error) {
+            console.error("Markdown parsing error:", error);
+        }
+
+        element.innerHTML = htmlContent;
+        element.dataset.chatbotRendered = "true";
+    };
+
+    // On page load, find any existing chatbot responses and render their markdown content properly
+
+    const hydrateExistingChatbotResponses = () => {
+        document.querySelectorAll("[data-chatbot-response]").forEach((element) => {
+            if (element.dataset.chatbotRendered === "true") {
+                return;
+            }
+
+            renderChatbotMarkdown(element, element.textContent || "");
+        });
+    };
+
+    hydrateExistingChatbotResponses();
 
     const appendChatbotMessage = (payload) => {
         if (!chatbotThread) {
@@ -110,6 +209,8 @@ document.addEventListener("DOMContentLoaded", () => {
         if (emptyState) {
             emptyState.remove();
         }
+
+        clearChatbotStatus();
 
         const userName = chatbotThread.dataset.userName || "You";
         const userImage = chatbotThread.dataset.userImage || "";
@@ -157,42 +258,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
             botContainer.appendChild(botStrong);
 
-            // Convert Markdown to HTML and sanitize for security
-            try {
-                let htmlContent = payload.response;
+            const botMessage = document.createElement("div");
+            botMessage.className = "mt-2 chatbot-response-content";
+            botMessage.dataset.chatbotResponse = "true";
+            renderChatbotMarkdown(botMessage, payload.response);
 
-                // Use marked if available
-                if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
-                    htmlContent = marked.parse(payload.response);
-                } else if (typeof marked !== 'undefined' && typeof marked === 'function') {
-                    htmlContent = marked(payload.response);
-                }
-
-                // Sanitize with DOMPurify if available, otherwise use as-is
-                let cleanHtml = htmlContent;
-                if (typeof DOMPurify !== 'undefined') {
-                    cleanHtml = DOMPurify.sanitize(htmlContent);
-                } else {
-                    // Fallback: escape HTML to prevent XSS
-                    const div = document.createElement('div');
-                    div.textContent = htmlContent;
-                    cleanHtml = div.innerHTML;
-                }
-
-                const botMessage = document.createElement("div");
-                botMessage.className = "mt-2";
-                botMessage.innerHTML = cleanHtml;
-
-                botContainer.appendChild(botMessage);
-            } catch (error) {
-
-                // Fallback if markdown parsing fails
-                console.error('Markdown parsing error:', error);
-                const botMessage = document.createElement("p");
-                botMessage.className = "mt-2";
-                botMessage.textContent = payload.response;
-                botContainer.appendChild(botMessage);
-            }
+            botContainer.appendChild(botMessage);
 
             cardBody.appendChild(botContainer);
         }
@@ -204,6 +275,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     chatbotForm.addEventListener("submit", async (event) => {
         event.preventDefault();
+
+        clearChatbotStatus();
 
         if (loadingOverlay) {
             loadingOverlay.classList.add("is-visible");
@@ -226,7 +299,28 @@ document.addEventListener("DOMContentLoaded", () => {
             });
 
             if (!response.ok) {
-                throw new Error(`Request failed with status ${response.status}`);
+                const contentType = response.headers.get("content-type") || "";
+                let errorPayload = {
+                    message: `Request failed with status ${response.status}`,
+                    details: { status: response.status },
+                };
+
+                if (contentType.includes("application/json")) {
+                    try {
+                        errorPayload = await response.json();
+                    } catch (jsonError) {
+                        console.error("Failed to parse chatbot error JSON:", jsonError);
+                    }
+                } else {
+                    const errorText = await response.text();
+                    if (errorText) {
+                        errorPayload.details = errorText;
+                    }
+                }
+
+                const error = new Error(errorPayload.message || "Could not send the message");
+                error.payload = errorPayload;
+                throw error;
             }
 
             const contentType = response.headers.get("content-type") || "";
@@ -258,8 +352,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 submitButton.disabled = false;
             }
 
+            const payload = error && error.payload ? error.payload : null;
+            const title =
+                payload?.message ||
+                payload?.details?.message ||
+                error.message ||
+                "Could not send the message. Please try again.";
+            const details =
+                payload?.details || payload?.error_type || payload?.message || error.message;
+            showChatbotStatus(title, details);
             console.error(error);
-            alert("Could not send the message. Please try again.");
         }
     });
 });

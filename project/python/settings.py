@@ -39,6 +39,13 @@ class Settings(BaseSettings):
     # AI
     ai_key: str = ""
     chatbot_history_limit: int = 8
+    chatbot_max_tokens: int = 1024
+    chatbot_timeout_seconds: float = 20.0
+    chatbot_max_retries: int = 2
+    chatbot_models: list[str] = [
+        "stepfun-ai/step-3.5-flash",
+        "mistralai/mistral-large-3-675b-instruct-2512",
+    ]
 
     # Application
     environment: str = "development"
