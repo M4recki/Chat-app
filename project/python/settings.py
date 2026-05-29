@@ -39,13 +39,21 @@ class Settings(BaseSettings):
     # AI
     ai_key: str = ""
     chatbot_history_limit: int = 8
-    chatbot_max_tokens: int = 1024
-    chatbot_timeout_seconds: float = 20.0
-    chatbot_max_retries: int = 2
+    chatbot_max_tokens: int = 2048
+    chatbot_timeout_seconds: float = 60.0
+    chatbot_max_retries: int = 3
     chatbot_models: list[str] = [
         "stepfun-ai/step-3.5-flash",
         "mistralai/mistral-large-3-675b-instruct-2512",
     ]
+
+    # Rate limiting
+    rate_limit_login_max_requests: int = 10
+    rate_limit_login_window_seconds: int = 60
+    rate_limit_chatbot_max_requests: int = 8
+    rate_limit_chatbot_window_seconds: int = 60
+    rate_limit_search_max_requests: int = 30
+    rate_limit_search_window_seconds: int = 60
 
     # Application
     environment: str = "development"
@@ -62,12 +70,19 @@ class Settings(BaseSettings):
 
     @property
     def is_production(self) -> bool:
-        """Check if running in production environment."""
+        """Check if running in production environment.
+
+        Returns:
+            bool: True if the environment is set to 'production', False otherwise"""
         return self.environment.lower() == "production"
 
     @property
     def is_testing(self) -> bool:
-        """Check if running in test mode."""
+        """Check if running in test mode.
+
+        Returns:
+            bool: True if the environment is set to 'testing', False otherwise"""
+
         return self.testing or self.environment.lower() == "testing"
 
 

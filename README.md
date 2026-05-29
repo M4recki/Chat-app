@@ -151,19 +151,28 @@ project/
 │   ├── models.py            # SQLAlchemy ORM models
 │   ├── database.py          # Database configuration
 │   ├── connection_manager.py # WebSocket connection management
+│   ├── chatbot_utils.py     # AI chatbot helper functions
+│   ├── rate_limit.py        # In-memory rate limiter
+│   ├── settings.py          # Pydantic settings & env config
 │   └── setup.py             # Package setup
 ├── static/
 │   ├── css/
+│   │   └── style.css
 │   ├── js/
+│   │   └── script.js
 │   └── img/
 └── templates/               # Jinja2 templates
 
 tests/
-├── conftest.py              # pytest configuration
+├── conftest.py              # pytest configuration & fixtures
 ├── unit_test.py             # Unit tests
-├── integration_test.py       # Integration tests
-├── functional_test.py        # Functional tests
-└── model_test.py            # Test models and fixtures
+├── routes_test.py           # Route-specific integration tests
+├── integration_test.py      # Integration tests
+├── functional_test.py       # Functional tests
+├── model_test.py            # Model tests
+├── security_test.py         # Security tests
+├── contract_test.py         # Contract tests
+└── performance_test.py      # Performance tests
 ```
 
 ## Configuration
@@ -172,9 +181,9 @@ tests/
 
 - `DATABASE_URL`: PostgreSQL connection string
 - `SECRET_KEY`: Secret key for token signing (itsdangerous)
-- `SECRET_KEY_CHAT`: Alternative secret for chat tokens
-- `EMAIL_RECEIVER_TODO`: Email address to receive contact form submissions
-- `EMAIL_PASSWORD_CAFE`: App password for Gmail SMTP
+- `CHAT_SECRET_KEY`: Alternative secret for chat tokens
+- `EMAIL_RECEIVER`: Email address to receive contact form submissions
+- `EMAIL_PASSWORD`: App password for Gmail SMTP
 - `AI_KEY`: NVIDIA Integrate API key for chatbot access
 - `CHATBOT_HISTORY_LIMIT`: Number of previous chatbot exchanges included as memory context
 - `TESTING`: Set to "1" during test runs (auto-set by conftest.py)
@@ -185,7 +194,7 @@ Chatbot uses the NVIDIA Integrate API via the OpenAI Python client.
 
 - Set `AI_KEY` in `.env` to your NVIDIA API key.
 - Set `CHATBOT_HISTORY_LIMIT` (e.g. `8`) to control memory window size.
-- The model and base URL are configured in [project/python/routes.py](project/python/routes.py).
+- The model and base URL are configured in [project/python/chatbot_utils.py](project/python/chatbot_utils.py).
 
 ## CI/CD
 
@@ -238,7 +247,5 @@ This project is licensed under the MIT License. See [LICENSE](LICENSE) for detai
 ## Author
 
 [M4recki](https://github.com/M4recki)
-
----
 
 **Note**: This project is a portfolio/demonstration project. For production use, additional hardening, security audits, and database migrations (alembic) are recommended.

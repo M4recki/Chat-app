@@ -211,6 +211,4 @@ When modifying models:
 - Ask in comments on relevant issues
 - Contact maintainers directly
 
----
-
 Thank you for contributing! 🎉

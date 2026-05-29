@@ -1,18 +1,4 @@
-// Reject friend request
-
-
-const button = document.getElementById("cancel-button-delete");
-if (button) {
-    button.addEventListener("click", DeleteConfirmationClose);
-}
-
-
-function DeleteConfirmationClose() {
-    const dialog = document.getElementById("delete-confirmation");
-    dialog.close();
-}
-
-// Chatbot form submission with loading overlay, error handling and dynamic message appending
+// This file contains JavaScript code for handling chatbot interactions, dynamic textarea resizing, and conversation deletion with confirmation dialogs. It also includes error handling and markdown rendering for chatbot responses.
 
 document.addEventListener("DOMContentLoaded", () => {
     const messageTextareas = document.querySelectorAll(".chat_textarea");
@@ -170,9 +156,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (typeof DOMPurify !== "undefined") {
                 htmlContent = DOMPurify.sanitize(htmlContent);
             } else {
-                const div = document.createElement("div");
-                div.textContent = htmlContent;
-                htmlContent = div.innerHTML;
+                console.warn("DOMPurify not loaded — markdown rendered without sanitization");
             }
         } catch (error) {
             console.error("Markdown parsing error:", error);
@@ -196,21 +180,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
     hydrateExistingChatbotResponses();
 
-    const appendChatbotMessage = (payload) => {
+    const formatLocalTimestamp = (date) => {
+        const hours = date.getHours().toString().padStart(2, "0");
+        const minutes = date.getMinutes().toString().padStart(2, "0");
+        const day = date.getDate().toString().padStart(2, "0");
+        const month = (date.getMonth() + 1).toString().padStart(2, "0");
+        const year = date.getFullYear();
+        return ` ${hours}:${minutes}, ${year}-${month}-${day}`;
+    };
+
+    const buildChatbotCard = (payload, options = {}) => {
         if (!chatbotThread) {
-            return false;
+            return null;
         }
-
-        const formCard = chatbotForm.closest(".card");
-        if (!formCard) {
-            return false;
-        }
-
-        if (emptyState) {
-            emptyState.remove();
-        }
-
-        clearChatbotStatus();
 
         const userName = chatbotThread.dataset.userName || "You";
         const userImage = chatbotThread.dataset.userImage || "";
@@ -223,7 +205,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         const title = document.createElement("p");
         title.className = "card-title";
-        title.textContent = ` ${payload.created_at || ""}`;
+        title.textContent = payload.created_at || formatLocalTimestamp(new Date());
 
         const userMessage = document.createElement("p");
         userMessage.className = "py-3 text-start";
@@ -244,32 +226,63 @@ document.addEventListener("DOMContentLoaded", () => {
         cardBody.appendChild(title);
         cardBody.appendChild(userMessage);
 
-        if (payload.response) {
-            const botContainer = document.createElement("div");
-            botContainer.className = "mt-3 text-start";
+        const botContainer = document.createElement("div");
+        botContainer.className = "mt-3 text-start";
 
-            const botStrong = document.createElement("strong");
-            botStrong.className = "text-primary";
+        const botStrong = document.createElement("strong");
+        botStrong.className = "text-primary";
 
-            const botIcon = document.createElement("i");
-            botIcon.className = "bi bi-robot";
-            botStrong.appendChild(botIcon);
-            botStrong.appendChild(document.createTextNode(" Chatbot: "));
+        const botIcon = document.createElement("i");
+        botIcon.className = "bi bi-robot";
+        botStrong.appendChild(botIcon);
+        botStrong.appendChild(document.createTextNode(" Chatbot: "));
 
-            botContainer.appendChild(botStrong);
+        botContainer.appendChild(botStrong);
 
-            const botMessage = document.createElement("div");
-            botMessage.className = "mt-2 chatbot-response-content";
-            botMessage.dataset.chatbotResponse = "true";
+        const botMessage = document.createElement("div");
+        botMessage.className = "mt-2 chatbot-response-content";
+        botMessage.dataset.chatbotResponse = "true";
+
+        if (options.pending) {
+            botMessage.textContent = "Chatbot is thinking...";
+        } else if (payload.response) {
             renderChatbotMarkdown(botMessage, payload.response);
-
-            botContainer.appendChild(botMessage);
-
-            cardBody.appendChild(botContainer);
         }
 
+        botContainer.appendChild(botMessage);
+        cardBody.appendChild(botContainer);
+
         card.appendChild(cardBody);
-        chatbotThread.insertBefore(card, formCard);
+
+        return {
+            card,
+            title,
+            botMessage,
+        };
+    };
+
+    const appendChatbotMessage = (payload) => {
+        if (!chatbotThread) {
+            return false;
+        }
+
+        const formCard = chatbotForm.closest(".card");
+        if (!formCard) {
+            return false;
+        }
+
+        if (emptyState) {
+            emptyState.remove();
+        }
+
+        clearChatbotStatus();
+
+        const built = buildChatbotCard(payload, { pending: false });
+        if (!built) {
+            return false;
+        }
+
+        chatbotThread.insertBefore(built.card, formCard);
         return true;
     };
 
@@ -287,15 +300,31 @@ document.addEventListener("DOMContentLoaded", () => {
             submitButton.disabled = true;
         }
 
+        const formData = new FormData(chatbotForm);
+        const messageValue = (formData.get("message") || "").toString();
+        const pendingCard = buildChatbotCard(
+            { message: messageValue, created_at: formatLocalTimestamp(new Date()) },
+            { pending: true },
+        );
+
+        if (pendingCard && chatbotThread) {
+            if (emptyState) {
+                emptyState.remove();
+            }
+            const formCard = chatbotForm.closest(".card");
+            if (formCard) {
+                chatbotThread.insertBefore(pendingCard.card, formCard);
+            }
+        }
+
         try {
             const response = await fetch(chatbotForm.action, {
                 method: chatbotForm.method,
-                body: new FormData(chatbotForm),
+                body: formData,
                 headers: {
                     "X-Requested-With": "XMLHttpRequest",
                 },
-                // ensure cookies (access_token) are sent with the AJAX request
-                credentials: 'same-origin',
+                credentials: "same-origin",
             });
 
             if (!response.ok) {
@@ -326,7 +355,14 @@ document.addEventListener("DOMContentLoaded", () => {
             const contentType = response.headers.get("content-type") || "";
             if (contentType.includes("application/json")) {
                 const payload = await response.json();
-                if (!appendChatbotMessage(payload)) {
+                if (pendingCard) {
+                    pendingCard.title.textContent = payload.created_at || pendingCard.title.textContent;
+                    if (payload.response) {
+                        renderChatbotMarkdown(pendingCard.botMessage, payload.response);
+                    } else {
+                        pendingCard.botMessage.textContent = "Chatbot returned an empty response.";
+                    }
+                } else if (!appendChatbotMessage(payload)) {
                     window.location.reload();
                 }
             } else {
@@ -361,7 +397,19 @@ document.addEventListener("DOMContentLoaded", () => {
             const details =
                 payload?.details || payload?.error_type || payload?.message || error.message;
             showChatbotStatus(title, details);
+
+            if (pendingCard) {
+                pendingCard.botMessage.textContent = "Chatbot failed to respond. Please try again.";
+            }
             console.error(error);
         }
     });
 });
+
+function DeleteConfirmationClose(dialogId) {
+    const id = dialogId || "delete-confirmation";
+    const dialog = document.getElementById(id);
+    if (dialog) {
+        dialog.close();
+    }
+}

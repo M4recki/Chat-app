@@ -67,6 +67,4 @@ This Code of Conduct is adapted from the [Contributor Covenant](https://www.cont
 
 If you have questions about this Code of Conduct, please reach out to project maintainers.
 
----
-
 Thank you for helping create a positive and welcoming community! 💙

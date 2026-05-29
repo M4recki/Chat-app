@@ -231,7 +231,7 @@
     <!-- Footer -->
     {% include "footer.html" %}
 
-    <!-- WebSocket handling -->
+    <!-- WebSocket handling for real-time chat -->
     <script>
       const user_name = "{{ user.name }}";
       const client_avatar = "{{ user.avatar }}";
@@ -240,128 +240,126 @@
       const friend_id = parseInt("{{ friend.id }}", 10);
       const user_id = parseInt("{{ user.id }}", 10);
 
-      const ws = new WebSocket(
-        `ws://localhost:8000/ws/${channel_id}/${user_name}/${user_id}`,
-      );
-      ws.onmessage = function (event) {
-        console.log(event.data);
+      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${wsProtocol}//${window.location.host}/ws/${channel_id}/${user_name}/${user_id}`;
+      const ws = new WebSocket(wsUrl);
+
+      // Function to get current date and time in the format "HH:MM, YYYY-MM-DD"
+
+      function getCurrentDateTime() {
+        const date = new Date();
+        const hours = date.getHours().toString().padStart(2, "0");
+        const minutes = date.getMinutes().toString().padStart(2, "0");
+        const dateString =
+          date.getFullYear() +
+          "-" +
+          (date.getMonth() + 1).toString().padStart(2, "0") +
+          "-" +
+          date.getDate().toString().padStart(2, "0");
+
+        return `${hours}:${minutes}, ${dateString}`;
+      }
+
+      // Function to append a new chat message to the messages container
+
+      function appendChatMessage(senderName, messageContent, senderId) {
         const messages = document.getElementById("messages");
+        const container = document.createElement("div");
+        container.classList.add("card", "my-3");
 
-        const messageContainer = document.createElement("div");
-        messageContainer.classList.add("card", "my-3");
+        const body = document.createElement("div");
+        body.classList.add("card-body");
 
-        const messageBody = document.createElement("div");
-        messageBody.classList.add("card-body");
+        const title = document.createElement("p");
+        title.classList.add("card-title", "mt-3", "ms-3");
+        title.textContent = getCurrentDateTime();
+        container.appendChild(title);
 
-        const messageTitle = document.createElement("p");
-        messageTitle.classList.add("card-title", "mt-3", "ms-3");
+        const content = document.createElement("p");
+        content.classList.add("pt-2", "text-start");
 
-        // Current date in correct format
-
-        function getCurrentDateTime() {
-          const date = new Date();
-          const hours = date.getHours().toString().padStart(2, "0");
-          const minutes = date.getMinutes().toString().padStart(2, "0");
-          const dateString =
-            date.getFullYear() +
-            "-" +
-            (date.getMonth() + 1).toString().padStart(2, "0") +
-            "-" +
-            date.getDate().toString().padStart(2, "0");
-
-          return `${hours}:${minutes}, ${dateString}`;
+        const avatar = document.createElement("img");
+        avatar.classList.add("smaller-user-image", "mx-2", "float-start");
+        if (senderId === user_id) {
+          avatar.src = `data:image/jpeg;base64,${client_avatar}`;
+        } else if (senderId === friend_id) {
+          avatar.src = `data:image/jpeg;base64,${friend_avatar}`;
         }
+        avatar.alt = `${senderName}'s avatar`;
+        content.appendChild(avatar);
 
-        messageTitle.innerHTML = getCurrentDateTime();
-        messageContainer.appendChild(messageTitle);
+        const name = document.createElement("strong");
+        name.classList.add("text-primary");
+        name.textContent = `${senderName}: `;
+        content.appendChild(name);
 
-        const message = document.createElement("p");
+        const text = document.createElement("span");
+        text.textContent = messageContent;
+        content.appendChild(text);
 
-        const user_avatar = document.createElement("img");
-        user_avatar.classList.add("smaller-user-image", "mx-2", "float-start");
+        body.appendChild(content);
+        container.appendChild(body);
+        messages.appendChild(container);
+      }
 
-        // Parse the incoming message as JSON
+      // Function to append a system message (e.g., user left the chat) to the messages container
 
-        const messageData = JSON.parse(event.data);
+      function appendSystemMessage(senderName, text) {
+        const messages = document.getElementById("messages");
+        const container = document.createElement("div");
+        container.classList.add("card", "my-3");
 
-        if (
-          messageData.content &&
-          messageData.content.includes("left the chat")
-        ) {
-          const cardElement = document.createElement("div");
-          cardElement.classList.add("card", "my-3");
+        const body = document.createElement("div");
+        body.classList.add("card-body");
 
-          const cardBodyElement = document.createElement("div");
-          cardBodyElement.classList.add("card-body");
+        const name = document.createElement("strong");
+        name.classList.add("text-primary");
+        name.textContent = senderName;
+        body.appendChild(name);
 
-          const titleElement = document.createElement("p");
-          titleElement.classList.add("pt-2", "text-start", "text-primary");
+        const msg = document.createElement("p");
+        msg.classList.add("pt-2", "text-start", "text-primary");
+        msg.textContent = text;
+        body.appendChild(msg);
 
-          const usernameElement = document.createElement("strong");
-          usernameElement.classList.add("text-primary");
-          usernameElement.textContent = messageData.senderName;
-          cardBodyElement.appendChild(usernameElement);
+        container.appendChild(body);
+        messages.appendChild(container);
+      }
 
-          titleElement.textContent = messageData.content;
-          cardBodyElement.appendChild(titleElement);
+      ws.onmessage = function (event) {
+        const data = JSON.parse(event.data);
 
-          cardElement.appendChild(cardBodyElement);
-
-          messages.appendChild(cardElement);
+        if (data.content && data.content.includes("left the chat")) {
+          appendSystemMessage(data.senderName, data.content);
         } else {
-          const senderId = messageData.userId;
-          const senderName = messageData.senderName;
-          const messageContent = messageData.content;
-
-          // Determine which user's avatar to display
-
-          let avatar_data;
-          if (senderId === user_id) {
-            avatar_data = client_avatar;
-          } else if (senderId === friend_id) {
-            avatar_data = friend_avatar;
-          } else {
-            avatarData = "None";
-          }
-
-          user_avatar.src = `data:image/jpeg;base64,${avatar_data}`;
-          user_avatar.alt = `${senderName}'s avatar`;
-          messageBody.appendChild(user_avatar);
-
-          const usernameElement = document.createElement("strong");
-          usernameElement.classList.add("text-primary");
-          usernameElement.textContent = `${senderName}: `;
-          messageBody.appendChild(usernameElement);
-
-          // Create the message content element with normal text
-
-          const messageContentElement = document.createElement("label");
-          messageContentElement.textContent = messageContent;
-          messageBody.appendChild(messageContentElement);
-
-          messageBody.appendChild(message);
-          messageContainer.appendChild(messageBody);
-
-          messages.appendChild(messageContainer);
+          appendChatMessage(data.senderName, data.content, data.userId);
         }
       };
 
-      // Send message function
+      ws.onerror = function () {
+        console.error("WebSocket connection error");
+      };
+
+      ws.onclose = function () {
+        console.warn("WebSocket connection closed");
+      };
+
+      // Function to handle form submission and send a new chat message through the WebSocket connection
 
       function sendMessage(event) {
+        event.preventDefault();
         const form = event.currentTarget;
         const input =
           form.querySelector('textarea[name="message"]') ||
           document.getElementById("messageText") ||
           document.getElementById("message");
 
-        if (!input) {
-          event.preventDefault();
+        if (!input || !input.value.trim()) {
           return;
         }
 
-        if (!input.value.trim()) {
-          event.preventDefault();
+        if (ws.readyState !== WebSocket.OPEN) {
+          alert("Connection lost. Please reload the page.");
           return;
         }
 
@@ -369,7 +367,6 @@
           JSON.stringify({ channel_id: channel_id, message: input.value }),
         );
         input.value = "";
-        event.preventDefault();
       }
     </script>
   </body>

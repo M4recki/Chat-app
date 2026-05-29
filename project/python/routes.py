@@ -24,10 +24,17 @@ from importlib import import_module
 from io import BytesIO
 from sqlalchemy.orm.exc import NoResultFound
 from base64 import b64encode, b64decode
-from openai import OpenAI
 from .database import session_scope
 from .settings import settings
 from .models import User, Friend, ChatbotMessage, Message, Channel
+from .chatbot_utils import (
+    build_chatbot_messages,
+    chatbot_response,
+    chatbot_context,
+    chatbot_json_error,
+    chatbot_json_success,
+    ChatbotServiceError,
+)
 
 Image = import_module("PIL.Image")
 
@@ -95,6 +102,15 @@ def is_authenticated(request: Request):
 
 
 def get_user_from_request(request: Request, max_age: int = 3600):
+    """Get user object and ID from request based on access token.
+
+    Args:
+        request (Request): The request object
+        max_age (int): The maximum age of the token in seconds
+
+    Returns:
+        tuple: A tuple containing the user object and user ID, or (None, None) if not found
+    """
     token = request.cookies.get("access_token")
     if not token:
         return None, None
@@ -112,12 +128,27 @@ def get_user_from_request(request: Request, max_age: int = 3600):
 
 
 def get_user(user_id):
+    """Get user object from database by user ID.
+
+    Args:
+        user_id: The ID of the user to retrieve
+
+    Returns:
+        User: The user object if found, None otherwise"""
     with session_scope() as db:
         user = db.query(User).filter(User.id == user_id).first()
     return user
 
 
 def encode_avatar(user):
+    """Encode user avatar to base64 string for display in templates.
+
+    Args:
+        user: The user object containing the avatar binary data
+
+    Returns:
+        str: The base64-encoded avatar string, or an empty string if no avatar is found
+    """
     if user and user.avatar:
         return b64encode(user.avatar).decode()
     return ""
@@ -688,11 +719,16 @@ async def update_profile_data(
 
     with session_scope() as db:
         updated_user = db.query(User).filter(User.id == user_id).first()
-        updated_user.name = name
-        updated_user.surname = surname
-        updated_user.email = email
-        updated_user.password = password
-        updated_user.avatar = user.avatar
+        if name is not None:
+            updated_user.name = name
+        if surname is not None:
+            updated_user.surname = surname
+        if email is not None:
+            updated_user.email = email
+        if password is not None:
+            updated_user.password = password
+        if avatar and avatar.content_type:
+            updated_user.avatar = user.avatar
         db.commit()
 
     return render_template("single_chat.html", request)
@@ -835,6 +871,8 @@ async def friend_chat_page(
         user.avatar = encode_avatar(user)
 
         friend = db.query(User).filter(User.id == friend_id).first()
+        if not friend:
+            raise HTTPException(status_code=404, detail="Friend not found")
         friend.avatar = encode_avatar(friend)
 
         messages = db.query(Message).filter(Message.channel_id == channel_id).all()
@@ -904,15 +942,17 @@ async def block_friend(request: Request, friend_id: int):
 
             if existing_friendship:
                 existing_friendship.status = "blocked"
+                existing_friendship.last_sent = datetime.now()
                 db.commit()
-
-            updated_friendship = Friend(
-                user1_id=user_id,
-                user2_id=friend_id,
-                status="blocked",
-            )
-            db.add(updated_friendship)
-            db.commit()
+            else:
+                new_friendship = Friend(
+                    user1_id=user_id,
+                    user2_id=friend_id,
+                    status="blocked",
+                    last_sent=datetime.now(),
+                )
+                db.add(new_friendship)
+                db.commit()
 
         return render_template("single_chat.html", request)
     else:
@@ -951,16 +991,18 @@ async def unblock_friend(request: Request, friend_id: int):
 
             if existing_friendship:
                 existing_friendship.status = "accepted"
+                existing_friendship.blocked_by_user = None
+                existing_friendship.last_sent = datetime.now()
                 db.commit()
-
-            updated_friendship = Friend(
-                user1_id=user_id,
-                user2_id=friend_id,
-                status="accepted",
-                blocked_by_user=friend_id,
-            )
-            db.add(updated_friendship)
-            db.commit()
+            else:
+                new_friendship = Friend(
+                    user1_id=user_id,
+                    user2_id=friend_id,
+                    status="accepted",
+                    last_sent=datetime.now(),
+                )
+                db.add(new_friendship)
+                db.commit()
 
         return render_template("single_chat.html", request)
     else:
@@ -1063,7 +1105,7 @@ async def accept_friend(request: Request, friend_id: int):
             )
             friend.status = "accepted"
 
-            friends = (
+            accepted_friends = (
                 db.query(User)
                 .join(
                     Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id)
@@ -1078,8 +1120,8 @@ async def accept_friend(request: Request, friend_id: int):
 
             db.commit()
 
-            for friend in friends:
-                friend.avatar = b64encode(friend.avatar).decode()
+            for accepted in accepted_friends:
+                accepted.avatar = b64encode(accepted.avatar).decode()
 
         return render_template("single_chat.html", request)
     else:
@@ -1116,7 +1158,7 @@ async def deny_friend(request: Request, friend_id: int):
             )
             friend.status = "denied"
 
-            friends = (
+            accepted_friends = (
                 db.query(User)
                 .join(
                     Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id)
@@ -1129,133 +1171,14 @@ async def deny_friend(request: Request, friend_id: int):
                 .all()
             )
 
-            for friend in friends:
-                friend.avatar = b64encode(friend.avatar).decode()
+            for accepted in accepted_friends:
+                accepted.avatar = b64encode(accepted.avatar).decode()
 
             db.commit()
 
         return render_template("single_chat.html", request)
     else:
         return render_template("login.html", request)
-
-
-# Chatbot
-
-
-def build_chatbot_messages(user_input: str, previous_messages=None):
-    """
-    Build the message history for the chatbot API request.
-
-    Args:
-        user_input (str): The current user input message
-            previous_messages (list, optional): A list of previous messages
-
-    Returns:
-        list: The list of messages for the chatbot API request
-    """
-    system_prompt = (
-        "You are the Chat App assistant. "
-        "Use the provided conversation history as memory for this user. "
-        "If the user asks whether you remember earlier messages, answer based on the "
-        "history in this chat context. "
-        "Do not claim you cannot remember previous messages when prior context is present."
-    )
-
-    messages = [{"role": "system", "content": system_prompt}]
-    if previous_messages:
-        for item in previous_messages:
-            if item.message:
-                messages.append({"role": "user", "content": item.message})
-            if item.response:
-                messages.append({"role": "assistant", "content": item.response})
-
-    messages.append({"role": "user", "content": user_input})
-    return messages
-
-
-def chatbot_response(user_input: str, previous_messages=None):
-    """
-    Get a response from the chatbot for the given user input.
-
-    Args:
-        user_input (str): The user's message
-
-    Returns:
-        str: The chatbot's response
-    """
-    # In testing skip external API calls and return deterministic result
-    if environ.get("TESTING") == "1":
-        if ":" in user_input:
-            return user_input.split(":", 1)[1].strip()
-        return "test-response"
-
-    api_key = settings.ai_key.strip().strip('"').strip("'")
-    if api_key.lower().startswith("bearer "):
-        api_key = api_key.split(" ", 1)[1].strip()
-    if not api_key or api_key.lower() in {"your-nvidia-api-key", "changeme"}:
-        return "Chatbot service is not configured"
-
-    client = OpenAI(
-        base_url="https://integrate.api.nvidia.com/v1",
-        api_key=api_key,
-        timeout=settings.chatbot_timeout_seconds,
-        max_retries=settings.chatbot_max_retries,
-    )
-    messages = build_chatbot_messages(user_input, previous_messages)
-
-    last_error = None
-    for model_name in settings.chatbot_models:
-        try:
-            completion = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                temperature=0.8,
-                top_p=0.9,
-                max_tokens=settings.chatbot_max_tokens,
-                stream=False,
-            )
-
-            message = completion.choices[0].message
-            content = message.content if message else None
-            if content:
-                return content
-            last_error = f"Model {model_name} returned an empty response"
-        except Exception as exc:
-            last_error = f"Model {model_name} failed: {exc}"
-            if getattr(settings, "debug", False):
-                logging.getLogger("chatbot").exception(last_error)
-
-    return last_error or "Chatbot service is temporarily unavailable"
-
-
-# Helper functions for chatbot context and JSON responses
-
-
-def chatbot_context(user, chatbot_messages, **extra):
-    context = {
-        "request": extra.pop("request"),
-        "user": user,
-        "message": extra.pop("message", ""),
-        "response": extra.pop("response", ""),
-        "chatbot_messages": chatbot_messages,
-    }
-    context.update(extra)
-    return context
-
-
-def chatbot_json_error(status_code: int, payload: dict):
-    return JSONResponse(status_code=status_code, content=payload)
-
-
-def chatbot_json_success(message: str, response: str, created_at: datetime):
-    return JSONResponse(
-        status_code=200,
-        content={
-            "message": message,
-            "response": response,
-            "created_at": created_at.strftime(" %H:%M, %Y-%m-%d"),
-        },
-    )
 
 
 @router.get("/chatbot", dependencies=[Depends(is_authenticated)])
@@ -1344,7 +1267,7 @@ async def chatbot(request: Request, message: str = Form(...)):
     try:
         response = chatbot_response(message, previous_messages=recent_history)
     except Exception as exc:
-        if exc.__class__.__name__ == "ChatbotServiceError" and hasattr(exc, "details"):
+        if isinstance(exc, ChatbotServiceError):
             logging.warning("Chatbot request failed: %s", exc)
             error_payload = {
                 "error": "chatbot",
@@ -1370,18 +1293,19 @@ async def chatbot(request: Request, message: str = Form(...)):
             ),
         )
 
+    created_at = datetime.now()
     chatbot_message = ChatbotMessage(
         user_id=user.id,
         message=message,
         response=response,
-        created_at=datetime.now(),
+        created_at=created_at,
     )
     with session_scope() as db:
         db.add(chatbot_message)
         db.commit()
 
     if is_ajax:
-        return chatbot_json_success(message, response, chatbot_message.created_at)
+        return chatbot_json_success(message, response, created_at)
 
     with session_scope() as db:
         chatbot_messages = (

@@ -99,14 +99,43 @@ def chatbot_response(user_input: str, previous_messages=None):
     model_errors = []
     for model_name in settings.chatbot_models:
         try:
-            completion = client.chat.completions.create(
-                model=model_name,
-                messages=messages,
-                temperature=0.6,
-                top_p=0.9,
-                max_tokens=settings.chatbot_max_tokens,
-                stream=False,
-            )
+            try:
+                completion = client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    temperature=0.6,
+                    top_p=0.9,
+                    max_tokens=settings.chatbot_max_tokens,
+                    stream=False,
+                )
+            except Exception as exc_inner:
+                if hasattr(openai, "APITimeoutError") and isinstance(
+                    exc_inner, openai.APITimeoutError
+                ):
+                    logging.warning(
+                        "Chatbot model %s timed out; retrying with longer timeout and fewer tokens",
+                        model_name,
+                    )
+                    try:
+                        retry_max_tokens = max(
+                            256, int(settings.chatbot_max_tokens / 2)
+                        )
+                        completion = client.chat.completions.create(
+                            model=model_name,
+                            messages=messages,
+                            temperature=0.6,
+                            top_p=0.9,
+                            max_tokens=retry_max_tokens,
+                            stream=False,
+                            timeout=min(
+                                getattr(settings, "chatbot_timeout_seconds", 30) * 2,
+                                300,
+                            ),
+                        )
+                    except Exception as exc_retry:
+                        raise exc_retry
+                else:
+                    raise exc_inner
 
             message = completion.choices[0].message
             content = message.content if message else None

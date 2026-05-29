@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <!-- Head -->
+    {% include "head.html" %}
+
+    <title>Chat app - Error</title>
+  </head>
+  <body>
+    <!-- Navbar -->
+    {% include "navbar.html" %}
+
+    <main>
+      <div class="container py-5">
+        <div class="row justify-content-center">
+          <div class="col-12 col-md-8 col-lg-6">
+            <div class="card shadow-sm">
+              <div class="card-body text-center">
+                <h1 class="h4 mb-3">{{ title }} ({{ status_code }})</h1>
+                <p class="text-muted mb-2">{{ message }}</p>
+                {% if hint %}
+                <p class="small text-secondary mb-4">{{ hint }}</p>
+                {% else %}
+                <div class="mb-3"></div>
+                {% endif %}
+                <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+                  <a class="btn btn-primary" href="{{ url_for('root') }}">
+                    Go to home
+                  </a>
+                  {% if show_login %}
+                  <a
+                    class="btn btn-outline-secondary"
+                    href="{{ url_for('login') }}">
+                    Go to login
+                  </a>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    {% include "footer.html" %}
+  </body>
+</html>

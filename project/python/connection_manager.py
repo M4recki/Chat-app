@@ -33,7 +33,10 @@ class ConnectionManager:
             channel_id (str): The channel ID
         """
         if channel_id in self.active_connections:
-            self.active_connections[channel_id].remove(websocket)
+            try:
+                self.active_connections[channel_id].remove(websocket)
+            except ValueError:
+                pass
 
     async def broadcast(self, message: str, channel_id: str):
         """
@@ -44,5 +47,11 @@ class ConnectionManager:
             channel_id (str): The channel ID
         """
         if channel_id in self.active_connections:
+            dead = []
             for connection in self.active_connections[channel_id]:
-                await connection.send_text(message)
+                try:
+                    await connection.send_text(message)
+                except Exception:
+                    dead.append(connection)
+            for connection in dead:
+                self.active_connections[channel_id].remove(connection)
