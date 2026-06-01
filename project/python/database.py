@@ -3,21 +3,27 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.engine import URL
 from contextlib import contextmanager
+import os
 
 # Database setup
-
-
-SQLALCHEMY_DATABASE_URL = URL.create(
-    drivername="postgresql",
-    username="postgres",
-    password="postgres",
-    host="localhost",
-    database="Chat app",
-    port=5432,
+# Prefer `DATABASE_URL` from environment (set by docker-compose / CI). Fallback to
+# a sensible default for local development.
+database_url = os.getenv(
+    "DATABASE_URL",
+    str(
+        URL.create(
+            drivername="postgresql",
+            username="postgres",
+            password="postgres",
+            host="localhost",
+            database="chatapp",
+            port=5432,
+        )
+    ),
 )
 
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
+    database_url,
     pool_size=20,
     max_overflow=50,
 )

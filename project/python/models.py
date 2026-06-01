@@ -82,4 +82,5 @@ class ChatbotMessage(Base):
     user = relationship("User", backref="chatbot_messages")
 
 
-Base.metadata.create_all(bind=engine)
+# Do not call `Base.metadata.create_all()` on import.
+# Use Alembic for schema migrations and explicit startup migration steps.
