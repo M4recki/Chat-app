@@ -19,8 +19,15 @@ RUN pip install -r requirements.txt
 RUN if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
 
 # copy app
+
+# copy entrypoint first so it is available and has execute permission
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+
+# copy rest of app
 COPY . /app
 
 EXPOSE 8000
 
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "python.main:app", "--bind", "0.0.0.0:8000", "--workers", "1"]
