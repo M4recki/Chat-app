@@ -8,8 +8,9 @@ services:
       POSTGRES_DB: chatapp
     volumes:
       - pgdata:/var/lib/postgresql/data
+    # map to a different host port to avoid collisions with local Postgres
     ports:
-      - 5432:5432
+      - 5433:5432
 
   web:
     build: .
