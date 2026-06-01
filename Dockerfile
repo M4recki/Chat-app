@@ -19,13 +19,10 @@ RUN pip install -r requirements.txt
 RUN if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
 
 # copy app
-
-# copy entrypoint first so it is available and has execute permission
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
-
-# copy rest of app
 COPY . /app
+
+# ensure entrypoint is executable (COPY may overwrite file modes)
+RUN if [ -f /app/docker-entrypoint.sh ]; then chmod +x /app/docker-entrypoint.sh; fi
 
 EXPOSE 8000
 
