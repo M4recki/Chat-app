@@ -5,6 +5,9 @@ pytest-asyncio>=0.21
 httpx>=0.24
 requests>=2.31
 
+# Database migrations
+alembic>=1.11
+
 # Linters / formatters / static analysis
 black>=24.3
 isort>=5.13

@@ -55,6 +55,28 @@ For development and testing:
 pip install -r requirements-dev.txt
 ```
 
+### Alembic (database migrations)
+
+This project uses Alembic for schema migrations. To initialize and generate migrations locally:
+
+```bash
+pip install -r requirements-dev.txt
+# initialize alembic (only once)
+alembic init alembic
+# edit alembic.ini or set DATABASE_URL env var to point to your DB
+alembic revision --autogenerate -m "Initial migration"
+alembic upgrade head
+```
+
+### Docker (development)
+
+Run Postgres + app via docker-compose:
+
+```bash
+docker-compose up --build
+# app will be available at http://localhost:8000
+```
+
 ### 4. Configure environment variables
 
 Copy `.env.example` to `.env` and update values:
