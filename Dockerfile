@@ -27,4 +27,4 @@ RUN if [ -f /app/docker-entrypoint.sh ]; then chmod +x /app/docker-entrypoint.sh
 EXPOSE 8000
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "python.main:app", "--bind", "0.0.0.0:8000", "--workers", "1"]
+CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "project.python.main:app", "--bind", "0.0.0.0:8000", "--workers", "1"]
