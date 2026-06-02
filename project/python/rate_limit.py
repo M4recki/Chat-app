@@ -1,8 +1,30 @@
 from __future__ import annotations
-from collections import deque
+
 import threading
 import time
+from collections import deque
+from typing import TypedDict
+
 from fastapi import HTTPException, Request
+
+
+class RateLimitRule(TypedDict):
+    path: str
+    methods: set[str]
+    scope: str
+    max_requests: int
+    window_seconds: int
+
+
+def get_client_identifier(request: Request) -> str:
+    """Resolve the best-effort client identifier from headers or socket."""
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
 
 
 class RateLimiter:
@@ -12,16 +34,6 @@ class RateLimiter:
         """Initialize the bucket store and lock."""
         self._buckets: dict[str, deque[float]] = {}
         self._lock = threading.Lock()
-
-    def _get_client_identifier(self, request: Request) -> str:
-        """Resolve the best-effort client identifier from headers or socket."""
-        forwarded_for = request.headers.get("x-forwarded-for")
-        if forwarded_for:
-            return forwarded_for.split(",")[0].strip()
-
-        if request.client and request.client.host:
-            return request.client.host
-        return "unknown"
 
     def enforce(
         self,
@@ -41,7 +53,7 @@ class RateLimiter:
         now = time.monotonic()
         now_epoch = time.time()
         cutoff = now - window_seconds
-        identifier = identifier or self._get_client_identifier(request)
+        identifier = identifier or get_client_identifier(request)
         bucket_key = f"{scope}:{identifier}"
 
         with self._lock:
@@ -80,7 +92,7 @@ class RateLimiter:
         }
 
 
-_rate_limiter = RateLimiter()
+rate_limiter = RateLimiter()
 
 
 def enforce_rate_limit(
@@ -91,7 +103,7 @@ def enforce_rate_limit(
     identifier: str | None = None,
 ) -> dict[str, int] | None:
     """Convenience wrapper for enforcing a rate limit using the singleton."""
-    return _rate_limiter.enforce(
+    return rate_limiter.enforce(
         request,
         scope,
         max_requests,

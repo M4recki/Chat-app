@@ -53,10 +53,15 @@
                     href="{{ url_for('friend_chat_page', channel_id=channel_ids[friend.id], friend_id=friend.id) }}"
                     class="text-decoration-none text-body">
                     <div class="card-body text-center search-user-card-body">
-                      <img
-                        class="card-img-top user-image mx-auto mt-2"
-                        src="data:image/jpeg;base64,{{ friend_avatars[friend.id] }}"
-                        alt="{{ friend.name }}'s avatar" />
+                      <div class="position-relative d-inline-block">
+                        <img
+                          class="card-img-top user-image mx-auto mt-2"
+                          src="data:image/jpeg;base64,{{ friend_avatars[friend.id] }}"
+                          alt="{{ friend.name }}'s avatar" />
+                        <span
+                          class="online-indicator-dot"
+                          data-user-id="{{ friend.id }}"></span>
+                      </div>
                       <div class="card-body px-2 pb-2">
                         <p class="card-title lead text-primary mb-2">
                           {{ friend.name }} {{ friend.surname }}
@@ -86,5 +91,25 @@
 
     <!-- Footer -->
     {% include "footer.html" %}
+
+    <script>
+      document.addEventListener("DOMContentLoaded", async function () {
+        try {
+          const response = await fetch("/online-users");
+          const data = await response.json();
+          const onlineIds = new Set(data.online_user_ids);
+          document
+            .querySelectorAll("[data-user-id]")
+            .forEach(function (dot) {
+              const userId = parseInt(dot.dataset.userId, 10);
+              dot.classList.add(
+                onlineIds.has(userId) ? "online" : "offline",
+              );
+            });
+        } catch (err) {
+          console.error("Failed to fetch online users:", err);
+        }
+      });
+    </script>
   </body>
 </html>

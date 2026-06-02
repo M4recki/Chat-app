@@ -1,5 +1,5 @@
 from base64 import b64encode
-from datetime import datetime, timedelta
+from datetime import datetime
 from PIL import Image
 from io import BytesIO
 from fastapi.testclient import TestClient
@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from project.python.main import app
 from project.python.models import User
 from project.python.settings import settings
-from project.python.rate_limit import _rate_limiter
+from project.python.rate_limit import rate_limiter
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from tests.model_test import TestingSessionLocal
 
@@ -83,7 +83,7 @@ def test_register_user(test_db_session):
             "email": user.email,
             "password": user.password,
             "confirm_password": user.password,
-            "terms_conditions": True,
+            "terms_conditions": "on",
         },
     )
 
@@ -116,7 +116,7 @@ def test_login_user(test_db_session):
             "email": user.email,
             "password": user.password,
             "confirm_password": user.password,
-            "terms_conditions": True,
+            "terms_conditions": "on",
         },
     )
 
@@ -136,7 +136,7 @@ def test_login_user(test_db_session):
 
 
 def test_full_flow_register_login_action_logout():
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
     local = TestClient(app, raise_server_exceptions=False, follow_redirects=False)
     email = "full-flow@example.com"
     password = "StrongPass1"
@@ -149,7 +149,7 @@ def test_full_flow_register_login_action_logout():
             "email": email,
             "password": password,
             "confirm_password": password,
-            "terms_conditions": True,
+            "terms_conditions": "on",
         },
     )
     assert resp.status_code == 303

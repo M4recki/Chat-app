@@ -1,21 +1,25 @@
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Request
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
-from starlette.exceptions import HTTPException as StarletteHTTPException
-from fastapi.staticfiles import StaticFiles
-from uvicorn import run
-from pathlib import Path
+import asyncio
 from datetime import datetime
 from json import dumps, loads
-from .routes import router
-from .settings import settings
+from pathlib import Path
+
+from fastapi import (FastAPI, HTTPException, Request, WebSocket,
+                     WebSocketDisconnect)
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from itsdangerous import URLSafeTimedSerializer as Serializer
+from itsdangerous.exc import BadSignature, SignatureExpired
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from uvicorn import run
+
+from .connection_manager import manager
 from .database import session_scope
 from .models import Message
-from .connection_manager import ConnectionManager
-from .rate_limit import enforce_rate_limit
-from itsdangerous import URLSafeTimedSerializer as Serializer
-from itsdangerous.exc import SignatureExpired, BadSignature
+from .rate_limit import RateLimitRule, enforce_rate_limit
+from .routes import router
+from .settings import settings
 
 app = FastAPI()
 
@@ -29,9 +33,7 @@ app.mount(
     name="static",
 )
 
-manager = ConnectionManager()
-
-RATE_LIMIT_RULES = [
+RATE_LIMIT_RULES: list[RateLimitRule] = [
     {
         "path": "/login",
         "methods": {"POST"},
@@ -55,16 +57,22 @@ RATE_LIMIT_RULES = [
     },
 ]
 
+# Track pending "user left" broadcasts so reconnect can cancel them
+_pending_leave: dict[tuple[str, int], asyncio.Task] = {}
+
 
 def get_rate_limit_identifier(request: Request) -> str | None:
     """Resolve the best-effort identifier for rate limiting.
 
-    For authenticated users, returns 'user:{user_id}'. For unauthenticated requests, falls back to client IP address or 'unknown'.
+    For authenticated users, returns 'user:{user_id}'. For unauthenticated
+    requests, falls back to client IP address or 'unknown'.
 
     Args:
         request (Request): The incoming HTTP request
-    Returns:            
-        str | None: The resolved identifier for rate limiting, or None if it cannot be determined"""
+    Returns:
+        str | None: The resolved identifier for rate limiting, or None if
+            it cannot be determined
+    """
 
     token = request.cookies.get("access_token")
     if not token:
@@ -84,9 +92,13 @@ def get_rate_limit_identifier(request: Request) -> str | None:
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
-    """Middleware to enforce rate limits on incoming HTTP requests based on predefined rules.
-    
-    Checks the request path and method against defined rate limit rules, resolves an identifier for the client (user ID or IP), and enforces the limit using the RateLimiter. Adds rate limit metadata to response headers when applicable.
+    """Middleware to enforce rate limits on incoming HTTP requests
+    based on predefined rules.
+
+    Checks the request path and method against defined rate limit rules,
+    resolves an identifier for the client (user ID or IP), and enforces
+    the limit using the RateLimiter. Adds rate limit metadata to response
+    headers when applicable.
 
     Args:
         request (Request): The incoming HTTP request
@@ -111,18 +123,27 @@ async def rate_limit_middleware(request: Request, call_next):
                 )
                 break
     except HTTPException as exc:
-        return await http_exception_handler(request, StarletteHTTPException(
-            status_code=exc.status_code,
-            detail=exc.detail,
-            headers=exc.headers,
-        ))
+        return await http_exception_handler(
+            request,
+            StarletteHTTPException(
+                status_code=exc.status_code,
+                detail=exc.detail,
+                headers=exc.headers,
+            ),
+        )
 
     response = await call_next(request)
 
     if rate_limit_meta:
-        response.headers["X-RateLimit-Limit"] = str(rate_limit_meta["limit"])
-        response.headers["X-RateLimit-Remaining"] = str(rate_limit_meta["remaining"])
-        response.headers["X-RateLimit-Reset"] = str(rate_limit_meta["reset"])
+        response.headers["X-RateLimit-Limit"] = str(
+            rate_limit_meta["limit"]
+        )
+        response.headers["X-RateLimit-Remaining"] = str(
+            rate_limit_meta["remaining"]
+        )
+        response.headers["X-RateLimit-Reset"] = str(
+            rate_limit_meta["reset"]
+        )
 
     return response
 
@@ -130,7 +151,8 @@ async def rate_limit_middleware(request: Request, call_next):
 def prefers_json(request: Request) -> bool:
     """Determine if the client prefers a JSON response based on headers.
 
-    Checks the 'X-Requested-With' header for AJAX requests and the 'Accept' header for JSON content types.
+    Checks the 'X-Requested-With' header for AJAX requests and the
+    'Accept' header for JSON content types.
 
     Args:
         request (Request): The incoming HTTP request
@@ -146,15 +168,20 @@ def prefers_json(request: Request) -> bool:
 
 
 @app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    """Handle HTTP exceptions and return appropriate responses based on client preferences.
+async def http_exception_handler(
+    request: Request, exc: StarletteHTTPException
+):
+    """Handle HTTP exceptions and return appropriate responses based on
+    client preferences.
 
     Args:
         request (Request): The incoming HTTP request
         exc (StarletteHTTPException): The exception
 
     Returns:
-        JSONResponse or HTMLResponse: A JSON response if the client prefers JSON, otherwise an HTML response rendered from a template
+        JSONResponse or HTMLResponse: A JSON response if the client
+            prefers JSON, otherwise an HTML response rendered from a
+            template
     """
     status_code = exc.status_code or 500
     default_messages = {
@@ -231,15 +258,20 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Handle request validation errors and return appropriate responses based on client preferences.
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+):
+    """Handle request validation errors and return appropriate responses
+    based on client preferences.
 
     Args:
         request (Request): The incoming HTTP request
         exc (RequestValidationError): The validation error
 
     Returns:
-        JSONResponse or HTMLResponse: A JSON response if the client prefers JSON, otherwise an HTML response rendered from a template
+        JSONResponse or HTMLResponse: A JSON response if the client
+            prefers JSON, otherwise an HTML response rendered from a
+            template
     """
     if prefers_json(request):
         return JSONResponse(
@@ -269,14 +301,17 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    """Handle unexpected exceptions and return appropriate responses based on client preferences.
+    """Handle unexpected exceptions and return appropriate responses
+    based on client preferences.
 
     Args:
         request (Request): The incoming HTTP request
         exc (Exception): The exception
 
     Returns:
-        JSONResponse or HTMLResponse: A JSON response if the client prefers JSON, otherwise an HTML response rendered from a template
+        JSONResponse or HTMLResponse: A JSON response if the client
+            prefers JSON, otherwise an HTML response rendered from a
+            template
     """
     if prefers_json(request):
         return JSONResponse(
@@ -312,6 +347,7 @@ async def websocket_endpoint(
 
     Accepts the websocket connection and broadcasts received messages
     to other clients in the channel. Saves messages to the database.
+    Supports typing indicators and presence events.
 
     Args:
         websocket (WebSocket): The websocket connection
@@ -322,39 +358,115 @@ async def websocket_endpoint(
     Raises:
         WebSocketDisconnect: If the connection is closed
     """
-    await manager.connect(websocket, channel_id)
+    # Cancel any pending "left the chat" broadcast from a previous disconnect
+    leave_key = (channel_id, user_id)
+    old_task = _pending_leave.pop(leave_key, None)
+    if old_task:
+        old_task.cancel()
+
+    await manager.connect(websocket, channel_id, user_id)
+
+    await manager.broadcast_to_channel_except(
+        dumps(
+            {
+                "type": "user_online",
+                "user_id": user_id,
+                "user_name": user_name,
+            }
+        ),
+        channel_id,
+        websocket,
+    )
+
+    # Send the new user info about all others already online in this channel
+    for other_uid in manager.get_other_user_ids_in_channel(
+        channel_id, websocket
+    ):
+        await websocket.send_text(
+            dumps(
+                {
+                    "type": "user_online",
+                    "user_id": other_uid,
+                    "user_name": "",
+                }
+            )
+        )
+
     try:
         while True:
             data = await websocket.receive_text()
             message_data = loads(data)
+            msg_type = message_data.get("type", "message")
             channel_id = message_data["channel_id"]
-            message = message_data["message"]
 
-            # Create a message object in JSON format
-            message_object = {
-                "userId": user_id,
-                "senderName": user_name,
-                "content": message,
-            }
-
-            await manager.broadcast(dumps(message_object), channel_id)
-
-            with session_scope() as db:
-                new_message = Message(
-                    content=message,
-                    channel_id=channel_id,
-                    created_at=datetime.now(),
-                    user_id=user_id,
+            if msg_type == "typing":
+                await manager.broadcast_to_channel_except(
+                    dumps(
+                        {
+                            "type": "typing",
+                            "user_id": user_id,
+                            "user_name": user_name,
+                            "typing": message_data.get("typing", False),
+                        }
+                    ),
+                    channel_id,
+                    websocket,
                 )
-                db.add(new_message)
-                db.commit()
+
+            elif msg_type == "message":
+                message = message_data["message"]
+
+                message_object = {
+                    "type": "message",
+                    "userId": user_id,
+                    "senderName": user_name,
+                    "content": message,
+                }
+
+                await manager.broadcast(dumps(message_object), channel_id)
+
+                with session_scope() as db:
+                    new_message = Message(
+                        content=message,
+                        channel_id=channel_id,
+                        created_at=datetime.now(),
+                        user_id=user_id,
+                    )
+                    db.add(new_message)
+                    db.commit()
 
     except WebSocketDisconnect:
-        manager.disconnect(websocket, channel_id)
-        await manager.broadcast(
-            dumps({"type": "system", "content": f"{user_name} left the chat"}),
-            channel_id,
-        )
+        manager.disconnect(websocket, channel_id, user_id)
+
+        async def delayed_leave():
+            """Wait then broadcast leave only if user didn't reconnect."""
+            await asyncio.sleep(5)
+            if leave_key in _pending_leave:
+                _pending_leave.pop(leave_key, None)
+                await manager.broadcast(
+                    dumps(
+                        {
+                            "type": "system",
+                            "content": f"{user_name} left the chat",
+                            "user_id": user_id,
+                            "user_name": user_name,
+                        }
+                    ),
+                    channel_id,
+                )
+                await manager.broadcast(
+                    dumps(
+                        {
+                            "type": "user_offline",
+                            "user_id": user_id,
+                            "user_name": user_name,
+                        }
+                    ),
+                    channel_id,
+                )
+
+        task = asyncio.create_task(delayed_leave())
+        _pending_leave[leave_key] = task
 
 
 app.include_router(router)

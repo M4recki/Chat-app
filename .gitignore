@@ -7,3 +7,4 @@ Chat_app.session.sql
 test.db
 .env
 .coverage
+.idea/

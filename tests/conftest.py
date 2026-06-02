@@ -4,7 +4,6 @@ from sys import path
 from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
 from contextlib import contextmanager
 
 project_root = Path(__file__).parent.parent

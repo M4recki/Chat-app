@@ -35,7 +35,7 @@
                   <div class="card-body text-center search-user-card-body">
                     <img
                       class="card-img-top user-image mx-auto mt-2"
-                      src="data:image/jpeg;base64,{{ friend_request.user1.avatar }}"
+                      src="data:image/jpeg;base64,{{ friend_request_avatars.get(friend_request.id, '') }}"
                       alt="{{ friend_request.user1.name }}'s avatar" />
                     <div class="card-body px-2 pb-2">
                       <p class="card-title lead mb-2">

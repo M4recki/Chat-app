@@ -20,7 +20,15 @@
           <section
             class="col-md-9 ml-sm-auto col-lg-10 px-md-4 py-4 sidebar-page-shell">
             <!-- Users messages and unblocked user -->
-            {% if friend_status == "accepted" %} {% if messages %} {% for
+            {% if friend_status == "accepted" %}
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <span
+                id="friend-online-indicator"
+                class="online-indicator offline"
+                title="Offline"></span>
+              <span class="text-muted small">{{ friend.name }}</span>
+            </div>
+            {% if messages %} {% for
             message in messages %}
             <div class="card my-3">
               <div class="card-body">
@@ -32,12 +40,12 @@
                   == user.id %}
                   <img
                     class="smaller-user-image mx-2 float-start"
-                    src="data:image/jpeg;base64,{{ user.avatar }}"
+                    src="data:image/jpeg;base64,{{ avatar_b64 }}"
                     alt="{{ user.name }}'s avatar" />
                   {% elif sender.id == friend.id %}
                   <img
                     class="smaller-user-image mx-2 float-start"
-                    src="data:image/jpeg;base64,{{ friend.avatar }}"
+                    src="data:image/jpeg;base64,{{ friend_avatar_b64 }}"
                     alt="{{ friend.name }}'s avatar" />
                   {% endif %}
                   <strong class="text-primary">{{ sender.name }}:</strong> {{
@@ -48,6 +56,7 @@
 
             {% endfor %}
             <div id="messages"></div>
+            <div id="typing-indicator" class="text-muted small fst-italic d-none py-1"></div>
             <div class="card mt-3">
               <div class="card-body">
                 <form
@@ -78,8 +87,9 @@
 
             <!-- No previous conversation with other user -->
             {% else %}
-            <h1 class="mt-5 mb-5 text-center">Start a new conversation</h1>
+            <h1 id="start-new-conversation" class="mt-5 mb-5 text-center">Start a new conversation</h1>
             <div id="messages"></div>
+            <div id="typing-indicator" class="text-muted small fst-italic d-none py-1"></div>
             <div class="card mt-3">
               <div class="card-body">
                 <form
@@ -123,12 +133,12 @@
                   {% if sender.id == user.id %}
                   <img
                     class="smaller-user-image mx-2 float-start"
-                    src="data:image/jpeg;base64,{{ user.avatar }}"
+                    src="data:image/jpeg;base64,{{ avatar_b64 }}"
                     alt="{{ user.name }}'s avatar" />
                   {% elif sender.id == friend.id %}
                   <img
                     class="smaller-user-image mx-2 float-start"
-                    src="data:image/jpeg;base64,{{ friend.avatar }}"
+                    src="data:image/jpeg;base64,{{ friend_avatar_b64 }}"
                     alt="{{ friend.name }}'s avatar" />
                   {% endif %}
                   <strong class="text-primary">{{ sender.name }}:</strong> {{
@@ -234,8 +244,8 @@
     <!-- WebSocket handling for real-time chat -->
     <script>
       const user_name = "{{ user.name }}";
-      const client_avatar = "{{ user.avatar }}";
-      const friend_avatar = "{{ friend.avatar }}";
+      const client_avatar = "{{ avatar_b64 }}";
+      const friend_avatar = "{{ friend_avatar_b64 }}";
       const channel_id = "{{ channel_id }}";
       const friend_id = parseInt("{{ friend.id }}", 10);
       const user_id = parseInt("{{ user.id }}", 10);
@@ -243,6 +253,9 @@
       const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${wsProtocol}//${window.location.host}/ws/${channel_id}/${user_name}/${user_id}`;
       const ws = new WebSocket(wsUrl);
+
+      let typingTimeout = null;
+      const TYPING_DELAY = 1000;
 
       // Function to get current date and time in the format "HH:MM, YYYY-MM-DD"
 
@@ -260,9 +273,34 @@
         return `${hours}:${minutes}, ${dateString}`;
       }
 
+      function setFriendOnline(online) {
+        const indicator = document.getElementById("friend-online-indicator");
+        if (!indicator) return;
+        indicator.className = online
+          ? "online-indicator online"
+          : "online-indicator offline";
+        indicator.title = online ? "Online" : "Offline";
+      }
+
+      function showTyping(userName, isTyping) {
+        const indicator = document.getElementById("typing-indicator");
+        if (!indicator) return;
+        if (isTyping) {
+          indicator.textContent = `${userName} is typing...`;
+          indicator.classList.remove("d-none");
+        } else {
+          indicator.classList.add("d-none");
+          indicator.textContent = "";
+        }
+      }
+
       // Function to append a new chat message to the messages container
 
       function appendChatMessage(senderName, messageContent, senderId) {
+        const heading = document.getElementById("start-new-conversation");
+        if (heading) {
+          heading.remove();
+        }
         const messages = document.getElementById("messages");
         const container = document.createElement("div");
         container.classList.add("card", "my-3");
@@ -329,9 +367,22 @@
       ws.onmessage = function (event) {
         const data = JSON.parse(event.data);
 
-        if (data.content && data.content.includes("left the chat")) {
-          appendSystemMessage(data.senderName, data.content);
-        } else {
+        if (data.type === "typing") {
+          if (data.user_id !== user_id) {
+            showTyping(data.user_name, data.typing);
+          }
+        } else if (data.type === "user_online") {
+          if (data.user_id === friend_id) {
+            setFriendOnline(true);
+          }
+        } else if (data.type === "user_offline") {
+          if (data.user_id === friend_id) {
+            setFriendOnline(false);
+          }
+        } else if (data.type === "system") {
+          appendSystemMessage(data.user_name, data.content);
+        } else if (data.type === "message") {
+          showTyping(null, false);
           appendChatMessage(data.senderName, data.content, data.userId);
         }
       };
@@ -342,7 +393,31 @@
 
       ws.onclose = function () {
         console.warn("WebSocket connection closed");
+        setFriendOnline(false);
       };
+
+      function sendTypingEvent(typing) {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        ws.send(
+          JSON.stringify({
+            type: "typing",
+            channel_id: channel_id,
+            typing: typing,
+          }),
+        );
+      }
+
+      function handleTypingInput() {
+        if (typingTimeout) {
+          clearTimeout(typingTimeout);
+        } else {
+          sendTypingEvent(true);
+        }
+        typingTimeout = setTimeout(() => {
+          typingTimeout = null;
+          sendTypingEvent(false);
+        }, TYPING_DELAY);
+      }
 
       // Function to handle form submission and send a new chat message through the WebSocket connection
 
@@ -358,16 +433,36 @@
           return;
         }
 
+        if (typingTimeout) {
+          clearTimeout(typingTimeout);
+          typingTimeout = null;
+          sendTypingEvent(false);
+        }
+
         if (ws.readyState !== WebSocket.OPEN) {
           alert("Connection lost. Please reload the page.");
           return;
         }
 
         ws.send(
-          JSON.stringify({ channel_id: channel_id, message: input.value }),
+          JSON.stringify({
+            type: "message",
+            channel_id: channel_id,
+            message: input.value,
+          }),
         );
         input.value = "";
       }
+
+      document.addEventListener("DOMContentLoaded", function () {
+        const textarea =
+          document.querySelector('textarea[name="message"]') ||
+          document.getElementById("messageText") ||
+          document.getElementById("message");
+        if (textarea) {
+          textarea.addEventListener("input", handleTypingInput);
+        }
+      });
     </script>
   </body>
 </html>

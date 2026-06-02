@@ -4,11 +4,15 @@ import time
 from fastapi.testclient import TestClient
 from conftest import client
 from project.python.main import app
-from project.python.rate_limit import _rate_limiter
+from project.python.rate_limit import rate_limiter
+from tests.model_test import TestingSessionLocal
+from project.python.models import User
+from io import BytesIO
+from PIL import Image
 
 
 def test_rate_limiter_parallel_requests():
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
     n_requests = 20
     results = []
 
@@ -27,7 +31,7 @@ def test_rate_limiter_parallel_requests():
 
 
 def test_concurrent_signup():
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
     n_users = 5
     users = []
 
@@ -56,7 +60,7 @@ def test_concurrent_signup():
 
 
 def test_concurrent_login():
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
     email = f"perf-login-{time.time_ns()}@example.com"
 
     reg_client = TestClient(app, follow_redirects=False)
@@ -85,11 +89,6 @@ def test_concurrent_login():
 
 
 def test_websocket_multiple_broadcast():
-    from tests.model_test import TestingSessionLocal
-    from project.python.models import User
-    from io import BytesIO
-    from PIL import Image
-
     db = TestingSessionLocal()
     img_binary = BytesIO()
     with Image.open("project/static/img/default avatar.png") as img:
@@ -108,7 +107,7 @@ def test_websocket_multiple_broadcast():
     with TestClient(app) as local:
         for ch in channels:
             with local.websocket_connect(f"/ws/{ch}/TestUser/{uid}") as ws:
-                ws.send_json({"channel_id": ch, "message": "ping"})
+                ws.send_json({"type": "message", "channel_id": ch, "message": "ping"})
                 data = ws.receive_text()
                 assert "ping" in data
 
@@ -116,7 +115,7 @@ def test_websocket_multiple_broadcast():
 
 
 def test_endpoint_response_times():
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
     endpoints = ["/", "/login", "/sign_up", "/contact"]
     max_time_ms = 500
 

@@ -1,14 +1,13 @@
 """
 Application settings and configuration management using Pydantic.
 
-This module provides centralized configuration handling with environment variable
-support, type validation, and sensible defaults.
+This module provides centralized configuration handling with
+environment variable support, type validation, and sensible defaults.
 """
 
-from pydantic import ConfigDict
-from pydantic_settings import BaseSettings
-from typing import Optional
 from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 ENV_FILE = BASE_DIR / ".env"
@@ -17,7 +16,7 @@ ENV_FILE = BASE_DIR / ".env"
 class Settings(BaseSettings):
     """Application settings loaded from environment variables and .env file."""
 
-    model_config = ConfigDict(
+    model_config = SettingsConfigDict(
         env_file=ENV_FILE,
         env_file_encoding="utf-8",
         case_sensitive=False,
@@ -73,7 +72,8 @@ class Settings(BaseSettings):
         """Check if running in production environment.
 
         Returns:
-            bool: True if the environment is set to 'production', False otherwise"""
+            bool: True if the environment is set to 'production',
+                False otherwise"""
         return self.environment.lower() == "production"
 
     @property
@@ -81,7 +81,8 @@ class Settings(BaseSettings):
         """Check if running in test mode.
 
         Returns:
-            bool: True if the environment is set to 'testing', False otherwise"""
+            bool: True if the environment is set to 'testing',
+                False otherwise"""
 
         return self.testing or self.environment.lower() == "testing"
 

@@ -1,6 +1,8 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, LargeBinary
+from sqlalchemy import (Column, DateTime, ForeignKey, Integer, LargeBinary,
+                        String, Text)
 from sqlalchemy.orm import relationship
-from .database import Base, engine
+
+from .database import Base
 
 # User table
 
@@ -27,7 +29,9 @@ class Message(Base):
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True)
     content = Column(String(500), nullable=False)
-    channel_id = Column(String(100), ForeignKey("channels.channel_id"), nullable=False)
+    channel_id = Column(
+        String(100), ForeignKey("channels.channel_id"), nullable=False
+    )
     created_at = Column(DateTime, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     channel = relationship("Channel", foreign_keys=[channel_id])

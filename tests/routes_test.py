@@ -1,4 +1,3 @@
-from datetime import datetime
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from fastapi.testclient import TestClient
 from conftest import client
@@ -6,6 +5,15 @@ from project.python.main import app
 from project.python.settings import settings
 from tests.integration_test import create_user
 from tests.model_test import TestingSessionLocal
+from datetime import datetime, timedelta
+from uuid import uuid4
+from starlette.requests import Request
+from project.python.chatbot_utils import chatbot_json_error
+from project.python.main import get_rate_limit_identifier
+from project.python.models import User, Friend, Channel, Message
+from project.python.models import Friend as FriendModel
+from project.python.models import Friend as Incoming
+from project.python.rate_limit import rate_limiter
 
 
 def set_access_token(user_id: int, target_client=client) -> None:
@@ -96,9 +104,7 @@ def test_chatbot_requires_auth_returns_401_json():
 
 
 def test_search_user_rate_limit_429_headers():
-    from project.python.rate_limit import _rate_limiter
-
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
     local_client = TestClient(app, raise_server_exceptions=False)
     db = TestingSessionLocal()
     user = create_user(
@@ -155,8 +161,6 @@ def test_chatbot_invalid_token_returns_401_json():
 
 
 def test_chatbot_deleted_user_returns_401_json():
-    from project.python.models import User
-
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -202,9 +206,7 @@ def test_authenticated_page_returns_401_html():
 
 
 def test_chatbot_rate_limit_429_json():
-    from project.python.rate_limit import _rate_limiter
-
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
     local_client = TestClient(app, raise_server_exceptions=False)
     db = TestingSessionLocal()
     user = create_user(
@@ -238,9 +240,7 @@ def test_chatbot_rate_limit_429_json():
 
 
 def test_login_rate_limit_429():
-    from project.python.rate_limit import _rate_limiter
-
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
     local_client = TestClient(app, raise_server_exceptions=False)
     limit = settings.rate_limit_login_max_requests
     for _ in range(limit):
@@ -257,9 +257,7 @@ def test_login_rate_limit_429():
 
 
 def test_rate_limit_429_contains_all_headers():
-    from project.python.rate_limit import _rate_limiter
-
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
     local_client = TestClient(app, raise_server_exceptions=False)
     limit = settings.rate_limit_search_max_requests
     for _ in range(limit):
@@ -276,8 +274,6 @@ def test_rate_limit_429_contains_all_headers():
 
 
 def _make_request(cookies: dict | None = None):
-    from starlette.requests import Request
-
     headers = []
     if cookies:
         cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
@@ -293,16 +289,12 @@ def _make_request(cookies: dict | None = None):
 
 
 def test_get_rate_limit_identifier_no_token():
-    from project.python.main import get_rate_limit_identifier
-
     request = _make_request()
     identifier = get_rate_limit_identifier(request)
     assert identifier is None
 
 
 def test_get_rate_limit_identifier_valid_token():
-    from project.python.main import get_rate_limit_identifier
-
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": 42})
     request = _make_request({"access_token": token})
@@ -311,8 +303,6 @@ def test_get_rate_limit_identifier_valid_token():
 
 
 def test_get_rate_limit_identifier_no_user_id():
-    from project.python.main import get_rate_limit_identifier
-
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"not_user_id": 99})
     request = _make_request({"access_token": token})
@@ -321,8 +311,6 @@ def test_get_rate_limit_identifier_no_user_id():
 
 
 def test_get_rate_limit_identifier_expired_token(monkeypatch):
-    from project.python.main import get_rate_limit_identifier
-
     monkeypatch.setattr("project.python.settings.settings.token_max_age", -1)
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": 1})
@@ -380,7 +368,7 @@ def test_sign_up_duplicate_email():
             "email": "existing@example.com",
             "password": "NewPass123",
             "confirm_password": "NewPass123",
-            "terms_conditions": True,
+            "terms_conditions": "on",
         },
     )
     assert response.status_code == 200
@@ -395,16 +383,14 @@ def test_sign_up_password_not_alphanumeric():
             "email": "alphanum@example.com",
             "password": "haslo-123",
             "confirm_password": "haslo-123",
-            "terms_conditions": True,
+            "terms_conditions": "on",
         },
     )
     assert response.status_code == 200
 
 
 def test_sign_up_and_login():
-    from project.python.rate_limit import _rate_limiter
-
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
     local_client = TestClient(
         app, raise_server_exceptions=False, follow_redirects=False
     )
@@ -416,7 +402,7 @@ def test_sign_up_and_login():
             "email": "full-cycle@example.com",
             "password": "StrongPass1",
             "confirm_password": "StrongPass1",
-            "terms_conditions": True,
+            "terms_conditions": "on",
         },
     )
     assert response.status_code == 303
@@ -436,7 +422,7 @@ def test_sign_up_password_mismatch():
             "email": "unique@example.com",
             "password": "Pass123",
             "confirm_password": "Different456",
-            "terms_conditions": True,
+            "terms_conditions": "on",
         },
     )
     assert response.status_code == 200
@@ -541,10 +527,6 @@ def test_unhandled_exception_returns_500_html(monkeypatch):
 
 
 def test_single_chat_returns_200():
-    from datetime import datetime
-    from uuid import uuid4
-    from project.python.models import Friend, Channel
-
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -629,9 +611,6 @@ def test_update_profile_page_returns_200():
 
 
 def test_add_friend_old_pending_renews_last_sent(monkeypatch):
-    from datetime import datetime, timedelta
-    from project.python.models import Friend
-
     db = TestingSessionLocal()
     user = create_user(
         db, "Old", "Pending", "old-pending@example.com", "Password123",
@@ -679,8 +658,6 @@ def test_chatbot_missing_message_validation():
 
 
 def test_chatbot_empty_message_returns_validation():
-    from project.python.chatbot_utils import chatbot_json_error
-
     result = chatbot_json_error(
         400, {"error": "validation", "details": {"message": "Message cannot be empty"}}
     )
@@ -716,8 +693,6 @@ def test_add_friend():
 
 
 def test_add_friend_duplicate_pending():
-    from datetime import datetime, timedelta
-
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -735,8 +710,6 @@ def test_add_friend_duplicate_pending():
         "Password123",
         "project/static/img/default avatar.png",
     )
-    from project.python.models import Friend
-
     existing = Friend(
         user1_id=user.id, user2_id=target.id, status="pending", last_sent=datetime.now()
     )
@@ -749,8 +722,6 @@ def test_add_friend_duplicate_pending():
 
 
 def test_add_friend_duplicate_denied():
-    from datetime import datetime
-
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -768,8 +739,6 @@ def test_add_friend_duplicate_denied():
         "Password123",
         "project/static/img/default avatar.png",
     )
-    from project.python.models import Friend
-
     existing = Friend(
         user1_id=user.id,
         user2_id=target.id,
@@ -785,8 +754,6 @@ def test_add_friend_duplicate_denied():
 
 
 def test_accept_friend():
-    from datetime import datetime
-
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -804,8 +771,6 @@ def test_accept_friend():
         "Password123",
         "project/static/img/default avatar.png",
     )
-    from project.python.models import Friend
-
     req = Friend(
         user1_id=requester.id,
         user2_id=user.id,
@@ -821,8 +786,6 @@ def test_accept_friend():
 
 
 def test_deny_friend():
-    from datetime import datetime
-
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -840,8 +803,6 @@ def test_deny_friend():
         "Password123",
         "project/static/img/default avatar.png",
     )
-    from project.python.models import Friend
-
     req = Friend(
         user1_id=requester.id,
         user2_id=user.id,
@@ -857,8 +818,6 @@ def test_deny_friend():
 
 
 def test_block_friend():
-    from datetime import datetime
-
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -876,8 +835,6 @@ def test_block_friend():
         "Password123",
         "project/static/img/default avatar.png",
     )
-    from project.python.models import Friend
-
     existing = Friend(
         user1_id=user.id,
         user2_id=target.id,
@@ -893,8 +850,6 @@ def test_block_friend():
 
 
 def test_unblock_friend():
-    from datetime import datetime
-
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -912,8 +867,6 @@ def test_unblock_friend():
         "Password123",
         "project/static/img/default avatar.png",
     )
-    from project.python.models import Friend
-
     existing = Friend(
         user1_id=user.id, user2_id=target.id, status="blocked", last_sent=datetime.now()
     )
@@ -925,15 +878,7 @@ def test_unblock_friend():
     assert response.status_code == 200
 
 
-#  Chatbot error paths
-
-
-def test_chatbot_post_not_logged_in():
-    response = client.post("/chatbot", data={"message": "hello"})
-    assert response.status_code == 401
-
-
-def test_chatbot_chatbot_service_error(monkeypatch):
+def test_chatbot_error_returns_502(monkeypatch):
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -1050,8 +995,6 @@ def test_clear_chatbot_messages():
 
 
 def test_friend_chat_page_not_found():
-    from datetime import datetime
-
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -1069,8 +1012,6 @@ def test_friend_chat_page_not_found():
         "Password123",
         "project/static/img/default avatar.png",
     )
-    from project.python.models import Friend as FriendModel
-
     rel = FriendModel(
         user1_id=user.id,
         user2_id=friend.id,
@@ -1086,9 +1027,6 @@ def test_friend_chat_page_not_found():
 
 
 def test_friend_chat_page_found():
-    from datetime import datetime
-    from uuid import uuid4
-
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -1106,8 +1044,6 @@ def test_friend_chat_page_found():
         "Password123",
         "project/static/img/default avatar.png",
     )
-    from project.python.models import Friend as FriendModel, Channel, Message
-
     rel = FriendModel(
         user1_id=user.id,
         user2_id=friend.id,
@@ -1139,10 +1075,6 @@ def test_search_user_no_token():
 
 
 def test_search_user_with_friends():
-    from datetime import datetime
-    from uuid import uuid4
-    from project.python.models import Friend, Channel
-
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -1193,9 +1125,6 @@ def test_search_user_with_friends():
 
 
 def test_search_user_with_friend_no_channel():
-    from datetime import datetime
-    from project.python.models import Friend
-
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -1312,8 +1241,6 @@ def test_update_profile_data_success():
 
 
 def test_single_chat_creates_channel():
-    from datetime import datetime
-
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -1331,8 +1258,6 @@ def test_single_chat_creates_channel():
         "Password123",
         "project/static/img/default avatar.png",
     )
-    from project.python.models import Friend
-
     rel = Friend(
         user1_id=user.id,
         user2_id=friend.id,
@@ -1348,8 +1273,6 @@ def test_single_chat_creates_channel():
 
 
 def test_single_chat_accepts_friend():
-    from datetime import datetime
-
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -1367,8 +1290,6 @@ def test_single_chat_accepts_friend():
         "Password123",
         "project/static/img/default avatar.png",
     )
-    from project.python.models import Friend
-
     rel = Friend(
         user1_id=user.id,
         user2_id=friend.id,
@@ -1376,8 +1297,6 @@ def test_single_chat_accepts_friend():
         last_sent=datetime.now(),
     )
     db.add(rel)
-    from project.python.models import Friend as Incoming
-
     incoming = Incoming(
         user1_id=friend.id,
         user2_id=user.id,
@@ -1466,8 +1385,6 @@ def test_clear_chatbot_messages_not_logged_in():
 
 
 def test_friend_requests_with_pending():
-    from datetime import datetime
-
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -1485,8 +1402,6 @@ def test_friend_requests_with_pending():
         "Password123",
         "project/static/img/default avatar.png",
     )
-    from project.python.models import Friend
-
     req = Friend(
         user1_id=requester.id,
         user2_id=user.id,

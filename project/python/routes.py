@@ -1,40 +1,31 @@
-from fastapi import (
-    APIRouter,
-    Request,
-    Form,
-    Depends,
-    HTTPException,
-    File,
-    UploadFile,
-)
-from fastapi.templating import Jinja2Templates
-from fastapi.responses import RedirectResponse, HTMLResponse, JSONResponse
-from werkzeug.security import generate_password_hash, check_password_hash
-from hashlib import sha256
-from itsdangerous import URLSafeTimedSerializer as Serializer
-from itsdangerous.exc import SignatureExpired, BadSignature
-from pathlib import Path
+import logging
+from base64 import b64encode
 from datetime import datetime, timedelta
 from email.message import EmailMessage
-from ssl import create_default_context
-from smtplib import SMTP_SSL
-import logging
-from os import environ
+from hashlib import sha256
 from importlib import import_module
 from io import BytesIO
+from os import environ
+from pathlib import Path
+from smtplib import SMTP_SSL
+from ssl import create_default_context
+
+from fastapi import (APIRouter, Depends, File, Form, HTTPException, Request,
+                     UploadFile)
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from itsdangerous import URLSafeTimedSerializer as Serializer
+from itsdangerous.exc import BadSignature, SignatureExpired
 from sqlalchemy.orm.exc import NoResultFound
-from base64 import b64encode, b64decode
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from .chatbot_utils import (ChatbotServiceError, chatbot_context,
+                            chatbot_json_error, chatbot_json_success,
+                            chatbot_response)
+from .connection_manager import manager
 from .database import session_scope
+from .models import Channel, ChatbotMessage, Friend, Message, User
 from .settings import settings
-from .models import User, Friend, ChatbotMessage, Message, Channel
-from .chatbot_utils import (
-    build_chatbot_messages,
-    chatbot_response,
-    chatbot_context,
-    chatbot_json_error,
-    chatbot_json_success,
-    ChatbotServiceError,
-)
 
 Image = import_module("PIL.Image")
 
@@ -46,14 +37,15 @@ DEFAULT_AVATAR_PATH = PROJECT_DIR / "static" / "img" / "default avatar.png"
 # Authentication
 
 
-def authentication_in_header(request: Request):
+def authentication_in_header(request: object) -> dict:
     """Check if user is authenticated based on access token in header.
 
     Args:
         request (Request): The incoming request object.
 
     Returns:
-        dict: A dictionary with a boolean indicating if the user is authenticated
+        dict: A dictionary with a boolean indicating if the user
+            is authenticated
     """
     if not isinstance(request, Request):
         return {"is_authenticated": False}
@@ -109,7 +101,8 @@ def get_user_from_request(request: Request, max_age: int = 3600):
         max_age (int): The maximum age of the token in seconds
 
     Returns:
-        tuple: A tuple containing the user object and user ID, or (None, None) if not found
+        tuple: A tuple containing the user object and user ID, or
+            (None, None) if not found
     """
     token = request.cookies.get("access_token")
     if not token:
@@ -147,7 +140,8 @@ def encode_avatar(user):
         user: The user object containing the avatar binary data
 
     Returns:
-        str: The base64-encoded avatar string, or an empty string if no avatar is found
+        str: The base64-encoded avatar string, or an empty string
+            if no avatar is found
     """
     if user and user.avatar:
         return b64encode(user.avatar).decode()
@@ -157,7 +151,7 @@ def encode_avatar(user):
 # User image
 
 
-def user_image(request: Request):
+def user_image(request: object):
     """Get user image from database.
 
     Args:
@@ -183,15 +177,14 @@ def user_image(request: Request):
         user = db.query(User).filter(User.id == user_id).first()
 
     if user and user.avatar:
-        user.avatar = b64encode(user.avatar).decode()
-        return {"user_image": user.avatar}
+        return {"user_image": b64encode(user.avatar).decode()}
     return {"user_image": ""}
 
 
 # User name
 
 
-def user_name(request: Request):
+def user_name(request: object):
     """Get user name from database.
 
     Args:
@@ -291,7 +284,7 @@ def root(request: Request):
 
 @router.get("/sign_up", name="sign_up")
 def sign_up_page(request: Request):
-    """Render the sign up page.
+    """Render the sign-up page.
 
     Args:
         request: The request object
@@ -335,7 +328,9 @@ async def sign_up_data(
             errors["email"] = "User with this email already exists"
 
         if not password.isalnum():
-            errors["password"] = "Password must contain only letters and numbers"
+            errors["password"] = (
+                "Password must contain only letters and numbers"
+            )
 
         if password != confirm_password:
             errors["confirm_password"] = "Passwords do not match"
@@ -350,14 +345,14 @@ async def sign_up_data(
         img_binary = BytesIO()
         with Image.open(DEFAULT_AVATAR_PATH) as img:
             img.save(img_binary, format="PNG")
-        img_binary = img_binary.getvalue()
+        avatar_bytes = img_binary.getvalue()
 
         new_user = User(
             name=name,
             surname=surname,
             email=email,
             password=hashed_password,
-            avatar=img_binary,
+            avatar=avatar_bytes,
             created_at=datetime.now(),
         )
         db.add(new_user)
@@ -366,7 +361,9 @@ async def sign_up_data(
     s = Serializer(settings.chat_secret_key)
     token = s.dumps({"user_id": new_user.id})
 
-    response = RedirectResponse(request.url_for("single_chat"), status_code=303)
+    response = RedirectResponse(
+        request.url_for("single_chat"), status_code=303
+    )
     response.set_cookie(key="access_token", value=token, httponly=True)
 
     return response
@@ -419,7 +416,9 @@ async def login_data(
         s = Serializer(settings.chat_secret_key)
         token = s.dumps({"user_id": user.id})
 
-    response = RedirectResponse(request.url_for("single_chat"), status_code=303)
+    response = RedirectResponse(
+        request.url_for("single_chat"), status_code=303
+    )
     response.set_cookie(key="access_token", value=token, httponly=True)
 
     return response
@@ -441,8 +440,8 @@ def send_email(email_address, subject, message):
     if environ.get("TESTING") == "1":
         return
 
-    email_receiver = environ.get("EMAIL_RECEIVER")
-    password = environ.get("EMAIL_PASSWORD")
+    email_receiver = environ.get("EMAIL_RECEIVER", "")
+    password = environ.get("EMAIL_PASSWORD", "")
 
     email = EmailMessage()
 
@@ -499,7 +498,9 @@ async def contact_data(
     send_email(email, subject, message)
     flash_messages = ["Your message has been sent"]
 
-    return render_template("main_page.html", request, flash_messages=flash_messages)
+    return render_template(
+        "main_page.html", request, flash_messages=flash_messages
+    )
 
 
 @router.get("/logout", dependencies=[Depends(is_authenticated)])
@@ -544,7 +545,10 @@ async def search_user(request: Request):
 
             friend_statuses = (
                 db.query(Friend)
-                .filter((Friend.user1_id == user_id) | (Friend.user2_id == user_id))
+                .filter(
+                    (Friend.user1_id == user_id)
+                    | (Friend.user2_id == user_id)
+                )
                 .all()
             )
 
@@ -579,14 +583,18 @@ async def search_user(request: Request):
                     else:
                         channel_id = generate_channel_id(user_id, friend_id)
                         new_channel = Channel(
-                            channel_id=channel_id, user1_id=user_id, user2_id=friend_id
+                            channel_id=channel_id,
+                            user1_id=user_id,
+                            user2_id=friend_id,
                         )
                         db.add(new_channel)
                         db.commit()
                         channel_ids[friend_id] = channel_id
 
-            for user in users:
-                user.avatar = b64encode(user.avatar).decode()
+            avatar_map = {
+                u.id: b64encode(u.avatar).decode()
+                for u in users if u.avatar
+            }
 
         return templates.TemplateResponse(
             request,
@@ -594,6 +602,7 @@ async def search_user(request: Request):
             {
                 "request": request,
                 "users": users,
+                "avatar_map": avatar_map,
                 "friend_status_map": friend_status_map,
                 "channel_ids": channel_ids,
             },
@@ -607,7 +616,7 @@ async def search_user(request: Request):
 
 @router.get("/friend_requests", dependencies=[Depends(is_authenticated)])
 async def friend_requests(request: Request):
-    """Get pending friend requests for logged in user.
+    """Get pending friend requests for logged-in user.
 
     Args:
         request: The request object
@@ -620,22 +629,25 @@ async def friend_requests(request: Request):
         s = Serializer(settings.chat_secret_key)
         user_id = s.loads(token, max_age=3600).get("user_id")
         with session_scope() as db:
-            user = db.query(User).filter(User.id == user_id).first()
-
             friend_requests = (
                 db.query(Friend)
                 .filter(Friend.user2_id == user_id, Friend.status == "pending")
                 .all()
             )
-            for friend_request in friend_requests:
-                friend_request.user1.avatar = b64encode(
-                    friend_request.user1.avatar
-                ).decode()
+            friend_request_avatars = {
+                fr.id: b64encode(fr.user1.avatar).decode()
+                for fr in friend_requests
+                if fr.user1.avatar
+            }
 
         return templates.TemplateResponse(
             request,
             "friend_requests.html",
-            {"request": request, "friend_requests": friend_requests},
+            {
+                "request": request,
+                "friend_requests": friend_requests,
+                "friend_request_avatars": friend_request_avatars,
+            },
         )
     else:
         return render_template("login.html", request)
@@ -771,11 +783,17 @@ async def single_chat(request: Request):
     with session_scope() as db:
         friends = (
             db.query(User)
-            .join(Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id))
+            .join(
+                Friend,
+                (Friend.user1_id == User.id) | (Friend.user2_id == User.id),
+            )
             .filter(
                 Friend.status == "accepted",
                 ((Friend.user1_id == user_id) & (User.id == Friend.user2_id))
-                | ((Friend.user2_id == user_id) & (User.id == Friend.user1_id)),
+                | (
+                    (Friend.user2_id == user_id)
+                    & (User.id == Friend.user1_id)
+                ),
             )
             .all()
         )
@@ -792,7 +810,8 @@ async def single_chat(request: Request):
                 existing_channel = (
                     db.query(Channel)
                     .filter(
-                        (Channel.user1_id == user_id) & (Channel.user2_id == friend_id)
+                        (Channel.user1_id == user_id)
+                        & (Channel.user2_id == friend_id)
                         | (Channel.user1_id == friend_id)
                         & (Channel.user2_id == user_id)
                     )
@@ -804,7 +823,9 @@ async def single_chat(request: Request):
                 else:
                     channel_id = generate_channel_id(user_id, friend_id)
                     new_channel = Channel(
-                        channel_id=channel_id, user1_id=user_id, user2_id=friend_id
+                        channel_id=channel_id,
+                        user1_id=user_id,
+                        user2_id=friend_id,
                     )
                     db.add(new_channel)
                     db.commit()
@@ -813,7 +834,8 @@ async def single_chat(request: Request):
                 friend_status = (
                     db.query(Friend)
                     .filter(
-                        ((Friend.user1_id == user_id) & (Friend.user2_id == friend_id))
+                        (Friend.user1_id == user_id)
+                        & (Friend.user2_id == friend_id)
                         | (
                             (Friend.user1_id == friend_id)
                             & (Friend.user2_id == user_id)
@@ -822,7 +844,9 @@ async def single_chat(request: Request):
                     .first()
                 )
 
-                friend_status_value = friend_status.status if friend_status else None
+                friend_status_value = (
+                    friend_status.status if friend_status else None
+                )
 
     return templates.TemplateResponse(
         request,
@@ -842,7 +866,8 @@ async def single_chat(request: Request):
 
 
 @router.get(
-    "/friend_chat/{channel_id}/{friend_id}", dependencies=[Depends(is_authenticated)]
+    "/friend_chat/{channel_id}/{friend_id}",
+    dependencies=[Depends(is_authenticated)],
 )
 async def friend_chat_page(
     request: Request,
@@ -868,30 +893,42 @@ async def friend_chat_page(
         return render_template("login.html", request)
 
     with session_scope() as db:
-        user.avatar = encode_avatar(user)
-
         friend = db.query(User).filter(User.id == friend_id).first()
         if not friend:
             raise HTTPException(status_code=404, detail="Friend not found")
-        friend.avatar = encode_avatar(friend)
 
-        messages = db.query(Message).filter(Message.channel_id == channel_id).all()
+        messages = (
+            db.query(Message)
+            .filter(Message.channel_id == channel_id)
+            .all()
+        )
 
-        channel = db.query(Channel).filter(Channel.channel_id == channel_id).first()
+        channel = (
+            db.query(Channel)
+            .filter(Channel.channel_id == channel_id)
+            .first()
+        )
 
         friend_status = (
             db.query(Friend)
             .filter(
-                (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
-                | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
+                    (Friend.user1_id == user_id)
+                    & (Friend.user2_id == friend_id)
+                    | (Friend.user1_id == friend_id)
+                    & (Friend.user2_id == user_id)
             )
             .first()
         )
 
-        friend_status_value = friend_status.status if friend_status else None
+        friend_status_value = (
+            friend_status.status if friend_status else None
+        )
 
         if not channel:
             raise HTTPException(status_code=404, detail="Channel not found")
+
+    avatar_b64 = encode_avatar(user)
+    friend_avatar_b64 = encode_avatar(friend)
 
     return templates.TemplateResponse(
         request,
@@ -899,10 +936,10 @@ async def friend_chat_page(
         {
             "request": request,
             "user": user,
-            "user.avatar": user.avatar,
+            "avatar_b64": avatar_b64,
             "friend": friend,
+            "friend_avatar_b64": friend_avatar_b64,
             "friend_status": friend_status_value,
-            "friend.avatar": friend.avatar,
             "messages": messages,
             "channel_id": channel_id,
             "get_user": get_user,
@@ -913,7 +950,10 @@ async def friend_chat_page(
 # Block friend
 
 
-@router.get("/block_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
+@router.get(
+    "/block_friend/{friend_id}",
+    dependencies=[Depends(is_authenticated)],
+)
 async def block_friend(request: Request, friend_id: int):
     """
     Block a friend from the user's friend list.
@@ -934,8 +974,10 @@ async def block_friend(request: Request, friend_id: int):
             existing_friendship = (
                 db.query(Friend)
                 .filter(
-                    (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
-                    | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
+                    (Friend.user1_id == user_id)
+                    & (Friend.user2_id == friend_id)
+                    | (Friend.user1_id == friend_id)
+                    & (Friend.user2_id == user_id)
                 )
                 .first()
             )
@@ -962,7 +1004,10 @@ async def block_friend(request: Request, friend_id: int):
 # Unblock friend
 
 
-@router.get("/unblock_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
+@router.get(
+    "/unblock_friend/{friend_id}",
+    dependencies=[Depends(is_authenticated)],
+)
 async def unblock_friend(request: Request, friend_id: int):
     """
     Unblock a previously blocked friend.
@@ -983,8 +1028,10 @@ async def unblock_friend(request: Request, friend_id: int):
             existing_friendship = (
                 db.query(Friend)
                 .filter(
-                    (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
-                    | (Friend.user1_id == friend_id) & (Friend.user2_id == user_id)
+                    (Friend.user1_id == user_id)
+                    & (Friend.user2_id == friend_id)
+                    | (Friend.user1_id == friend_id)
+                    & (Friend.user2_id == user_id)
                 )
                 .first()
             )
@@ -1012,7 +1059,10 @@ async def unblock_friend(request: Request, friend_id: int):
 # Add friend
 
 
-@router.get("/add_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
+@router.get(
+    "/add_friend/{friend_id}",
+    dependencies=[Depends(is_authenticated)],
+)
 async def add_friend(request: Request, friend_id: int):
     """
     Add a friend request.
@@ -1040,13 +1090,17 @@ async def add_friend(request: Request, friend_id: int):
                 existing_request = (
                     db.query(Friend)
                     .filter(
-                        (Friend.user1_id == user_id) & (Friend.user2_id == friend_id)
+                        (Friend.user1_id == user_id)
+                        & (Friend.user2_id == friend_id)
                     )
                     .one()
                 )
 
                 if existing_request.status == "pending":
-                    if datetime.now() - existing_request.last_sent > timedelta(days=14):
+                    if (
+                        datetime.now() - existing_request.last_sent
+                        > timedelta(days=14)
+                    ):
                         existing_request.last_sent = datetime.now()
                         db.commit()
                     else:
@@ -1077,7 +1131,10 @@ async def add_friend(request: Request, friend_id: int):
 # Accept friend requests
 
 
-@router.get("/accept_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
+@router.get(
+    "/accept_friend/{friend_id}",
+    dependencies=[Depends(is_authenticated)],
+)
 async def accept_friend(request: Request, friend_id: int):
     """
     Accept a pending friend request.
@@ -1100,28 +1157,13 @@ async def accept_friend(request: Request, friend_id: int):
         with session_scope() as db:
             friend = (
                 db.query(Friend)
-                .filter(Friend.user1_id == friend_id, Friend.user2_id == user_id)
+                .filter(Friend.user1_id == friend_id,
+                        Friend.user2_id == user_id)
                 .first()
             )
             friend.status = "accepted"
 
-            accepted_friends = (
-                db.query(User)
-                .join(
-                    Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id)
-                )
-                .filter(
-                    Friend.status == "accepted",
-                    ((Friend.user1_id == user_id) & (User.id == Friend.user2_id))
-                    | ((Friend.user2_id == user_id) & (User.id == Friend.user1_id)),
-                )
-                .all()
-            )
-
             db.commit()
-
-            for accepted in accepted_friends:
-                accepted.avatar = b64encode(accepted.avatar).decode()
 
         return render_template("single_chat.html", request)
     else:
@@ -1131,7 +1173,10 @@ async def accept_friend(request: Request, friend_id: int):
 # Deny friend requests
 
 
-@router.get("/deny_friend/{friend_id}", dependencies=[Depends(is_authenticated)])
+@router.get(
+    "/deny_friend/{friend_id}",
+    dependencies=[Depends(is_authenticated)],
+)
 async def deny_friend(request: Request, friend_id: int):
     """
     Deny a pending friend request.
@@ -1153,26 +1198,11 @@ async def deny_friend(request: Request, friend_id: int):
         with session_scope() as db:
             friend = (
                 db.query(Friend)
-                .filter(Friend.user1_id == friend_id, Friend.user2_id == user_id)
+                .filter(Friend.user1_id == friend_id,
+                        Friend.user2_id == user_id)
                 .first()
             )
             friend.status = "denied"
-
-            accepted_friends = (
-                db.query(User)
-                .join(
-                    Friend, (Friend.user1_id == User.id) | (Friend.user2_id == User.id)
-                )
-                .filter(
-                    Friend.status == "accepted",
-                    ((Friend.user1_id == user_id) & (User.id == Friend.user2_id))
-                    | ((Friend.user2_id == user_id) & (User.id == Friend.user1_id)),
-                )
-                .all()
-            )
-
-            for accepted in accepted_friends:
-                accepted.avatar = b64encode(accepted.avatar).decode()
 
             db.commit()
 
@@ -1202,7 +1232,9 @@ async def chatbot_page(request: Request):
 
     with session_scope() as db:
         chatbot_messages = (
-            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
+            db.query(ChatbotMessage)
+            .filter(ChatbotMessage.user_id == user.id)
+            .all()
         )
 
     return templates.TemplateResponse(
@@ -1246,11 +1278,16 @@ async def chatbot(request: Request, message: str = Form(...)):
 
     if errors:
         if is_ajax:
-            return chatbot_json_error(400, {"error": "validation", "details": errors})
+            return chatbot_json_error(
+                400, {"error": "validation", "details": errors}
+            )
         return templates.TemplateResponse(
             request,
             "chatbot_chat.html",
-            chatbot_context(user, [], request=request, message=message, errors=errors),
+            chatbot_context(
+                user, [], request=request, message=message,
+                errors=errors,
+            ),
         )
 
     history_limit = max(0, settings.chatbot_history_limit)
@@ -1289,7 +1326,11 @@ async def chatbot(request: Request, message: str = Form(...)):
             request,
             "chatbot_chat.html",
             chatbot_context(
-                user, [], request=request, message=message, errors=error_payload
+                user,
+                [],
+                request=request,
+                message=message,
+                errors=error_payload,
             ),
         )
 
@@ -1309,14 +1350,20 @@ async def chatbot(request: Request, message: str = Form(...)):
 
     with session_scope() as db:
         chatbot_messages = (
-            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
+            db.query(ChatbotMessage)
+            .filter(ChatbotMessage.user_id == user.id)
+            .all()
         )
 
     return templates.TemplateResponse(
         request,
         "chatbot_chat.html",
         chatbot_context(
-            user, chatbot_messages, request=request, message=message, response=response
+            user,
+            chatbot_messages,
+            request=request,
+            message=message,
+            response=response,
         ),
     )
 
@@ -1324,7 +1371,10 @@ async def chatbot(request: Request, message: str = Form(...)):
 # Clear past conversations with chatbot
 
 
-@router.post("/clear_chatbot_messages", dependencies=[Depends(is_authenticated)])
+@router.post(
+    "/clear_chatbot_messages",
+    dependencies=[Depends(is_authenticated)],
+)
 async def clear_chatbot_messages(request: Request):
     """
     Clear all past chatbot messages for the user.
@@ -1340,7 +1390,11 @@ async def clear_chatbot_messages(request: Request):
         return render_template("login.html", request)
 
     with session_scope() as db:
-        db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user_id).delete()
+        (
+            db.query(ChatbotMessage)
+            .filter(ChatbotMessage.user_id == user_id)
+            .delete()
+        )
         db.commit()
 
     return templates.TemplateResponse(
@@ -1352,4 +1406,19 @@ async def clear_chatbot_messages(request: Request):
             request=request,
             user_image=encode_avatar(user),
         ),
+    )
+
+
+@router.get("/online-users")
+async def online_users(request: Request):
+    """Return the set of currently online user IDs as JSON.
+
+    Args:
+        request (Request): The HTTP request
+
+    Returns:
+        JSONResponse: A JSON object with online user IDs
+    """
+    return JSONResponse(
+        content={"online_user_ids": list(manager.get_online_users())}
     )

@@ -1,9 +1,9 @@
 import logging
+from datetime import datetime
 from os import environ
 from textwrap import dedent
 
-from datetime import datetime
-
+import openai
 from fastapi.responses import JSONResponse
 from openai import OpenAI
 
@@ -16,7 +16,7 @@ class ChatbotServiceError(RuntimeError):
         self.details = details or {}
 
 
-def normalize_chatbot_response(response_text: str):
+def normalize_chatbot_response(response_text: str | None):
     """Normalize the chatbot response by stripping whitespace and dedenting.
 
     Args:
@@ -44,11 +44,14 @@ def build_chatbot_messages(user_input: str, previous_messages=None):
     system_prompt = (
         "You are the Chat App assistant. "
         "Use the provided conversation history as memory for this user. "
-        "If the user asks whether you remember earlier messages, answer based on the "
-        "history in this chat context. "
-        "Do not claim you cannot remember previous messages when prior context is present. "
-        "Answer completely and avoid trailing fragments or unfinished Markdown. "
-        "For factual or cost-related questions, give a concise estimate, key factors, and a brief caveat."
+        "If the user asks whether you remember earlier messages, "
+        "answer based on the history in this chat context. "
+        "Do not claim you cannot remember previous messages "
+        "when prior context is present. "
+        "Answer completely and avoid trailing fragments "
+        "or unfinished Markdown. "
+        "For factual or cost-related questions, "
+        "give a concise estimate, key factors, and a brief caveat."
     )
 
     messages = [{"role": "system", "content": system_prompt}]
@@ -57,7 +60,9 @@ def build_chatbot_messages(user_input: str, previous_messages=None):
             if item.message:
                 messages.append({"role": "user", "content": item.message})
             if item.response:
-                messages.append({"role": "assistant", "content": item.response})
+                messages.append(
+                    {"role": "assistant", "content": item.response}
+                )
 
     messages.append({"role": "user", "content": user_input})
     return messages
@@ -113,7 +118,8 @@ def chatbot_response(user_input: str, previous_messages=None):
                     exc_inner, openai.APITimeoutError
                 ):
                     logging.warning(
-                        "Chatbot model %s timed out; retrying with longer timeout and fewer tokens",
+                        "Chatbot model %s timed out; "
+                        "retrying with longer timeout and fewer tokens",
                         model_name,
                     )
                     try:
@@ -128,7 +134,10 @@ def chatbot_response(user_input: str, previous_messages=None):
                             max_tokens=retry_max_tokens,
                             stream=False,
                             timeout=min(
-                                getattr(settings, "chatbot_timeout_seconds", 30) * 2,
+                                getattr(
+                                    settings, "chatbot_timeout_seconds", 30
+                                )
+                                * 2,
                                 300,
                             ),
                         )
@@ -141,7 +150,9 @@ def chatbot_response(user_input: str, previous_messages=None):
             content = message.content if message else None
             if content:
                 return normalize_chatbot_response(content)
-            model_errors.append(f"Model {model_name} returned an empty response")
+            model_errors.append(
+                f"Model {model_name} returned an empty response"
+            )
         except Exception as exc:
             model_errors.append(f"Model {model_name} failed: {exc}")
             if getattr(settings, "debug", False):

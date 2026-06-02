@@ -82,7 +82,7 @@ def test_404_returns_html():
 
 def test_login_wrong_password_content_type():
     db = TestingSessionLocal()
-    user = create_user(
+    create_user(
         db, "Login", "Wrong", "login-wrong-ct@example.com", "Password123",
         "project/static/img/default avatar.png",
     )

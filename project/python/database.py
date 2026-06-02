@@ -1,13 +1,13 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import declarative_base
-from sqlalchemy.engine import URL
-from contextlib import contextmanager
 import os
+from contextlib import contextmanager
+
+from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
+from sqlalchemy.orm import declarative_base, sessionmaker
 
 # Database setup
-# Prefer `DATABASE_URL` from environment (set by docker-compose / CI). Fallback to
-# a sensible default for local development.
+# Prefer `DATABASE_URL` from environment (set by docker-compose / CI).
+# Fallback to a sensible default for local development.
 database_url = os.getenv(
     "DATABASE_URL",
     str(

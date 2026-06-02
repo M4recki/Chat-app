@@ -1,12 +1,11 @@
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from fastapi.testclient import TestClient
-
 from project.python.models import ChatbotMessage
 from project.python.chatbot_utils import ChatbotServiceError
 from project.python.routes import send_email, chatbot_response
 from project.python.settings import settings
 from project.python.main import app
-from project.python.rate_limit import _rate_limiter
+from project.python.rate_limit import rate_limiter
 from tests.integration_test import create_user
 from tests.model_test import TestingSessionLocal
 from conftest import client
@@ -103,7 +102,7 @@ def test_chatbot_api_failure_returns_structured_error(monkeypatch):
 
 
 def test_very_long_strings_in_signup():
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
     long_name = "A" * 500
     response = client.post(
         "/sign_up",
@@ -113,14 +112,14 @@ def test_very_long_strings_in_signup():
             "email": "long-string@example.com",
             "password": "Pass123",
             "confirm_password": "Pass123",
-            "terms_conditions": True,
+            "terms_conditions": "on",
         },
     )
     assert response.status_code in (200, 303, 422)
 
 
 def test_unicode_in_signup():
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
     response = client.post(
         "/sign_up",
         data={
@@ -129,14 +128,14 @@ def test_unicode_in_signup():
             "email": "unicode-test@example.com",
             "password": "Pass123",
             "confirm_password": "Pass123",
-            "terms_conditions": True,
+            "terms_conditions": "on",
         },
     )
     assert response.status_code in (200, 303, 422)
 
 
 def test_special_characters_in_name():
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
     response = client.post(
         "/sign_up",
         data={
@@ -145,14 +144,14 @@ def test_special_characters_in_name():
             "email": "special-chars@example.com",
             "password": "Pass123",
             "confirm_password": "Pass123",
-            "terms_conditions": True,
+            "terms_conditions": "on",
         },
     )
     assert response.status_code in (200, 303, 422)
 
 
 def test_very_long_email():
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
     local_part = "a" * 200
     response = client.post(
         "/sign_up",
@@ -162,7 +161,7 @@ def test_very_long_email():
             "email": f"{local_part}@example.com",
             "password": "Pass123",
             "confirm_password": "Pass123",
-            "terms_conditions": True,
+            "terms_conditions": "on",
         },
     )
     assert response.status_code in (200, 303, 422)
@@ -213,7 +212,7 @@ def test_html_injection_in_chatbot():
 
 
 def test_contact_with_long_message():
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
     response = client.post(
         "/contact",
         data={

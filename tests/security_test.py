@@ -3,9 +3,11 @@ from fastapi.testclient import TestClient
 from conftest import client
 from project.python.main import app
 from project.python.settings import settings
-from project.python.rate_limit import _rate_limiter
+from project.python.rate_limit import rate_limiter
 from tests.integration_test import create_user
 from tests.model_test import TestingSessionLocal
+from project.python.models import Friend
+from sqlalchemy import or_
 
 
 def _auth_client():
@@ -26,7 +28,7 @@ def _auth_client():
 
 
 def _clear_rate_limiter():
-    _rate_limiter._buckets.clear()
+    rate_limiter._buckets.clear()
 
 
 #  SQL injection
@@ -50,7 +52,7 @@ def test_sql_injection_signup_name():
             "email": "sql-inj@example.com",
             "password": "Pass123",
             "confirm_password": "Pass123",
-            "terms_conditions": True,
+            "terms_conditions": "on",
         },
     )
     assert response.status_code in (200, 303)
@@ -90,7 +92,7 @@ def test_xss_in_signup():
             "email": "xss-test@example.com",
             "password": "Pass123",
             "confirm_password": "Pass123",
-            "terms_conditions": True,
+            "terms_conditions": "on",
         },
     )
     assert response.status_code in (200, 303)
@@ -151,8 +153,6 @@ def test_token_for_other_user():
     assert response.status_code == 200
 
     # Verify the friend request was created for user_a → user_b, not the other way
-    from project.python.models import Friend
-    from sqlalchemy import or_
     db_check = TestingSessionLocal()
     friendship = (
         db_check.query(Friend)
