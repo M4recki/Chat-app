@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from conftest import client
 from project.python.main import app
 from project.python.settings import settings
+from project.python.routes import generate_csrf_token
 from project.python.rate_limit import rate_limiter
 from tests.integration_test import create_user
 from tests.model_test import TestingSessionLocal
@@ -70,10 +71,11 @@ def test_sql_injection_search():
 
 def test_xss_in_message():
     _clear_rate_limiter()
-    local, _ = _auth_client()
+    local, user = _auth_client()
+    csrf = generate_csrf_token(user.id)
     response = local.post(
         "/chatbot",
-        data={"message": "<script>alert('xss')</script>"},
+        data={"message": "<script>alert('xss')</script>", "csrf_token": csrf},
         headers={"X-Requested-With": "XMLHttpRequest"},
     )
     assert response.status_code in (200, 502)

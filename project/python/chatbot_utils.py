@@ -11,6 +11,8 @@ from .settings import settings
 
 
 class ChatbotServiceError(RuntimeError):
+    """Raised when the chatbot API returns an error or is unreachable."""
+
     def __init__(self, message: str, details=None):
         super().__init__(message)
         self.details = details or {}
@@ -113,38 +115,31 @@ def chatbot_response(user_input: str, previous_messages=None):
                     max_tokens=settings.chatbot_max_tokens,
                     stream=False,
                 )
-            except Exception as exc_inner:
-                if hasattr(openai, "APITimeoutError") and isinstance(
-                    exc_inner, openai.APITimeoutError
-                ):
-                    logging.warning(
-                        "Chatbot model %s timed out; "
-                        "retrying with longer timeout and fewer tokens",
-                        model_name,
-                    )
-                    try:
-                        retry_max_tokens = max(
-                            256, int(settings.chatbot_max_tokens / 2)
+
+            except openai.APITimeoutError:
+                logging.warning(
+                    "Chatbot model %s timed out; "
+                    "retrying with longer timeout and fewer tokens",
+                    model_name,
+                )
+                retry_max_tokens = max(
+                    256, int(settings.chatbot_max_tokens / 2)
+                )
+                completion = client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    temperature=0.6,
+                    top_p=0.9,
+                    max_tokens=retry_max_tokens,
+                    stream=False,
+                    timeout=min(
+                        getattr(
+                            settings, "chatbot_timeout_seconds", 30
                         )
-                        completion = client.chat.completions.create(
-                            model=model_name,
-                            messages=messages,
-                            temperature=0.6,
-                            top_p=0.9,
-                            max_tokens=retry_max_tokens,
-                            stream=False,
-                            timeout=min(
-                                getattr(
-                                    settings, "chatbot_timeout_seconds", 30
-                                )
-                                * 2,
-                                300,
-                            ),
-                        )
-                    except Exception as exc_retry:
-                        raise exc_retry
-                else:
-                    raise exc_inner
+                        * 2,
+                        300,
+                    ),
+                )
 
             message = completion.choices[0].message
             content = message.content if message else None
@@ -153,6 +148,7 @@ def chatbot_response(user_input: str, previous_messages=None):
             model_errors.append(
                 f"Model {model_name} returned an empty response"
             )
+
         except Exception as exc:
             model_errors.append(f"Model {model_name} failed: {exc}")
             if getattr(settings, "debug", False):

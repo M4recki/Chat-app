@@ -9,6 +9,15 @@ from fastapi import HTTPException, Request
 
 
 class RateLimitRule(TypedDict):
+    """Configuration for a single rate limit rule.
+
+    Attributes:
+        path: URL path to match
+        methods: HTTP methods to match
+        scope: Unique scope name for the rule
+        max_requests: Maximum number of requests allowed
+        window_seconds: Time window in seconds
+    """
     path: str
     methods: set[str]
     scope: str
@@ -36,12 +45,12 @@ class RateLimiter:
         self._lock = threading.Lock()
 
     def enforce(
-        self,
-        request: Request,
-        scope: str,
-        max_requests: int,
-        window_seconds: int,
-        identifier: str | None = None,
+            self,
+            request: Request,
+            scope: str,
+            max_requests: int,
+            window_seconds: int,
+            identifier: str | None = None,
     ) -> dict[str, int] | None:
         """Enforce a rate limit and return metadata for response headers.
 
@@ -96,11 +105,11 @@ rate_limiter = RateLimiter()
 
 
 def enforce_rate_limit(
-    request: Request,
-    scope: str,
-    max_requests: int,
-    window_seconds: int,
-    identifier: str | None = None,
+        request: Request,
+        scope: str,
+        max_requests: int,
+        window_seconds: int,
+        identifier: str | None = None,
 ) -> dict[str, int] | None:
     """Convenience wrapper for enforcing a rate limit using the singleton."""
     return rate_limiter.enforce(

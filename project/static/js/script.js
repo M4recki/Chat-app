@@ -24,10 +24,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (confirmDeleteConversation) {
         confirmDeleteConversation.addEventListener("click", async () => {
             try {
+                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                const csrfToken = csrfMeta ? csrfMeta.getAttribute("content") : "";
                 const response = await fetch("/clear_chatbot_messages", {
                     method: "POST",
                     headers: {
                         "X-Requested-With": "XMLHttpRequest",
+                        "X-CSRF-Token": csrfToken,
                     },
                     credentials: "same-origin",
                 });

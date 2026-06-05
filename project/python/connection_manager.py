@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 
 
 class ConnectionManager:
@@ -12,13 +12,14 @@ class ConnectionManager:
     """
 
     def __init__(self) -> None:
+        """Initialize empty connection stores and online user set."""
         self.active_connections: dict[str, list[WebSocket]] = {}
         self.user_connections: dict[int, list[WebSocket]] = {}
         self.online_users: set[int] = set()
         self._ws_to_user: dict[int, int] = {}
 
     async def connect(
-        self, websocket: WebSocket, channel_id: str, user_id: int
+            self, websocket: WebSocket, channel_id: str, user_id: int
     ):
         """
         Connect a websocket to a channel and mark user as online.
@@ -79,13 +80,13 @@ class ConnectionManager:
             for connection in self.active_connections[channel_id]:
                 try:
                     await connection.send_text(message)
-                except Exception:
+                except (WebSocketDisconnect, RuntimeError):
                     dead.append(connection)
             for connection in dead:
                 self.active_connections[channel_id].remove(connection)
 
     async def broadcast_to_channel_except(
-        self, message: str, channel_id: str, exclude_websocket: WebSocket
+            self, message: str, channel_id: str, exclude_websocket: WebSocket
     ):
         """
         Broadcast a message to all connections in a channel except one.
@@ -102,13 +103,15 @@ class ConnectionManager:
                     continue
                 try:
                     await connection.send_text(message)
-                except Exception:
+                except (WebSocketDisconnect, RuntimeError):
                     dead.append(connection)
             for connection in dead:
                 self.active_connections[channel_id].remove(connection)
 
+
+
     def get_other_user_ids_in_channel(
-        self, channel_id: str, exclude_websocket: WebSocket
+            self, channel_id: str, exclude_websocket: WebSocket
     ) -> list[int]:
         """
         Get user IDs of all other connections in a channel.

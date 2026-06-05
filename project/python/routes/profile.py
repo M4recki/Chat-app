@@ -1,0 +1,105 @@
+from io import BytesIO
+
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from PIL import Image
+from werkzeug.security import generate_password_hash
+
+from ..database import session_scope
+from ..models import User
+from .helpers import get_user_from_request, is_authenticated, validate_csrf
+from .template import render_template, templates
+
+router = APIRouter()
+
+
+@router.get("/update_profile", dependencies=[Depends(is_authenticated)])
+async def update_profile_page(request: Request):
+    """Render the update profile page.
+
+    Args:
+        request: The request object
+
+    Returns:
+        Response: Update profile page template
+    """
+    user, _ = get_user_from_request(request)
+    if not user:
+        return render_template("login.html", request)
+
+    return templates.TemplateResponse(
+        request,
+        "update_profile.html",
+        {"request": request, "user": user, "errors": {}},
+    )
+
+
+@router.post("/update_profile", dependencies=[Depends(is_authenticated), Depends(validate_csrf)])
+async def update_profile_data(
+    request: Request,
+    avatar: UploadFile = File(None),
+    name: str = Form(None),
+    surname: str = Form(None),
+    email: str = Form(None),
+    password: str = Form(None),
+    confirm_password: str = Form(None),
+):
+    """Handle update profile form submission.
+
+    Args:
+        request: The request object
+        avatar: The avatar upload field
+        name: The name form field
+        surname: The surname form field
+        email: The email form field
+        password: The password form field
+        confirm_password: The confirm password form field
+
+    Returns:
+        Response: Redirect or update profile template
+    """
+    user, user_id = get_user_from_request(request)
+    if not user:
+        return render_template("login.html", request)
+
+    errors = {}
+
+    if password is not None and len(password) < 8:
+        errors["password"] = "Password must be at least 8 characters long"
+
+    if password != confirm_password:
+        errors["confirm_password"] = "Passwords do not match"
+
+    if errors:
+        return templates.TemplateResponse(
+            request,
+            "update_profile.html",
+            {"request": request, "user": user, "errors": errors},
+        )
+
+    if avatar and avatar.content_type:
+        if avatar.content_type not in ["image/jpeg", "image/png"]:
+            errors["avatar"] = "Avatar must be a JPEG or PNG file"
+        else:
+            avatar_data = await avatar.read()
+            if len(avatar_data) > 5 * 1024 * 1024:
+                errors["avatar"] = "Avatar must be smaller than 5 MB"
+            else:
+                img_binary = BytesIO()
+                img_binary.write(avatar_data)
+                user.avatar = img_binary.getvalue()
+
+    with session_scope() as db:
+        updated_user = db.query(User).filter(User.id == user_id).first()
+        if name is not None:
+            updated_user.name = name
+        if surname is not None:
+            updated_user.surname = surname
+        if email is not None:
+            updated_user.email = email
+        if password is not None:
+            updated_user.password = generate_password_hash(password)
+        if avatar and avatar.content_type:
+            updated_user.avatar = user.avatar
+        db.commit()
+
+    return render_template("single_chat.html", request)

@@ -98,6 +98,7 @@
                   method="POST"
                   class="d-flex flex-column chatbot-form"
                   data-chatbot-form>
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
                   <label for="message" class="form-label mb-2 ms-3 text-muted">
                     Your message:
                   </label>
@@ -156,6 +157,7 @@
                   method="POST"
                   class="d-flex flex-column chatbot-form"
                   data-chatbot-form>
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
                   <label for="message" class="form-label mb-2 ms-3 text-muted">
                     Your message:
                   </label>

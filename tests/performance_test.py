@@ -2,9 +2,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 import time
 from fastapi.testclient import TestClient
+from itsdangerous import URLSafeTimedSerializer as Serializer
 from conftest import client
 from project.python.main import app
 from project.python.rate_limit import rate_limiter
+from project.python.settings import settings
 from tests.model_test import TestingSessionLocal
 from project.python.models import User
 from io import BytesIO
@@ -104,9 +106,10 @@ def test_websocket_multiple_broadcast():
 
     channels = [f"perf-ch-{i}" for i in range(3)]
 
+    token = Serializer(settings.chat_secret_key).dumps({"user_id": uid})
     with TestClient(app) as local:
         for ch in channels:
-            with local.websocket_connect(f"/ws/{ch}/TestUser/{uid}") as ws:
+            with local.websocket_connect(f"/ws/{ch}/TestUser/{uid}", cookies={"access_token": token}) as ws:
                 ws.send_json({"type": "message", "channel_id": ch, "message": "ping"})
                 data = ws.receive_text()
                 assert "ping" in data

@@ -1,27 +1,18 @@
-import httpx
-import pytest
-from conftest import client
-from itsdangerous import URLSafeTimedSerializer as Serializer
-from starlette.requests import Request
-from project.python.settings import settings
-from project.python.rate_limit import RateLimiter
-from project.python.routes import (
-    authentication_in_header,
-    get_user_from_request,
-    get_user,
-    encode_avatar,
-    user_image,
-    user_name,
-)
-
 import json
 import time
 from datetime import datetime
 from hashlib import sha256
+from io import BytesIO
 from unittest.mock import AsyncMock
 
+import httpx2
 import openai as openai_mod
+import pytest
+from conftest import client
 from fastapi.testclient import TestClient
+from itsdangerous import URLSafeTimedSerializer as Serializer
+from PIL import Image
+from starlette.requests import Request
 from starlette.testclient import TestClient as WSClient
 
 from project.python.chatbot_utils import (
@@ -37,9 +28,47 @@ from project.python.connection_manager import ConnectionManager
 from project.python.database import get_db
 from project.python.main import app
 from project.python.main import app as ws_app
-from project.python.rate_limit import get_client_identifier
-from project.python.routes import chatbot_response
-from project.python.routes import generate_channel_id
+from project.python.models import User
+from project.python.rate_limit import RateLimiter, get_client_identifier
+from project.python.routes import (
+    authentication_in_header,
+    chatbot_response,
+    encode_avatar,
+    generate_channel_id,
+    get_user,
+    get_user_from_request,
+    user_image,
+    user_name,
+)
+from project.python.settings import settings as app_settings
+from tests.model_test import TestingSessionLocal
+
+
+class FakeMessage:
+    def __init__(self, message, response):
+        self.message = message
+        self.response = response
+
+
+def _make_request(headers: list | None = None, host: str | None = "127.0.0.1"):
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": headers or [],
+        "client": (host, 8000) if host else None,
+    }
+    return Request(scope)
+
+
+def _make_request_with_cookie(token: str) -> Request:
+    return _make_request([(b"cookie", f"access_token={token}".encode())])
+
+
+def _enable_openai(monkeypatch):
+    monkeypatch.setenv("TESTING", "0")
+    monkeypatch.setattr("project.python.chatbot_utils.settings.ai_key", "sk-real-key")
+
 
 def test_read_main():
     response = client.get("/")
@@ -54,31 +83,17 @@ def test_invalid_route():
 #  RateLimiter.get_client_identifier
 
 
-def _make_request(headers: list | None = None, host: str | None = "127.0.0.1"):
-    scope = {
-        "type": "http",
-        "method": "GET",
-        "path": "/",
-        "headers": headers or [],
-        "client": (host, 8000) if host else None,
-    }
-    return Request(scope)
-
-
 def test_rate_limiter_get_client_identifier_x_forwarded_for():
-
     request = _make_request([(b"x-forwarded-for", b"203.0.113.42, 10.0.0.1")])
     assert get_client_identifier(request) == "203.0.113.42"
 
 
 def test_rate_limiter_get_client_identifier_fallback_host():
-
     request = _make_request(host="10.0.0.55")
     assert get_client_identifier(request) == "10.0.0.55"
 
 
 def test_rate_limiter_get_client_identifier_no_client():
-
     request = _make_request(host=None)
     assert get_client_identifier(request) == "unknown"
 
@@ -119,42 +134,29 @@ def test_rate_limiter_enforce_bucket_cleanup():
 
 
 def test_authentication_in_header_valid():
-    serializer = Serializer(settings.chat_secret_key)
+    serializer = Serializer(app_settings.chat_secret_key)
     token = serializer.dumps({"user_id": 1})
-    scope = {
-        "type": "http",
-        "method": "GET",
-        "path": "/",
-        "headers": [(b"cookie", f"access_token={token}".encode())],
-        "client": ("127.0.0.1", 8000),
-    }
-    request = Request(scope)
-    result = authentication_in_header(request)
+    result = authentication_in_header(_make_request_with_cookie(token))
     assert result == {"is_authenticated": True}
 
 
 def test_authentication_in_header_no_token():
-    request = _make_request()
-    result = authentication_in_header(request)
+    result = authentication_in_header(_make_request())
     assert result == {"is_authenticated": False}
 
 
 def test_authentication_in_header_invalid_token():
-    scope = {
-        "type": "http",
-        "method": "GET",
-        "path": "/",
-        "headers": [(b"cookie", b"access_token=forged")],
-        "client": ("127.0.0.1", 8000),
-    }
-    request = Request(scope)
-    result = authentication_in_header(request)
+    result = authentication_in_header(_make_request_with_cookie("forged"))
     assert result == {"is_authenticated": False}
 
 
-def test_authentication_in_header_not_request():
-    result = authentication_in_header("not-a-request")
-    assert result == {"is_authenticated": False}
+@pytest.mark.parametrize("func,expected", [
+    (authentication_in_header, {"is_authenticated": False}),
+    (user_image, {"user_image": ""}),
+    (user_name, {"user_name": None}),
+])
+def test_not_request(func, expected):
+    assert func("not-a-request") == expected
 
 
 #  get_user_from_request
@@ -168,15 +170,7 @@ def test_get_user_from_request_no_token():
 
 
 def test_get_user_from_request_invalid_token():
-    scope = {
-        "type": "http",
-        "method": "GET",
-        "path": "/",
-        "headers": [(b"cookie", b"access_token=bad")],
-        "client": ("127.0.0.1", 8000),
-    }
-    request = Request(scope)
-    user, user_id = get_user_from_request(request)
+    user, user_id = get_user_from_request(_make_request_with_cookie("bad"))
     assert user is None
     assert user_id is None
 
@@ -187,6 +181,9 @@ def test_get_user_from_request_invalid_token():
 def test_get_user_not_found():
     user = get_user(99999)
     assert user is None
+
+
+#  encode_avatar
 
 
 def test_encode_avatar_empty():
@@ -212,92 +209,61 @@ def test_encode_avatar_no_user():
 #  user_image
 
 
-def test_user_image_not_request():
-    assert user_image("not-a-request") == {"user_image": ""}
-
-
 def test_user_image_no_token():
-    request = _make_request()
-    assert user_image(request) == {"user_image": ""}
+    assert user_image(_make_request()) == {"user_image": ""}
 
 
 def test_user_image_invalid_token():
-    scope = {
-        "type": "http",
-        "method": "GET",
-        "path": "/",
-        "headers": [(b"cookie", b"access_token=bad")],
-        "client": ("127.0.0.1", 8000),
-    }
-    request = Request(scope)
-    assert user_image(request) == {"user_image": ""}
+    assert user_image(_make_request_with_cookie("bad")) == {"user_image": ""}
 
 
 #  user_name
 
 
-def test_user_name_not_request():
-    assert user_name("not-a-request") == {"user_name": None}
-
-
 def test_user_name_no_token():
-    request = _make_request()
-    assert user_name(request) == {"user_name": None}
+    assert user_name(_make_request()) == {"user_name": None}
 
 
 def test_user_name_invalid_token():
-    scope = {
-        "type": "http",
-        "method": "GET",
-        "path": "/",
-        "headers": [(b"cookie", b"access_token=bad")],
-        "client": ("127.0.0.1", 8000),
-    }
-    request = Request(scope)
-    assert user_name(request) == {"user_name": None}
+    assert user_name(_make_request_with_cookie("bad")) == {"user_name": None}
 
 
 #  settings properties
 
 
 def test_settings_is_production():
-
-    original = settings.environment
-    settings.environment = "production"
-    assert settings.is_production is True
-    settings.environment = "development"
-    assert settings.is_production is False
-    settings.environment = original
+    original = app_settings.environment
+    app_settings.environment = "production"
+    assert app_settings.is_production is True
+    app_settings.environment = "development"
+    assert app_settings.is_production is False
+    app_settings.environment = original
 
 
 def test_settings_is_testing():
-
-    original = settings.environment
-    settings.environment = "testing"
-    assert settings.is_testing is True
-    settings.testing = False
-    settings.environment = "development"
-    assert settings.is_testing is False
-    settings.environment = original
+    original = app_settings.environment
+    app_settings.environment = "testing"
+    assert app_settings.is_testing is True
+    app_settings.testing = False
+    app_settings.environment = "development"
+    assert app_settings.is_testing is False
+    app_settings.environment = original
 
 
 #  chatbot_utils
 
 
 def test_normalize_chatbot_response_empty():
-
     assert normalize_chatbot_response("") == ""
     assert normalize_chatbot_response(None) == ""
 
 
 def test_normalize_chatbot_response_dedent():
-
     result = normalize_chatbot_response("  hello\n  world  ")
     assert result == "hello\nworld"
 
 
 def test_build_chatbot_messages_no_history():
-
     messages = build_chatbot_messages("hello")
     assert len(messages) == 2
     assert messages[0]["role"] == "system"
@@ -305,12 +271,6 @@ def test_build_chatbot_messages_no_history():
 
 
 def test_build_chatbot_messages_with_history():
-
-    class FakeMessage:
-        def __init__(self, message, response):
-            self.message = message
-            self.response = response
-
     history = [
         FakeMessage("hi", "hello back"),
         FakeMessage("how are you", "good"),
@@ -323,12 +283,6 @@ def test_build_chatbot_messages_with_history():
 
 
 def test_build_chatbot_messages_with_empty_entries():
-
-    class FakeMessage:
-        def __init__(self, message, response):
-            self.message = message
-            self.response = response
-
     history = [
         FakeMessage("", "response only"),
         FakeMessage("question", ""),
@@ -338,26 +292,17 @@ def test_build_chatbot_messages_with_empty_entries():
 
 
 def test_chatbot_response_testing_mode_echo():
-
     result = chatbot_utils_response("echo: hello world")
     assert result == "hello world"
 
 
 def test_chatbot_response_testing_mode_fallback():
-
     result = chatbot_utils_response("plain message")
     assert result == "test-response"
 
 
 def test_chatbot_context_basic():
-
-    scope = {
-        "type": "http",
-        "method": "GET",
-        "path": "/",
-        "headers": [],
-        "client": None,
-    }
+    scope = {"type": "http", "method": "GET", "path": "/", "headers": [], "client": None}
     request = Request(scope)
     ctx = chatbot_context(
         "fake-user", [], request=request, message="hi", response="hello"
@@ -369,14 +314,12 @@ def test_chatbot_context_basic():
 
 
 def test_chatbot_json_error():
-
     resp = chatbot_json_error(502, {"error": "test"})
     assert resp.status_code == 502
     assert resp.body == b'{"error":"test"}'
 
 
 def test_chatbot_json_success():
-
     resp = chatbot_json_success("hi", "hello", datetime(2024, 1, 15, 10, 30, 0))
     assert resp.status_code == 200
 
@@ -387,7 +330,6 @@ def test_chatbot_json_success():
 
 
 def test_chatbot_service_error():
-
     err = ChatbotServiceError("boom")
     assert str(err) == "boom"
     assert err.details == {}
@@ -395,29 +337,28 @@ def test_chatbot_service_error():
     assert err2.details == {"key": "val"}
 
 
-def test_chatbot_response_non_testing_missing_api_key(monkeypatch):
+@pytest.mark.parametrize("func,key,match", [
+    (chatbot_utils_response, "changeme", "Chatbot service is not configured"),
+    (chatbot_utils_response, "your-nvidia-api-key", "Chatbot service is not configured"),
+    (chatbot_utils_response, "   ", "Chatbot service is not configured"),
+    (chatbot_utils_response, "bearer changeme", None),
+    (chatbot_response, "changeme", "Chatbot service is not configured"),
+    (chatbot_response, "your-nvidia-api-key", "Chatbot service is not configured"),
+    (chatbot_response, "   ", "Chatbot service is not configured"),
+    (chatbot_response, "bearer changeme", None),
+])
+def test_chatbot_api_key_validation(monkeypatch, func, key, match):
     monkeypatch.setenv("TESTING", "0")
-    monkeypatch.setattr("project.python.chatbot_utils.settings.ai_key", "changeme")
-    with pytest.raises(ChatbotServiceError, match="Chatbot service is not configured"):
-        chatbot_utils_response("hello")
-
-
-def test_chatbot_response_non_testing_placeholder_key(monkeypatch):
-    monkeypatch.setenv("TESTING", "0")
-    monkeypatch.setattr("project.python.chatbot_utils.settings.ai_key", "your-nvidia-api-key")
-    with pytest.raises(ChatbotServiceError, match="Chatbot service is not configured"):
-        chatbot_utils_response("hello")
-
-
-def test_chatbot_response_non_testing_empty_key(monkeypatch):
-    monkeypatch.setenv("TESTING", "0")
-    monkeypatch.setattr("project.python.chatbot_utils.settings.ai_key", "   ")
-    with pytest.raises(ChatbotServiceError, match="Chatbot service is not configured"):
-        chatbot_utils_response("hello")
+    monkeypatch.setattr("project.python.chatbot_utils.settings.ai_key", key)
+    if match:
+        with pytest.raises(ChatbotServiceError, match=match):
+            func("hello")
+    else:
+        with pytest.raises(ChatbotServiceError):
+            func("hello")
 
 
 def test_chatbot_context_with_extra():
-
     scope = {"type": "http", "method": "GET", "path": "/", "headers": [], "client": None}
     request = Request(scope)
     ctx = chatbot_context(
@@ -427,116 +368,80 @@ def test_chatbot_context_with_extra():
     assert ctx["message"] == "m"
 
 
-def test_chatbot_response_bearer_key(monkeypatch):
-    monkeypatch.setenv("TESTING", "0")
-    monkeypatch.setattr("project.python.chatbot_utils.settings.ai_key", "bearer changeme")
-    with pytest.raises(ChatbotServiceError):
-        chatbot_utils_response("hello")
+#  OpenAI mock helpers
+
+_MOCK_CONTENT = "Hello world"
 
 
-def test_routes_build_chatbot_messages():
-
-    messages = build_chatbot_messages("hello")
-    assert len(messages) == 2
-    assert messages[0]["role"] == "system"
-    assert messages[1] == {"role": "user", "content": "hello"}
+class _MockMsg:
+    content = _MOCK_CONTENT
 
 
-def test_routes_build_chatbot_messages_with_history():
-
-    class FakeMsg:
-        def __init__(self, message, response):
-            self.message = message
-            self.response = response
-    history = [FakeMsg("hi", "hello back")]
-    messages = build_chatbot_messages("bye", history)
-    assert len(messages) == 4
+class _MockChoice:
+    message = _MockMsg()
 
 
-def test_routes_chatbot_response_missing_key(monkeypatch):
-    monkeypatch.setenv("TESTING", "0")
-    monkeypatch.setattr("project.python.routes.settings.ai_key", "changeme")
-    with pytest.raises(ChatbotServiceError, match="Chatbot service is not configured"):
-        chatbot_response("hello")
+class _MockCompletion:
+    choices = [_MockChoice()]
 
 
-def test_routes_chatbot_response_placeholder_key(monkeypatch):
-    monkeypatch.setenv("TESTING", "0")
-    monkeypatch.setattr("project.python.routes.settings.ai_key", "your-nvidia-api-key")
-    with pytest.raises(ChatbotServiceError, match="Chatbot service is not configured"):
-        chatbot_response("hello")
+class _MockClient:
+    class Chat:
+        class Completions:
+            @staticmethod
+            def create(*a, **kw):
+                return _MockCompletion()
+        completions = Completions()
+    chat = Chat()
 
 
-def test_routes_chatbot_response_empty_key(monkeypatch):
-    monkeypatch.setenv("TESTING", "0")
-    monkeypatch.setattr("project.python.routes.settings.ai_key", "   ")
-    with pytest.raises(ChatbotServiceError, match="Chatbot service is not configured"):
-        chatbot_response("hello")
+def _mock_openai(monkeypatch, content=None, create_fn=None):
+    if content is not None:
+        _MockMsg.content = content
+    _MockMsg.content = content if content is not None else _MOCK_CONTENT
 
-
-def test_routes_chatbot_response_bearer_key(monkeypatch):
-    monkeypatch.setenv("TESTING", "0")
-    monkeypatch.setattr("project.python.routes.settings.ai_key", "bearer changeme")
-    with pytest.raises(ChatbotServiceError):
-        chatbot_response("hello")
-
-
-def test_routes_chatbot_response_testing_path(monkeypatch):
-    monkeypatch.setenv("TESTING", "1")
-    assert chatbot_response("echo: hi") == "hi"
-    assert chatbot_response("plain") == "test-response"
+    if create_fn is not None:
+        class CustomCompletions:
+            @staticmethod
+            def create(*a, **kw):
+                return create_fn()
+        client = _MockClient()
+        client.Chat.Completions = CustomCompletions()
+        client.Chat.completions = CustomCompletions()
+        monkeypatch.setattr("project.python.chatbot_utils.OpenAI", lambda *a, **kw: client)
+    else:
+        monkeypatch.setattr("project.python.chatbot_utils.OpenAI", lambda *a, **kw: _MockClient())
 
 
 def test_routes_chatbot_response_openai_success(monkeypatch):
-    monkeypatch.setenv("TESTING", "0")
-    monkeypatch.setattr("project.python.routes.settings.ai_key", "sk-real-key")
-
-    class MockMsg:
-        content = "Hello world"
-
-    class MockChoice:
-        message = MockMsg()
-
-    class MockCompletion:
-        choices = [MockChoice()]
-
-    class MockClient:
-        class Chat:
-            class Completions:
-                @staticmethod
-                def create(*a, **kw):
-                    return MockCompletion()
-            completions = Completions()
-        chat = Chat()
-
-    monkeypatch.setattr("project.python.chatbot_utils.OpenAI", lambda *a, **kw: MockClient())
-
+    _enable_openai(monkeypatch)
+    _mock_openai(monkeypatch, content="Hello world")
     result = chatbot_response("hello")
     assert result == "Hello world"
 
 
 def test_routes_chatbot_response_retry_failure(monkeypatch):
-    monkeypatch.setenv("TESTING", "0")
-    monkeypatch.setattr("project.python.routes.settings.ai_key", "sk-real-key")
+    _enable_openai(monkeypatch)
+
+    def _fail(*a, **kw):
+        raise openai_mod.APITimeoutError(httpx2.Request("GET", "http://test"))
 
     class MockClient:
         class Chat:
             class Completions:
                 @staticmethod
                 def create(*a, **kw):
-                    raise openai_mod.APITimeoutError(httpx.Request("GET", "http://test"))
+                    raise openai_mod.APITimeoutError(httpx2.Request("GET", "http://test"))
             completions = Completions()
         chat = Chat()
 
     monkeypatch.setattr("project.python.chatbot_utils.OpenAI", lambda *a, **kw: MockClient())
-
     with pytest.raises(ChatbotServiceError):
         chatbot_response("hello")
 
 
 def test_routes_chatbot_response_retry_on_timeout(monkeypatch):
-    monkeypatch.setenv("TESTING", "0")
-    monkeypatch.setattr("project.python.routes.settings.ai_key", "sk-real-key")
+    _enable_openai(monkeypatch)
     call_count = [0]
 
     class MockMsg:
@@ -555,22 +460,20 @@ def test_routes_chatbot_response_retry_on_timeout(monkeypatch):
                 def create(*a, **kw):
                     call_count[0] += 1
                     if call_count[0] == 1:
-                        raise openai_mod.APITimeoutError(httpx.Request("GET", "http://test"))
+                        raise openai_mod.APITimeoutError(httpx2.Request("GET", "http://test"))
                     return MockCompletion()
             completions = Completions()
         chat = Chat()
 
     monkeypatch.setattr("project.python.chatbot_utils.OpenAI", lambda *a, **kw: MockClient())
-
     result = chatbot_response("hello")
     assert result == "Retry succeeded"
     assert call_count[0] == 2
 
 
 def test_routes_chatbot_response_api_error(monkeypatch):
-    monkeypatch.setenv("TESTING", "0")
-    monkeypatch.setattr("project.python.routes.settings.ai_key", "sk-real-key")
-    monkeypatch.setattr("project.python.routes.settings.debug", True)
+    _enable_openai(monkeypatch)
+    monkeypatch.setattr("project.python.chatbot_utils.settings.debug", True)
 
     class MockClient:
         class Chat:
@@ -582,14 +485,12 @@ def test_routes_chatbot_response_api_error(monkeypatch):
         chat = Chat()
 
     monkeypatch.setattr("project.python.chatbot_utils.OpenAI", lambda *a, **kw: MockClient())
-
     with pytest.raises(ChatbotServiceError):
         chatbot_response("hello")
 
 
 def test_routes_chatbot_response_openai_empty(monkeypatch):
-    monkeypatch.setenv("TESTING", "0")
-    monkeypatch.setattr("project.python.routes.settings.ai_key", "sk-real-key")
+    _enable_openai(monkeypatch)
 
     class MockMsg:
         content = None
@@ -610,7 +511,6 @@ def test_routes_chatbot_response_openai_empty(monkeypatch):
         chat = Chat()
 
     monkeypatch.setattr("project.python.chatbot_utils.OpenAI", lambda *a, **kw: MockClient())
-
     with pytest.raises(ChatbotServiceError):
         chatbot_response("hello")
 
@@ -630,14 +530,12 @@ def test_chatbot_utils_debug_logging(monkeypatch):
         chat = Chat()
 
     monkeypatch.setattr("project.python.chatbot_utils.OpenAI", lambda *a, **kw: MockClient())
-
     with pytest.raises(ChatbotServiceError):
         chatbot_utils_response("hello")
 
 
 def test_chatbot_response_with_openai_mock(monkeypatch):
-    monkeypatch.setenv("TESTING", "0")
-    monkeypatch.setattr("project.python.chatbot_utils.settings.ai_key", "sk-real-key")
+    _enable_openai(monkeypatch)
 
     class MockMsg:
         content = "Hello world"
@@ -658,7 +556,6 @@ def test_chatbot_response_with_openai_mock(monkeypatch):
         chat = Chat()
 
     monkeypatch.setattr("project.python.chatbot_utils.OpenAI", lambda *a, **kw: MockClient())
-
     result = chatbot_utils_response("hello")
     assert result == "Hello world"
 
@@ -686,7 +583,6 @@ def test_chatbot_response_empty_openai_response(monkeypatch):
         chat = Chat()
 
     monkeypatch.setattr("project.python.chatbot_utils.OpenAI", lambda *a, **kw: MockClient())
-
     with pytest.raises(ChatbotServiceError):
         chatbot_utils_response("hello")
 
@@ -695,7 +591,6 @@ def test_chatbot_response_empty_openai_response(monkeypatch):
 
 
 def test_generate_channel_id():
-
     result = generate_channel_id(1, 2)
     expected = sha256(b"12").hexdigest()
     assert result == expected
@@ -705,11 +600,18 @@ def test_generate_channel_id():
 #  connection_manager
 
 
-@pytest.mark.asyncio
-async def test_connection_manager_connect():
+@pytest.fixture
+def mgr():
+    return ConnectionManager()
 
-    mgr = ConnectionManager()
-    mock_ws = AsyncMock()
+
+@pytest.fixture
+def mock_ws():
+    return AsyncMock()
+
+
+@pytest.mark.asyncio
+async def test_connection_manager_connect(mgr, mock_ws):
     await mgr.connect(mock_ws, "channel-1", 42)
     assert "channel-1" in mgr.active_connections
     assert mock_ws in mgr.active_connections["channel-1"]
@@ -720,10 +622,7 @@ async def test_connection_manager_connect():
 
 
 @pytest.mark.asyncio
-async def test_connection_manager_disconnect():
-
-    mgr = ConnectionManager()
-    mock_ws = AsyncMock()
+async def test_connection_manager_disconnect(mgr, mock_ws):
     mgr.active_connections["ch"] = [mock_ws]
     mgr.user_connections[1] = [mock_ws]
     mgr.online_users.add(1)
@@ -734,9 +633,7 @@ async def test_connection_manager_disconnect():
 
 
 @pytest.mark.asyncio
-async def test_connection_manager_broadcast():
-
-    mgr = ConnectionManager()
+async def test_connection_manager_broadcast(mgr):
     mock_a = AsyncMock()
     mock_b = AsyncMock()
     mgr.active_connections["ch"] = [mock_a, mock_b]
@@ -746,17 +643,13 @@ async def test_connection_manager_broadcast():
 
 
 @pytest.mark.asyncio
-async def test_connection_manager_broadcast_no_channel():
-
-    mgr = ConnectionManager()
+async def test_connection_manager_broadcast_no_channel(mgr):
     await mgr.broadcast("hello", "nonexistent")
     assert True
 
 
 @pytest.mark.asyncio
-async def test_connection_manager_broadcast_except():
-
-    mgr = ConnectionManager()
+async def test_connection_manager_broadcast_except(mgr):
     mock_a = AsyncMock()
     mock_b = AsyncMock()
     mgr.active_connections["ch"] = [mock_a, mock_b]
@@ -765,16 +658,13 @@ async def test_connection_manager_broadcast_except():
     mock_b.send_text.assert_awaited_once_with("hello")
 
 
-def test_connection_manager_is_online():
-
-    mgr = ConnectionManager()
+def test_connection_manager_is_online(mgr):
     assert not mgr.is_online(1)
     mgr.online_users.add(1)
     assert mgr.is_online(1)
 
 
 def test_get_other_user_ids_in_channel():
-
     mgr = ConnectionManager()
     ws_a = AsyncMock()
     ws_b = AsyncMock()
@@ -792,19 +682,13 @@ def test_get_other_user_ids_in_channel():
     assert 2 not in other_b
 
 
-def test_get_other_user_ids_in_channel_empty():
-
-    mgr = ConnectionManager()
-    ws = AsyncMock()
-    mgr.active_connections["ch"] = [ws]
-    mgr._ws_to_user[id(ws)] = 1
-
-    assert mgr.get_other_user_ids_in_channel("ch", ws) == []
+def test_get_other_user_ids_in_channel_empty(mgr, mock_ws):
+    mgr.active_connections["ch"] = [mock_ws]
+    mgr._ws_to_user[id(mock_ws)] = 1
+    assert mgr.get_other_user_ids_in_channel("ch", mock_ws) == []
 
 
-def test_connection_manager_get_online_users():
-
-    mgr = ConnectionManager()
+def test_connection_manager_get_online_users(mgr):
     mgr.online_users.update({1, 2, 3})
     result = mgr.get_online_users()
     assert result == {1, 2, 3}
@@ -815,9 +699,9 @@ def test_connection_manager_get_online_users():
 
 
 def test_websocket_send_and_receive():
-
     ws_client = WSClient(ws_app)
-    with ws_client.websocket_connect("/ws/test-ch/TestUser/1") as ws:
+    token = Serializer(app_settings.chat_secret_key).dumps({"user_id": 1})
+    with ws_client.websocket_connect("/ws/test-ch/TestUser/1", cookies={"access_token": token}) as ws:
         ws.send_json({
             "type": "message",
             "channel_id": "test-ch",
@@ -829,9 +713,9 @@ def test_websocket_send_and_receive():
 
 
 def test_websocket_message_has_type_field():
-
     ws_client = WSClient(ws_app)
-    with ws_client.websocket_connect("/ws/type-ch/TestUser/1") as ws:
+    token = Serializer(app_settings.chat_secret_key).dumps({"user_id": 1})
+    with ws_client.websocket_connect("/ws/type-ch/TestUser/1", cookies={"access_token": token}) as ws:
         ws.send_json({
             "type": "message",
             "channel_id": "type-ch",
@@ -844,20 +728,37 @@ def test_websocket_message_has_type_field():
 
 
 def test_online_users_endpoint():
-
     client = TestClient(app)
+    db = TestingSessionLocal()
+    img_binary = BytesIO()
+
+    with Image.open("project/static/img/default avatar.png") as img:
+        img.save(img_binary, format="PNG")
+
+    user = User(
+        name="Online", surname="Test", email="online-test@example.com",
+        password="hash", avatar=img_binary.getvalue(),
+        created_at=datetime.now(),
+    )
+    db.add(user)
+    db.commit()
+
+    token = Serializer(app_settings.chat_secret_key).dumps({"user_id": user.id})
+    client.cookies.set("access_token", token)
+
     response = client.get("/online-users")
-    assert response.status_code == 200
     data = response.json()
+
+    assert response.status_code == 200
     assert "online_user_ids" in data
     assert isinstance(data["online_user_ids"], list)
+    db.close()
 
 
 #  database
 
 
 def test_get_db():
-
     gen = get_db()
     db = next(gen)
     assert db is not None

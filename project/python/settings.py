@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     )
 
     # Database
-    database_url: str = "postgresql://postgres:postgres@localhost:5432/chatapp"
+    database_url: str = "postgresql://postgres:postgres@localhost:5432/Chat app"
 
     # Security
     secret_key: str = "change-me-in-production"

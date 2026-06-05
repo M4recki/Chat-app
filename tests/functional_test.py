@@ -2,7 +2,7 @@ from itsdangerous import URLSafeTimedSerializer as Serializer
 from fastapi.testclient import TestClient
 from project.python.models import ChatbotMessage
 from project.python.chatbot_utils import ChatbotServiceError
-from project.python.routes import send_email, chatbot_response
+from project.python.routes import send_email, chatbot_response, generate_csrf_token
 from project.python.settings import settings
 from project.python.main import app
 from project.python.rate_limit import rate_limiter
@@ -76,11 +76,12 @@ def test_chatbot_api_failure_returns_structured_error(monkeypatch):
             {"models": ["test-model"], "attempts": ["forced failure"]},
         )
 
-    monkeypatch.setattr("project.python.routes.chatbot_response", raise_chatbot_error)
+    monkeypatch.setattr("project.python.routes.chatbot.chatbot_response", raise_chatbot_error)
 
+    csrf = generate_csrf_token(user.id)
     response = client.post(
         "/chatbot",
-        data={"message": "please tell me a random fact"},
+        data={"message": "please tell me a random fact", "csrf_token": csrf},
         headers={"X-Requested-With": "XMLHttpRequest"},
     )
 
@@ -181,9 +182,10 @@ def test_unicode_in_chatbot():
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": user.id})
     local.cookies.set("access_token", token)
+    csrf = generate_csrf_token(user.id)
     response = local.post(
         "/chatbot",
-        data={"message": "echo: こんにちは世界"},
+        data={"message": "echo: hi", "csrf_token": csrf},
         headers={"X-Requested-With": "XMLHttpRequest"},
     )
     assert response.status_code in (200, 502)
@@ -203,9 +205,10 @@ def test_html_injection_in_chatbot():
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": user.id})
     local.cookies.set("access_token", token)
+    csrf = generate_csrf_token(user.id)
     response = local.post(
         "/chatbot",
-        data={"message": "<b>bold</b><script>alert(1)</script>"},
+        data={"message": "<b>bold</b><script>alert(1)</script>", "csrf_token": csrf},
         headers={"X-Requested-With": "XMLHttpRequest"},
     )
     assert response.status_code in (200, 502)

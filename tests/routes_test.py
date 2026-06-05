@@ -11,6 +11,7 @@ from starlette.requests import Request
 from project.python.chatbot_utils import chatbot_json_error
 from project.python.main import get_rate_limit_identifier
 from project.python.models import User, Friend, Channel, Message
+from project.python.routes import generate_csrf_token
 from project.python.models import Friend as FriendModel
 from project.python.models import Friend as Incoming
 from project.python.rate_limit import rate_limiter
@@ -34,10 +35,11 @@ def test_chatbot_ajax_response():
     )
 
     set_access_token(user.id)
+    csrf = generate_csrf_token(user.id)
 
     response = client.post(
         "/chatbot",
-        data={"message": "echo: hello"},
+        data={"message": "echo: hello", "csrf_token": csrf},
         headers={"X-Requested-With": "XMLHttpRequest"},
     )
 
@@ -220,17 +222,18 @@ def test_chatbot_rate_limit_429_json():
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": user.id})
     local_client.cookies.set("access_token", token)
+    csrf = generate_csrf_token(user.id)
     limit = settings.rate_limit_chatbot_max_requests
     for _ in range(limit):
         response = local_client.post(
             "/chatbot",
-            data={"message": "echo: test"},
+            data={"message": "echo: test", "csrf_token": csrf},
             headers={"X-Requested-With": "XMLHttpRequest"},
         )
         assert response.status_code == 200
     response = local_client.post(
         "/chatbot",
-        data={"message": "echo: test"},
+        data={"message": "echo: test", "csrf_token": csrf},
         headers={"X-Requested-With": "XMLHttpRequest"},
     )
     assert response.status_code == 429
@@ -501,7 +504,7 @@ def test_validation_error_returns_422_html():
 
 def test_unhandled_exception_returns_500_json(monkeypatch):
     monkeypatch.setattr(
-        "project.python.routes.render_template",
+        "project.python.routes.main_page.render_template",
         lambda *a, **kw: (_ for _ in ()).throw(Exception("unexpected error")),
     )
     local_client = TestClient(app, raise_server_exceptions=False)
@@ -514,7 +517,7 @@ def test_unhandled_exception_returns_500_json(monkeypatch):
 
 def test_unhandled_exception_returns_500_html(monkeypatch):
     monkeypatch.setattr(
-        "project.python.routes.render_template",
+        "project.python.routes.main_page.render_template",
         lambda *a, **kw: (_ for _ in ()).throw(Exception("unexpected error")),
     )
     local_client = TestClient(app, raise_server_exceptions=False)
@@ -638,6 +641,7 @@ def test_add_friend_old_pending_renews_last_sent(monkeypatch):
 
 
 def test_chatbot_missing_message_validation():
+    rate_limiter._buckets.clear()
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -649,9 +653,10 @@ def test_chatbot_missing_message_validation():
     )
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
+    csrf = generate_csrf_token(user.id)
     response = local_client.post(
         "/chatbot",
-        data={},
+        data={"csrf_token": csrf},
         headers={"X-Requested-With": "XMLHttpRequest"},
     )
     assert response.status_code == 422
@@ -890,15 +895,16 @@ def test_chatbot_error_returns_502(monkeypatch):
     )
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
+    csrf = generate_csrf_token(user.id)
 
     def mock_response(*a, **kw):
         raise Exception("mock failure")
 
-    monkeypatch.setattr("project.python.routes.chatbot_response", mock_response)
+    monkeypatch.setattr("project.python.routes.chatbot.chatbot_response", mock_response)
 
     response = local_client.post(
         "/chatbot",
-        data={"message": "hi"},
+        data={"message": "hi", "csrf_token": csrf},
         headers={"X-Requested-With": "XMLHttpRequest"},
     )
     assert response.status_code == 502
@@ -916,15 +922,16 @@ def test_chatbot_chatbot_service_error_html(monkeypatch):
     )
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
+    csrf = generate_csrf_token(user.id)
 
     def mock_response(*a, **kw):
         raise Exception("mock failure")
 
-    monkeypatch.setattr("project.python.routes.chatbot_response", mock_response)
+    monkeypatch.setattr("project.python.routes.chatbot.chatbot_response", mock_response)
 
     response = local_client.post(
         "/chatbot",
-        data={"message": "hi"},
+        data={"message": "hi", "csrf_token": csrf},
     )
     assert response.status_code == 200
     assert "text/html" in response.headers.get("content-type", "")
@@ -967,9 +974,10 @@ def test_chatbot_success_non_ajax():
     )
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
+    csrf = generate_csrf_token(user.id)
     response = local_client.post(
         "/chatbot",
-        data={"message": "echo: hello"},
+        data={"message": "echo: hello", "csrf_token": csrf},
     )
     assert response.status_code == 200
     assert "text/html" in response.headers.get("content-type", "")
@@ -987,7 +995,10 @@ def test_clear_chatbot_messages():
     )
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
-    response = local_client.post("/clear_chatbot_messages")
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        "/clear_chatbot_messages", data={"csrf_token": csrf}
+    )
     assert response.status_code == 200
 
 
@@ -1174,6 +1185,7 @@ def test_update_profile_data_password_mismatch():
     )
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
+    csrf = generate_csrf_token(user.id)
     response = local_client.post(
         "/update_profile",
         data={
@@ -1182,6 +1194,7 @@ def test_update_profile_data_password_mismatch():
             "email": "up-user@example.com",
             "password": "NewPass1",
             "confirm_password": "Different1",
+            "csrf_token": csrf,
         },
     )
     assert response.status_code == 200
@@ -1199,6 +1212,7 @@ def test_update_profile_data_non_alphanumeric_password():
     )
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
+    csrf = generate_csrf_token(user.id)
     response = local_client.post(
         "/update_profile",
         data={
@@ -1207,6 +1221,7 @@ def test_update_profile_data_non_alphanumeric_password():
             "email": "up2-user@example.com",
             "password": "haslo-123",
             "confirm_password": "haslo-123",
+            "csrf_token": csrf,
         },
     )
     assert response.status_code == 200
@@ -1224,6 +1239,7 @@ def test_update_profile_data_success():
     )
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
+    csrf = generate_csrf_token(user.id)
     response = local_client.post(
         "/update_profile",
         data={
@@ -1232,6 +1248,7 @@ def test_update_profile_data_success():
             "email": "up3-user@example.com",
             "password": "NewPass1",
             "confirm_password": "NewPass1",
+            "csrf_token": csrf,
         },
     )
     assert response.status_code == 200
@@ -1326,6 +1343,7 @@ def test_update_profile_avatar_jpeg():
     )
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
+    csrf = generate_csrf_token(user.id)
     img_path = "project/static/img/default avatar.png"
     with open(img_path, "rb") as f:
         response = local_client.post(
@@ -1336,6 +1354,7 @@ def test_update_profile_avatar_jpeg():
                 "email": "avatar-test@example.com",
                 "password": "Password1",
                 "confirm_password": "Password1",
+                "csrf_token": csrf,
             },
             files={"avatar": ("avatar.jpg", f, "image/jpeg")},
         )
@@ -1354,6 +1373,7 @@ def test_update_profile_avatar_wrong_type():
     )
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
+    csrf = generate_csrf_token(user.id)
     response = local_client.post(
         "/update_profile",
         data={
@@ -1362,6 +1382,7 @@ def test_update_profile_avatar_wrong_type():
             "email": "avatar-test2@example.com",
             "password": "Password1",
             "confirm_password": "Password1",
+            "csrf_token": csrf,
         },
         files={"avatar": ("avatar.gif", b"fake-gif-data", "image/gif")},
     )

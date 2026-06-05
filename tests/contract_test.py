@@ -1,5 +1,6 @@
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from conftest import client
+from project.python.routes import generate_csrf_token
 from project.python.settings import settings
 from tests.integration_test import create_user
 from tests.model_test import TestingSessionLocal
@@ -53,11 +54,14 @@ def test_chatbot_json_response_shape():
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": user.id})
     client.cookies.set("access_token", token)
+    csrf = generate_csrf_token(user.id)
+
     response = client.post(
         "/chatbot",
-        data={"message": "echo: hello"},
+        data={"message": "echo: hello", "csrf_token": csrf},
         headers={"X-Requested-With": "XMLHttpRequest"},
     )
+
     assert response.status_code == 200
     assert response.headers.get("content-type", "").startswith("application/json")
     payload = response.json()
