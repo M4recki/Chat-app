@@ -2,13 +2,11 @@ from base64 import b64encode
 from hashlib import sha256
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from itsdangerous import URLSafeTimedSerializer as Serializer
 
 from ..database import session_scope
 from ..models import Channel, Friend, Message, User
-from ..settings import settings
-from .helpers import get_user, get_user_from_request, is_authenticated
-from .template import encode_avatar, render_template, templates
+from .helpers import get_current_user, get_user
+from .template import encode_avatar, templates
 
 router = APIRouter()
 
@@ -27,20 +25,17 @@ def generate_channel_id(user1_id, user2_id):
     return sha256(unique_string.encode()).hexdigest()
 
 
-@router.get("/single_chat", dependencies=[Depends(is_authenticated)])
-async def single_chat(request: Request):
+@router.get("/single_chat")
+async def single_chat(request: Request, user: User = Depends(get_current_user)):
     """Display the user's chat channels.
 
     Args:
         request: The request object
+        user: The authenticated user
 
     Returns:
         Response: Single chat template
     """
-    user, user_id = get_user_from_request(request)
-    if not user:
-        return render_template("login.html", request)
-
     with session_scope() as db:
         friends = (
             db.query(User)
@@ -50,9 +45,9 @@ async def single_chat(request: Request):
             )
             .filter(
                 Friend.status == "accepted",
-                ((Friend.user1_id == user_id) & (User.id == Friend.user2_id))
+                ((Friend.user1_id == user.id) & (User.id == Friend.user2_id))
                 | (
-                    (Friend.user2_id == user_id)
+                    (Friend.user2_id == user.id)
                     & (User.id == Friend.user1_id)
                 ),
             )
@@ -71,10 +66,10 @@ async def single_chat(request: Request):
                 existing_channel = (
                     db.query(Channel)
                     .filter(
-                        (Channel.user1_id == user_id)
+                        (Channel.user1_id == user.id)
                         & (Channel.user2_id == friend_id)
                         | (Channel.user1_id == friend_id)
-                        & (Channel.user2_id == user_id)
+                        & (Channel.user2_id == user.id)
                     )
                     .first()
                 )
@@ -82,10 +77,10 @@ async def single_chat(request: Request):
                 if existing_channel:
                     channel_ids[friend_id] = existing_channel.channel_id
                 else:
-                    channel_id = generate_channel_id(user_id, friend_id)
+                    channel_id = generate_channel_id(user.id, friend_id)
                     new_channel = Channel(
                         channel_id=channel_id,
-                        user1_id=user_id,
+                        user1_id=user.id,
                         user2_id=friend_id,
                     )
                     db.add(new_channel)
@@ -95,11 +90,11 @@ async def single_chat(request: Request):
                 friend_status = (
                     db.query(Friend)
                     .filter(
-                        (Friend.user1_id == user_id)
+                        (Friend.user1_id == user.id)
                         & (Friend.user2_id == friend_id)
                         | (
                             (Friend.user1_id == friend_id)
-                            & (Friend.user2_id == user_id)
+                            & (Friend.user2_id == user.id)
                         )
                     )
                     .first()
@@ -123,14 +118,12 @@ async def single_chat(request: Request):
     )
 
 
-@router.get(
-    "/friend_chat/{channel_id}/{friend_id}",
-    dependencies=[Depends(is_authenticated)],
-)
+@router.get("/friend_chat/{channel_id}/{friend_id}")
 async def friend_chat_page(
     request: Request,
     channel_id: str,
     friend_id: int,
+    user: User = Depends(get_current_user),
 ):
     """
     Retrieve chat messages for a friend chat channel.
@@ -139,6 +132,7 @@ async def friend_chat_page(
         request (Request): The HTTP request object
         channel_id (str): The ID of the chat channel
         friend_id (int): The ID of the friend
+        user: The authenticated user
 
     Raises:
         HTTPException: If the channel is not found
@@ -146,10 +140,6 @@ async def friend_chat_page(
     Returns:
         TemplateResponse: Rendered template with chat context
     """
-    user, user_id = get_user_from_request(request)
-    if not user:
-        return render_template("login.html", request)
-
     with session_scope() as db:
         friend = db.query(User).filter(User.id == friend_id).first()
         if not friend:
@@ -170,10 +160,10 @@ async def friend_chat_page(
         friend_status = (
             db.query(Friend)
             .filter(
-                    (Friend.user1_id == user_id)
+                    (Friend.user1_id == user.id)
                     & (Friend.user2_id == friend_id)
                     | (Friend.user1_id == friend_id)
-                    & (Friend.user2_id == user_id)
+                    & (Friend.user2_id == user.id)
             )
             .first()
         )

@@ -16,3 +16,4 @@ gunicorn>=20.1
 
 pytest
 starlette
+httpx

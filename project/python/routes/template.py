@@ -66,11 +66,11 @@ def user_image(request: object):
     return {"user_image": ""}
 
 
-# User name
+# Username
 
 
 def user_name(request: object):
-    """Get user name from database.
+    """Get username from database.
 
     Args:
         request (Request): The request object

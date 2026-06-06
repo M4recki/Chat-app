@@ -8,7 +8,7 @@ from itsdangerous.exc import BadSignature, SignatureExpired
 
 from .connection_manager import manager
 from .database import session_scope
-from .models import Message
+from .models import Message, User
 from .settings import settings
 
 ws_router = APIRouter()
@@ -17,9 +17,9 @@ ws_router = APIRouter()
 _pending_leave: dict[tuple[str, int], asyncio.Task] = {}
 
 
-@ws_router.websocket("/ws/{channel_id}/{user_name}/{user_id}")
+@ws_router.websocket("/ws/{channel_id}")
 async def websocket_endpoint(
-    websocket: WebSocket, channel_id: str, user_name: str, user_id: int
+    websocket: WebSocket, channel_id: str
 ):
     """
     Handle incoming websocket connections.
@@ -31,8 +31,6 @@ async def websocket_endpoint(
     Args:
         websocket (WebSocket): The websocket connection
         channel_id (str): The ID of the chat channel
-        user_name (str): The name of the connected user
-        user_id (int): The ID of the connected user
 
     Raises:
         WebSocketDisconnect: If the connection is closed
@@ -45,14 +43,22 @@ async def websocket_endpoint(
     s = Serializer(settings.chat_secret_key)
     try:
         token_data = s.loads(token, max_age=settings.token_max_age)
-        token_user_id = token_data.get("user_id")
+        user_id = token_data.get("user_id")
     except (BadSignature, SignatureExpired):
         await websocket.close(code=4008)
         return
 
-    if token_user_id != user_id:
+    if user_id is None:
         await websocket.close(code=4008)
         return
+
+    # Look up user name from database
+    with session_scope() as db:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user is None:
+            await websocket.close(code=4008)
+            return
+        user_name = user.name
 
     # Cancel any pending "left the chat" broadcast from a previous disconnect
     leave_key = (channel_id, user_id)

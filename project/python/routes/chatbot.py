@@ -7,16 +7,16 @@ from ..chatbot_utils import (ChatbotServiceError, chatbot_context,
                              chatbot_json_error, chatbot_json_success,
                              chatbot_response)
 from ..database import session_scope
-from ..models import ChatbotMessage
+from ..models import ChatbotMessage, User
 from ..settings import settings
-from .helpers import get_user_from_request, is_authenticated, validate_csrf
-from .template import encode_avatar, render_template, templates
+from .helpers import get_current_user, validate_csrf
+from .template import encode_avatar, templates
 
 router = APIRouter()
 
 
-@router.get("/chatbot", dependencies=[Depends(is_authenticated)])
-async def chatbot_page(request: Request):
+@router.get("/chatbot")
+async def chatbot_page(request: Request, user: User = Depends(get_current_user)):
     """
     Render the chatbot chat page.
 
@@ -24,14 +24,11 @@ async def chatbot_page(request: Request):
 
     Args:
         request (Request): The HTTP request
+        user: The authenticated user
 
     Returns:
         TemplateResponse: The chatbot chat page
     """
-    user, user_id = get_user_from_request(request)
-    if not user:
-        return render_template("login.html", request)
-
     user.avatar = encode_avatar(user)
 
     with session_scope() as db:
@@ -56,8 +53,8 @@ async def chatbot_page(request: Request):
 # Handle chatbot message submission
 
 
-@router.post("/chatbot", dependencies=[Depends(is_authenticated), Depends(validate_csrf)])
-async def chatbot(request: Request, message: str = Form(...)):
+@router.post("/chatbot", dependencies=[Depends(validate_csrf)])
+async def chatbot(request: Request, message: str = Form(...), user: User = Depends(get_current_user)):
     """
     Send a new message to the chatbot.
 
@@ -66,13 +63,11 @@ async def chatbot(request: Request, message: str = Form(...)):
     Args:
         request (Request): The HTTP request
         message (str): The user's message
+        user: The authenticated user
 
     Returns:
         TemplateResponse: The chatbot chat page
     """
-    user, user_id = get_user_from_request(request)
-    if not user:
-        return render_template("login.html", request)
 
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
@@ -186,28 +181,22 @@ async def chatbot(request: Request, message: str = Form(...)):
 # Clear past conversations with chatbot
 
 
-@router.post(
-    "/clear_chatbot_messages",
-    dependencies=[Depends(is_authenticated), Depends(validate_csrf)],
-)
-async def clear_chatbot_messages(request: Request):
+@router.post("/clear_chatbot_messages", dependencies=[Depends(validate_csrf)])
+async def clear_chatbot_messages(request: Request, user: User = Depends(get_current_user)):
     """
     Clear all past chatbot messages for the user.
 
     Args:
         request (Request): The HTTP request
+        user: The authenticated user
 
     Returns:
         TemplateResponse: The chatbot chat page
     """
-    user, user_id = get_user_from_request(request)
-    if not user:
-        return render_template("login.html", request)
-
     with session_scope() as db:
         (
             db.query(ChatbotMessage)
-            .filter(ChatbotMessage.user_id == user_id)
+            .filter(ChatbotMessage.user_id == user.id)
             .delete()
         )
         db.commit()

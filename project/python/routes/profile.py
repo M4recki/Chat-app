@@ -1,31 +1,27 @@
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from PIL import Image
 from werkzeug.security import generate_password_hash
 
 from ..database import session_scope
 from ..models import User
-from .helpers import get_user_from_request, is_authenticated, validate_csrf
+from .helpers import get_current_user, validate_csrf
 from .template import render_template, templates
 
 router = APIRouter()
 
 
-@router.get("/update_profile", dependencies=[Depends(is_authenticated)])
-async def update_profile_page(request: Request):
+@router.get("/update_profile")
+async def update_profile_page(request: Request, user: User = Depends(get_current_user)):
     """Render the update profile page.
 
     Args:
         request: The request object
+        user: The authenticated user
 
     Returns:
         Response: Update profile page template
     """
-    user, _ = get_user_from_request(request)
-    if not user:
-        return render_template("login.html", request)
-
     return templates.TemplateResponse(
         request,
         "update_profile.html",
@@ -33,7 +29,7 @@ async def update_profile_page(request: Request):
     )
 
 
-@router.post("/update_profile", dependencies=[Depends(is_authenticated), Depends(validate_csrf)])
+@router.post("/update_profile", dependencies=[Depends(validate_csrf)])
 async def update_profile_data(
     request: Request,
     avatar: UploadFile = File(None),
@@ -42,6 +38,7 @@ async def update_profile_data(
     email: str = Form(None),
     password: str = Form(None),
     confirm_password: str = Form(None),
+    user: User = Depends(get_current_user),
 ):
     """Handle update profile form submission.
 
@@ -53,13 +50,11 @@ async def update_profile_data(
         email: The email form field
         password: The password form field
         confirm_password: The confirm password form field
+        user: The authenticated user
 
     Returns:
         Response: Redirect or update profile template
     """
-    user, user_id = get_user_from_request(request)
-    if not user:
-        return render_template("login.html", request)
 
     errors = {}
 
@@ -89,7 +84,7 @@ async def update_profile_data(
                 user.avatar = img_binary.getvalue()
 
     with session_scope() as db:
-        updated_user = db.query(User).filter(User.id == user_id).first()
+        updated_user = db.query(User).filter(User.id == user.id).first()
         if name is not None:
             updated_user.name = name
         if surname is not None:

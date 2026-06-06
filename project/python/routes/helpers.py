@@ -1,7 +1,7 @@
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from itsdangerous.exc import BadSignature, SignatureExpired
 
-from fastapi import HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 
 from ..database import session_scope
 from ..models import User
@@ -105,6 +105,38 @@ def get_user(user_id):
     return user
 
 
+def get_current_user(request: Request) -> User:
+    """FastAPI dependency: extract authenticated user from access token cookie.
+
+    Args:
+        request: The incoming request
+
+    Returns:
+        User: The authenticated user object
+
+    Raises:
+        HTTPException 401: If token is missing, invalid, or user not found
+    """
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    s = Serializer(settings.chat_secret_key)
+    try:
+        user_id = s.loads(token, max_age=settings.token_max_age).get("user_id")
+    except SignatureExpired:
+        raise HTTPException(status_code=401, detail="Session expired")
+    except BadSignature:
+        raise HTTPException(status_code=401, detail="Invalid session token")
+
+    with session_scope() as db:
+        user = db.query(User).filter(User.id == user_id).first()
+
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user
+
+
 def get_current_user_id(request: Request) -> int | None:
     """Extract user ID from the access token cookie.
 
@@ -139,24 +171,23 @@ def csrf_context(request: Request) -> dict:
     return {"csrf_token": generate_csrf_token(user_id)}
 
 
-async def validate_csrf(request: Request):
+async def validate_csrf(request: Request, user: User = Depends(get_current_user)):
     """Validate CSRF token from X-CSRF-Token header or form field.
 
     Args:
         request: The incoming request
+        user: The authenticated user (from dependency chain)
 
     Raises:
+        HTTPException 401: If not authenticated
         HTTPException 403: If CSRF token is missing or invalid
     """
-    user_id = get_current_user_id(request)
-    if not user_id:
-        raise HTTPException(status_code=403, detail="Invalid CSRF token")
-
-    token = request.headers.get("X-CSRF-Token", "")
+    token: str = request.headers.get("X-CSRF-Token", "")
     if not token:
         form = await request.form()
-        token = form.get("csrf_token", "")
-    if not token or not is_csrf_token_valid(token, user_id):
+        raw = form.get("csrf_token", "")
+        token = raw if isinstance(raw, str) else ""
+    if not token or not is_csrf_token_valid(token, user.id):
         raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
 

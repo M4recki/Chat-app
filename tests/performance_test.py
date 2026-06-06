@@ -108,8 +108,9 @@ def test_websocket_multiple_broadcast():
 
     token = Serializer(settings.chat_secret_key).dumps({"user_id": uid})
     with TestClient(app) as local:
+        local.cookies.set("access_token", token)
         for ch in channels:
-            with local.websocket_connect(f"/ws/{ch}/TestUser/{uid}", cookies={"access_token": token}) as ws:
+            with local.websocket_connect(f"/ws/{ch}") as ws:
                 ws.send_json({"type": "message", "channel_id": ch, "message": "ping"})
                 data = ws.receive_text()
                 assert "ping" in data

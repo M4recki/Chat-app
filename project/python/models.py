@@ -34,8 +34,8 @@ class Message(Base):
     )
     created_at = Column(DateTime, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    channel = relationship("Channel", foreign_keys=[channel_id])
-    user = relationship("User", foreign_keys=[user_id])
+    channel = relationship("Channel", foreign_keys="Message.channel_id")
+    user = relationship("User", foreign_keys="Message.user_id")
 
 
 # Channel table
@@ -49,8 +49,8 @@ class Channel(Base):
     channel_id = Column(String(100), nullable=False, unique=True)
     user1_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     user2_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    user1 = relationship("User", foreign_keys=[user1_id])
-    user2 = relationship("User", foreign_keys=[user2_id])
+    user1 = relationship("User", foreign_keys="Channel.user1_id")
+    user2 = relationship("User", foreign_keys="Channel.user2_id")
 
 
 # Friends table
@@ -66,9 +66,9 @@ class Friend(Base):
     status = Column(String(10), nullable=False)
     blocked_by_user = Column(Integer, ForeignKey("users.id"), nullable=True)
     last_sent = Column(DateTime, nullable=False)
-    user1 = relationship("User", foreign_keys=[user1_id])
-    user2 = relationship("User", foreign_keys=[user2_id])
-    blocked_by = relationship("User", foreign_keys=[blocked_by_user])
+    user1 = relationship("User", foreign_keys="Friend.user1_id")
+    user2 = relationship("User", foreign_keys="Friend.user2_id")
+    blocked_by = relationship("User", foreign_keys="Friend.blocked_by_user")
 
 
 # Chatbot table

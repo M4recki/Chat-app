@@ -251,7 +251,7 @@
       const user_id = parseInt("{{ user.id }}", 10);
 
       const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${wsProtocol}//${window.location.host}/ws/${channel_id}/${user_name}/${user_id}`;
+      const wsUrl = `${wsProtocol}//${window.location.host}/ws/${channel_id}`;
       const ws = new WebSocket(wsUrl);
 
       let typingTimeout = null;

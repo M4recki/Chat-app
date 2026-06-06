@@ -5,7 +5,7 @@ from hashlib import sha256
 from io import BytesIO
 from unittest.mock import AsyncMock
 
-import httpx2
+import httpx
 import openai as openai_mod
 import pytest
 from conftest import client
@@ -424,14 +424,14 @@ def test_routes_chatbot_response_retry_failure(monkeypatch):
     _enable_openai(monkeypatch)
 
     def _fail(*a, **kw):
-        raise openai_mod.APITimeoutError(httpx2.Request("GET", "http://test"))
+        raise openai_mod.APITimeoutError(httpx.Request("GET", "http://test"))
 
     class MockClient:
         class Chat:
             class Completions:
                 @staticmethod
                 def create(*a, **kw):
-                    raise openai_mod.APITimeoutError(httpx2.Request("GET", "http://test"))
+                    raise openai_mod.APITimeoutError(httpx.Request("GET", "http://test"))
             completions = Completions()
         chat = Chat()
 
@@ -460,7 +460,7 @@ def test_routes_chatbot_response_retry_on_timeout(monkeypatch):
                 def create(*a, **kw):
                     call_count[0] += 1
                     if call_count[0] == 1:
-                        raise openai_mod.APITimeoutError(httpx2.Request("GET", "http://test"))
+                        raise openai_mod.APITimeoutError(httpx.Request("GET", "http://test"))
                     return MockCompletion()
             completions = Completions()
         chat = Chat()
@@ -698,10 +698,25 @@ def test_connection_manager_get_online_users(mgr):
 #  WebSocket
 
 
+def _create_test_user(db, name="TestUser", email_suffix=""):
+    user = User(
+        name=name, surname="User",
+        email=f"ws-test{email_suffix}@example.com",
+        password="hash", avatar=b"fake", created_at=datetime.now(),
+    )
+    db.add(user)
+    db.commit()
+    return user
+
+
 def test_websocket_send_and_receive():
+    db = TestingSessionLocal()
+    user = _create_test_user(db)
+    db.close()
+    token = Serializer(app_settings.chat_secret_key).dumps({"user_id": user.id})
     ws_client = WSClient(ws_app)
-    token = Serializer(app_settings.chat_secret_key).dumps({"user_id": 1})
-    with ws_client.websocket_connect("/ws/test-ch/TestUser/1", cookies={"access_token": token}) as ws:
+    ws_client.cookies.set("access_token", token)
+    with ws_client.websocket_connect("/ws/test-ch") as ws:
         ws.send_json({
             "type": "message",
             "channel_id": "test-ch",
@@ -713,9 +728,13 @@ def test_websocket_send_and_receive():
 
 
 def test_websocket_message_has_type_field():
+    db = TestingSessionLocal()
+    user = _create_test_user(db, email_suffix="-2")
+    db.close()
+    token = Serializer(app_settings.chat_secret_key).dumps({"user_id": user.id})
     ws_client = WSClient(ws_app)
-    token = Serializer(app_settings.chat_secret_key).dumps({"user_id": 1})
-    with ws_client.websocket_connect("/ws/type-ch/TestUser/1", cookies={"access_token": token}) as ws:
+    ws_client.cookies.set("access_token", token)
+    with ws_client.websocket_connect("/ws/type-ch") as ws:
         ws.send_json({
             "type": "message",
             "channel_id": "type-ch",

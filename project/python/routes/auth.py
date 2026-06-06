@@ -1,5 +1,4 @@
 from datetime import datetime
-from hashlib import sha256
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -12,7 +11,7 @@ from ..database import session_scope
 from ..models import User
 from ..settings import settings
 from .helpers import is_authenticated
-from .template import DEFAULT_AVATAR_PATH, render_template, templates
+from .template import DEFAULT_AVATAR_PATH, render_template
 
 router = APIRouter()
 
@@ -71,9 +70,7 @@ async def sign_up_data(
         if errors:
             return render_template("sign_up.html", request, errors=errors)
 
-        hashed_password = generate_password_hash(
-            password, method="pbkdf2:sha256", salt_length=6
-        )
+        hashed_password = generate_password_hash(password)
 
         img_binary = BytesIO()
         with Image.open(DEFAULT_AVATAR_PATH) as img:

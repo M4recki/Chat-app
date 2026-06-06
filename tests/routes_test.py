@@ -956,9 +956,6 @@ def test_chatbot_page_returns_200():
     assert response.status_code == 200
 
 
-#  Clear chatbot messages
-
-
 #  Chatbot success non-AJAX
 
 
