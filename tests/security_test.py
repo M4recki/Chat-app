@@ -37,14 +37,16 @@ def _clear_rate_limiter():
 
 def test_sql_injection_login_email():
     _clear_rate_limiter()
+    csrf_token = generate_csrf_token(0)
     response = client.post(
         "/login",
-        data={"email": "' OR 1=1 --", "password": "test"},
+        data={"email": "' OR 1=1 --", "password": "test", "csrf_token": csrf_token},
     )
     assert response.status_code == 200
 
 
 def test_sql_injection_signup_name():
+    csrf_token = generate_csrf_token(0)
     response = client.post(
         "/sign_up",
         data={
@@ -54,6 +56,7 @@ def test_sql_injection_signup_name():
             "password": "Pass123",
             "confirm_password": "Pass123",
             "terms_conditions": "on",
+            "csrf_token": csrf_token,
         },
     )
     assert response.status_code in (200, 303)
@@ -86,6 +89,7 @@ def test_xss_in_message():
 
 def test_xss_in_signup():
     _clear_rate_limiter()
+    csrf_token = generate_csrf_token(0)
     response = client.post(
         "/sign_up",
         data={
@@ -95,6 +99,7 @@ def test_xss_in_signup():
             "password": "Pass123",
             "confirm_password": "Pass123",
             "terms_conditions": "on",
+            "csrf_token": csrf_token,
         },
     )
     assert response.status_code in (200, 303)
@@ -154,7 +159,8 @@ def test_token_for_other_user():
     response = local.get(f"/add_friend/{user_b.id}")
     assert response.status_code == 200
 
-    # Verify the friend request was created for user_a → user_b, not the other way
+    # Verify the friend request was created for
+    # user_a → user_b, not the other way
     db_check = TestingSessionLocal()
     friendship = (
         db_check.query(Friend)
@@ -201,7 +207,11 @@ def test_logout_clears_cookie_with_flags():
     )
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": user.id})
-    local = TestClient(app, raise_server_exceptions=False, follow_redirects=False)
+    local = TestClient(
+        app,
+        raise_server_exceptions=False,
+        follow_redirects=False,
+    )
     local.cookies.set("access_token", token)
     response = local.get("/logout")
     assert response.status_code == 303

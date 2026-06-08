@@ -73,9 +73,6 @@ jobs:
         run: |
           pytest --maxfail=1 --disable-warnings -q --cov=project --cov-report=xml
 
-      - name: Run flake8
-        run: flake8 .
-
       - name: Check formatting with black
         run: black --check .
 

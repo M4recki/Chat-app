@@ -13,7 +13,6 @@ from ..models import User
 from ..settings import settings
 from .helpers import authentication_in_header, csrf_context
 
-
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_AVATAR_PATH = PROJECT_DIR / "static" / "img" / "default avatar.png"
 

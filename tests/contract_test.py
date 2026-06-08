@@ -9,7 +9,11 @@ from tests.model_test import TestingSessionLocal
 def _login_and_token():
     db = TestingSessionLocal()
     user = create_user(
-        db, "Contract", "Test", "contract@example.com", "Password123",
+        db,
+        "Contract",
+        "Test",
+        "contract@example.com",
+        "Password123",
         "project/static/img/default avatar.png",
     )
     serializer = Serializer(settings.chat_secret_key)
@@ -87,12 +91,22 @@ def test_404_returns_html():
 def test_login_wrong_password_content_type():
     db = TestingSessionLocal()
     create_user(
-        db, "Login", "Wrong", "login-wrong-ct@example.com", "Password123",
+        db,
+        "Login",
+        "Wrong",
+        "login-wrong-ct@example.com",
+        "Password123",
         "project/static/img/default avatar.png",
     )
+
+    csrf_token = generate_csrf_token(0)
     response = client.post(
         "/login",
-        data={"email": "login-wrong-ct@example.com", "password": "badpass"},
+        data={
+            "email": "login-wrong-ct@example.com",
+            "password": "badpass",
+            "csrf_token": csrf_token,
+        },
     )
     assert response.status_code == 200
     assert "text/html" in response.headers.get("content-type", "")

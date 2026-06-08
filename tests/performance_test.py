@@ -6,6 +6,7 @@ from itsdangerous import URLSafeTimedSerializer as Serializer
 from conftest import client
 from project.python.main import app
 from project.python.rate_limit import rate_limiter
+from project.python.routes import generate_csrf_token
 from project.python.settings import settings
 from tests.model_test import TestingSessionLocal
 from project.python.models import User
@@ -39,6 +40,7 @@ def test_concurrent_signup():
 
     def signup(i):
         local = TestClient(app, follow_redirects=False)
+        csrf_token = generate_csrf_token(0)
         resp = local.post(
             "/sign_up",
             data={
@@ -48,6 +50,7 @@ def test_concurrent_signup():
                 "password": "StrongPass1",
                 "confirm_password": "StrongPass1",
                 "terms_conditions": "on",
+                "csrf_token": csrf_token,
             },
         )
         return i, resp.status_code
@@ -66,20 +69,33 @@ def test_concurrent_login():
     email = f"perf-login-{time.time_ns()}@example.com"
 
     reg_client = TestClient(app, follow_redirects=False)
+    csrf_token = generate_csrf_token(0)
     reg_client.post(
         "/sign_up",
         data={
-            "name": "Perf", "surname": "Login",
+            "name": "Perf",
+            "surname": "Login",
             "email": email,
-            "password": "Password123", "confirm_password": "Password123",
+            "password": "Password123",
+            "confirm_password": "Password123",
             "terms_conditions": "on",
+            "csrf_token": csrf_token,
         },
     )
 
     results = []
+
     def login(_):
         local = TestClient(app, follow_redirects=False)
-        resp = local.post("/login", data={"email": email, "password": "Password123"})
+        csrf_token = generate_csrf_token(0)
+        resp = local.post(
+            "/login",
+            data={
+                "email": email,
+                "password": "Password123",
+                "csrf_token": csrf_token,
+            },
+        )
         return resp.status_code
 
     with ThreadPoolExecutor(max_workers=5) as pool:
@@ -95,9 +111,13 @@ def test_websocket_multiple_broadcast():
     img_binary = BytesIO()
     with Image.open("project/static/img/default avatar.png") as img:
         img.save(img_binary, format="PNG")
+
     user = User(
-        name="WS", surname="Perf", email="ws-perf@example.com",
-        password="x", avatar=img_binary.getvalue(),
+        name="WS",
+        surname="Perf",
+        email="ws-perf@example.com",
+        password="x",
+        avatar=img_binary.getvalue(),
         created_at=datetime.now(),
     )
     db.add(user)
@@ -111,7 +131,13 @@ def test_websocket_multiple_broadcast():
         local.cookies.set("access_token", token)
         for ch in channels:
             with local.websocket_connect(f"/ws/{ch}") as ws:
-                ws.send_json({"type": "message", "channel_id": ch, "message": "ping"})
+                ws.send_json(
+                    {
+                        "type": "message",
+                        "channel_id": ch,
+                        "message": "ping",
+                    }
+                )
                 data = ws.receive_text()
                 assert "ping" in data
 
@@ -128,4 +154,6 @@ def test_endpoint_response_times():
         response = client.get(ep)
         elapsed = (time.perf_counter() - start) * 1000
         assert response.status_code == 200, f"{ep} returned {response.status_code}"
-        assert elapsed < max_time_ms, f"{ep} took {elapsed:.0f}ms (limit {max_time_ms}ms)"
+        assert (
+            elapsed < max_time_ms
+        ), f"{ep} took {elapsed:.0f}ms (limit {max_time_ms}ms)"

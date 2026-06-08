@@ -17,6 +17,4 @@ async def online_users(request: Request):
     Returns:
         JSONResponse: A JSON object with online user IDs
     """
-    return JSONResponse(
-        content={"online_user_ids": list(manager.get_online_users())}
-    )
+    return JSONResponse(content={"online_user_ids": list(manager.get_online_users())})

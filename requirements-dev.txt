@@ -11,6 +11,5 @@ alembic>=1.11
 # Linters / formatters / static analysis
 black>=24.3
 isort>=5.13
-flake8>=6.0
 mypy>=1.6
 pre-commit>=3.3

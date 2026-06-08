@@ -10,7 +10,7 @@ from werkzeug.security import generate_password_hash
 from ..database import session_scope
 from ..models import User
 from ..settings import settings
-from .helpers import is_authenticated
+from .helpers import is_authenticated, validate_csrf_optional
 from .template import DEFAULT_AVATAR_PATH, render_template
 
 router = APIRouter()
@@ -29,7 +29,7 @@ def sign_up_page(request: Request):
     return render_template("sign_up.html", request, errors={})
 
 
-@router.post("/sign_up")
+@router.post("/sign_up", dependencies=[Depends(validate_csrf_optional)])
 async def sign_up_data(
     request: Request,
     name: str = Form(...),
@@ -91,10 +91,14 @@ async def sign_up_data(
     s = Serializer(settings.chat_secret_key)
     token = s.dumps({"user_id": new_user.id})
 
-    response = RedirectResponse(
-        request.url_for("single_chat"), status_code=303
+    response = RedirectResponse(request.url_for("single_chat"), status_code=303)
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=settings.is_production,
     )
-    response.set_cookie(key="access_token", value=token, httponly=True, samesite="lax", secure=settings.is_production)
 
     return response
 
@@ -115,7 +119,7 @@ def login_page(request: Request):
     return render_template("login.html", request)
 
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(validate_csrf_optional)])
 async def login_data(
     request: Request, email: str = Form(...), password: str = Form(...)
 ):
@@ -148,10 +152,14 @@ async def login_data(
         s = Serializer(settings.chat_secret_key)
         token = s.dumps({"user_id": user.id})
 
-    response = RedirectResponse(
-        request.url_for("single_chat"), status_code=303
+    response = RedirectResponse(request.url_for("single_chat"), status_code=303)
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=settings.is_production,
     )
-    response.set_cookie(key="access_token", value=token, httponly=True, samesite="lax", secure=settings.is_production)
 
     return response
 
@@ -164,7 +172,7 @@ def logout(request: Request):
         request: The request object
 
     Returns:
-        Response: Redirect to login or home page
+        Response: Redirect to log in or home page
     """
     token = request.cookies.get("access_token")
     if token:

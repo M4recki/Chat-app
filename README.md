@@ -130,22 +130,16 @@ pytest --cov=project --cov-report=html
 
 ### Code Quality
 
-Format code with black:
+Format code with black (auto-format entire project):
 
 ```bash
-black project/
+black project/ tests/
 ```
 
 Sort imports:
 
 ```bash
-isort project/
-```
-
-Run linter:
-
-```bash
-flake8 project/
+isort project/ tests/ --profile black
 ```
 
 Type checking:
@@ -168,33 +162,47 @@ pre-commit install
 project/
 ├── python/
 │   ├── __init__.py
-│   ├── main.py              # FastAPI app entry point
-│   ├── routes.py            # API routes and business logic
-│   ├── models.py            # SQLAlchemy ORM models
-│   ├── database.py          # Database configuration
-│   ├── connection_manager.py # WebSocket connection management
-│   ├── chatbot_utils.py     # AI chatbot helper functions
-│   ├── rate_limit.py        # In-memory rate limiter
-│   ├── settings.py          # Pydantic settings & env config
-│   └── setup.py             # Package setup
+│   ├── main.py                # FastAPI app entry point
+│   ├── models.py              # SQLAlchemy ORM models
+│   ├── database.py            # Database configuration
+│   ├── handlers.py            # Exception handlers
+│   ├── connection_manager.py  # WebSocket connection management
+│   ├── chatbot_utils.py       # AI chatbot helper functions
+│   ├── rate_limit.py          # In-memory rate limiter
+│   ├── settings.py            # Pydantic settings & env config
+│   ├── ws.py                  # WebSocket endpoint logic
+│   └── routes/
+│       ├── __init__.py
+│       ├── auth.py            # Login / sign-up
+│       ├── chat.py            # Chat channels & messaging
+│       ├── chatbot.py         # Chatbot conversation
+│       ├── contact.py         # Contact form
+│       ├── email.py           # Email sending helper
+│       ├── friends.py         # Friend management
+│       ├── helpers.py         # Auth helpers, CSRF validation
+│       ├── main_page.py       # Homepage
+│       ├── online.py          # Online users endpoint
+│       ├── profile.py         # User profile & settings
+│       ├── search.py          # User search
+│       └── template.py        # Jinja2 template config
 ├── static/
 │   ├── css/
 │   │   └── style.css
 │   ├── js/
 │   │   └── script.js
 │   └── img/
-└── templates/               # Jinja2 templates
+└── templates/                 # Jinja2 templates
 
 tests/
-├── conftest.py              # pytest configuration & fixtures
-├── unit_test.py             # Unit tests
-├── routes_test.py           # Route-specific integration tests
-├── integration_test.py      # Integration tests
-├── functional_test.py       # Functional tests
-├── model_test.py            # Model tests
-├── security_test.py         # Security tests
-├── contract_test.py         # Contract tests
-└── performance_test.py      # Performance tests
+├── conftest.py                # pytest configuration & fixtures
+├── unit_test.py               # Unit tests
+├── routes_test.py             # Route-specific integration tests
+├── integration_test.py        # Integration tests
+├── functional_test.py         # Functional tests
+├── model_test.py              # Model tests
+├── security_test.py           # Security tests
+├── contract_test.py           # Contract tests
+└── performance_test.py        # Performance tests
 ```
 
 ## Configuration
@@ -223,7 +231,7 @@ Chatbot uses the NVIDIA Integrate API via the OpenAI Python client.
 This project includes GitHub Actions workflows for:
 
 - **Tests**: Automated pytest run on Python 3.10, 3.11
-- **Linting**: flake8 and black formatting checks
+- **Formatting**: black formatting checks
 - **Coverage**: Test coverage reporting
 
 Workflows run on every push and pull request to `main` branch.

@@ -1,18 +1,22 @@
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi.responses import RedirectResponse
 from werkzeug.security import generate_password_hash
 
 from ..database import session_scope
 from ..models import User
 from .helpers import get_current_user, validate_csrf
-from .template import render_template, templates
+from .template import templates
 
 router = APIRouter()
 
 
 @router.get("/update_profile")
-async def update_profile_page(request: Request, user: User = Depends(get_current_user)):
+async def update_profile_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     """Render the update profile page.
 
     Args:
@@ -97,4 +101,4 @@ async def update_profile_data(
             updated_user.avatar = user.avatar
         db.commit()
 
-    return render_template("single_chat.html", request)
+    return RedirectResponse(request.url_for("single_chat"), status_code=303)

@@ -18,9 +18,7 @@ class ConnectionManager:
         self.online_users: set[int] = set()
         self._ws_to_user: dict[int, int] = {}
 
-    async def connect(
-            self, websocket: WebSocket, channel_id: str, user_id: int
-    ):
+    async def connect(self, websocket: WebSocket, channel_id: str, user_id: int):
         """
         Connect a websocket to a channel and mark user as online.
 
@@ -86,7 +84,7 @@ class ConnectionManager:
                 self.active_connections[channel_id].remove(connection)
 
     async def broadcast_to_channel_except(
-            self, message: str, channel_id: str, exclude_websocket: WebSocket
+        self, message: str, channel_id: str, exclude_websocket: WebSocket
     ):
         """
         Broadcast a message to all connections in a channel except one.
@@ -108,10 +106,8 @@ class ConnectionManager:
             for connection in dead:
                 self.active_connections[channel_id].remove(connection)
 
-
-
     def get_other_user_ids_in_channel(
-            self, channel_id: str, exclude_websocket: WebSocket
+        self, channel_id: str, exclude_websocket: WebSocket
     ) -> list[int]:
         """
         Get user IDs of all other connections in a channel.

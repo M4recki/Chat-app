@@ -12,7 +12,7 @@ from project.python.chatbot_utils import chatbot_json_error
 from project.python.main import get_rate_limit_identifier
 from project.python.models import User, Friend, Channel, Message
 from project.python.routes import generate_csrf_token
-from project.python.models import Friend as FriendModel
+from project.python.models import Friend as FriendModel, FriendStatus
 from project.python.models import Friend as Incoming
 from project.python.rate_limit import rate_limiter
 
@@ -79,9 +79,14 @@ def test_search_user_returns_other_users():
 
 
 def test_login_rate_limit_headers_present():
+    csrf_token = generate_csrf_token(0)
     response = client.post(
         "/login",
-        data={"email": "unknown@example.com", "password": "bad"},
+        data={
+            "email": "unknown@example.com",
+            "password": "bad",
+            "csrf_token": csrf_token,
+        },
     )
 
     assert response.status_code == 200
@@ -245,16 +250,25 @@ def test_chatbot_rate_limit_429_json():
 def test_login_rate_limit_429():
     rate_limiter._buckets.clear()
     local_client = TestClient(app, raise_server_exceptions=False)
+    csrf_token = generate_csrf_token(0)
     limit = settings.rate_limit_login_max_requests
     for _ in range(limit):
         response = local_client.post(
             "/login",
-            data={"email": "spam@example.com", "password": "wrong"},
+            data={
+                "email": "spam@example.com",
+                "password": "wrong",
+                "csrf_token": csrf_token,
+            },
         )
         assert response.status_code == 200
     response = local_client.post(
         "/login",
-        data={"email": "spam@example.com", "password": "wrong"},
+        data={
+            "email": "spam@example.com",
+            "password": "wrong",
+            "csrf_token": csrf_token,
+        },
     )
     assert response.status_code == 429
 
@@ -341,6 +355,7 @@ def test_contact_page_returns_200():
 
 
 def test_contact_short_message_error():
+    csrf_token = generate_csrf_token(0)
     response = client.post(
         "/contact",
         data={
@@ -348,6 +363,7 @@ def test_contact_short_message_error():
             "email": "test@example.com",
             "subject": "Hi",
             "message": "short",
+            "csrf_token": csrf_token,
         },
     )
     assert response.status_code == 200
@@ -355,7 +371,7 @@ def test_contact_short_message_error():
 
 def test_sign_up_duplicate_email():
     db = TestingSessionLocal()
-    user = create_user(
+    _ = create_user(
         db,
         "Existing",
         "User",
@@ -363,6 +379,7 @@ def test_sign_up_duplicate_email():
         "Password123",
         "project/static/img/default avatar.png",
     )
+    csrf_token = generate_csrf_token(0)
     response = client.post(
         "/sign_up",
         data={
@@ -372,12 +389,14 @@ def test_sign_up_duplicate_email():
             "password": "NewPass123",
             "confirm_password": "NewPass123",
             "terms_conditions": "on",
+            "csrf_token": csrf_token,
         },
     )
     assert response.status_code == 200
 
 
 def test_sign_up_password_not_alphanumeric():
+    csrf_token = generate_csrf_token(0)
     response = client.post(
         "/sign_up",
         data={
@@ -387,6 +406,7 @@ def test_sign_up_password_not_alphanumeric():
             "password": "haslo-123",
             "confirm_password": "haslo-123",
             "terms_conditions": "on",
+            "csrf_token": csrf_token,
         },
     )
     assert response.status_code == 200
@@ -397,6 +417,7 @@ def test_sign_up_and_login():
     local_client = TestClient(
         app, raise_server_exceptions=False, follow_redirects=False
     )
+    csrf_token = generate_csrf_token(0)
     response = local_client.post(
         "/sign_up",
         data={
@@ -406,17 +427,24 @@ def test_sign_up_and_login():
             "password": "StrongPass1",
             "confirm_password": "StrongPass1",
             "terms_conditions": "on",
+            "csrf_token": csrf_token,
         },
     )
     assert response.status_code == 303
+    csrf_token = generate_csrf_token(0)
     login_response = local_client.post(
         "/login",
-        data={"email": "full-cycle@example.com", "password": "StrongPass1"},
+        data={
+            "email": "full-cycle@example.com",
+            "password": "StrongPass1",
+            "csrf_token": csrf_token,
+        },
     )
     assert login_response.status_code == 303
 
 
 def test_sign_up_password_mismatch():
+    csrf_token = generate_csrf_token(0)
     response = client.post(
         "/sign_up",
         data={
@@ -426,6 +454,7 @@ def test_sign_up_password_mismatch():
             "password": "Pass123",
             "confirm_password": "Different456",
             "terms_conditions": "on",
+            "csrf_token": csrf_token,
         },
     )
     assert response.status_code == 200
@@ -463,7 +492,7 @@ def test_logout_no_token():
 
 def test_login_wrong_password():
     db = TestingSessionLocal()
-    user = create_user(
+    _ = create_user(
         db,
         "Login",
         "Wrong",
@@ -471,17 +500,23 @@ def test_login_wrong_password():
         "Password123",
         "project/static/img/default avatar.png",
     )
+    csrf_token = generate_csrf_token(0)
     response = client.post(
         "/login",
-        data={"email": "login-wrong@example.com", "password": "wrongpass"},
+        data={
+            "email": "login-wrong@example.com",
+            "password": "wrongpass",
+            "csrf_token": csrf_token,
+        },
     )
     assert response.status_code == 200
 
 
 def test_validation_error_returns_422_json():
+    csrf_token = generate_csrf_token(0)
     response = client.post(
         "/login",
-        data={"email": "test@example.com"},
+        data={"email": "test@example.com", "csrf_token": csrf_token},
         headers={"X-Requested-With": "XMLHttpRequest"},
     )
     assert response.status_code == 422
@@ -491,9 +526,10 @@ def test_validation_error_returns_422_json():
 
 
 def test_validation_error_returns_422_html():
+    csrf_token = generate_csrf_token(0)
     response = client.post(
         "/login",
-        data={"email": "test@example.com"},
+        data={"email": "test@example.com", "csrf_token": csrf_token},
     )
     assert response.status_code == 422
     assert "text/html" in response.headers.get("content-type", "")
@@ -508,7 +544,10 @@ def test_unhandled_exception_returns_500_json(monkeypatch):
         lambda *a, **kw: (_ for _ in ()).throw(Exception("unexpected error")),
     )
     local_client = TestClient(app, raise_server_exceptions=False)
-    response = local_client.get("/", headers={"X-Requested-With": "XMLHttpRequest"})
+    response = local_client.get(
+        "/",
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
     assert response.status_code == 500
     payload = response.json()
     assert payload["error"] == "server"
@@ -550,12 +589,16 @@ def test_single_chat_returns_200():
     friend_rel = Friend(
         user1_id=user.id,
         user2_id=friend.id,
-        status="accepted",
+        status=FriendStatus.ACCEPTED.value,
         last_sent=datetime.now(),
     )
     db.add(friend_rel)
     db.commit()
-    channel = Channel(channel_id=str(uuid4()), user1_id=user.id, user2_id=friend.id)
+    channel = Channel(
+        channel_id=str(uuid4()),
+        user1_id=user.id,
+        user2_id=friend.id,
+    )
     db.add(channel)
     db.commit()
 
@@ -616,17 +659,27 @@ def test_update_profile_page_returns_200():
 def test_add_friend_old_pending_renews_last_sent(monkeypatch):
     db = TestingSessionLocal()
     user = create_user(
-        db, "Old", "Pending", "old-pending@example.com", "Password123",
+        db,
+        "Old",
+        "Pending",
+        "old-pending@example.com",
+        "Password123",
         "project/static/img/default avatar.png",
     )
     target = create_user(
-        db, "Target", "Old", "target-old@example.com", "Password123",
+        db,
+        "Target",
+        "Old",
+        "target-old@example.com",
+        "Password123",
         "project/static/img/default avatar.png",
     )
     old_date = datetime.now() - timedelta(days=20)
     existing = Friend(
-        user1_id=user.id, user2_id=target.id,
-        status="pending", last_sent=old_date,
+        user1_id=user.id,
+        user2_id=target.id,
+        status=FriendStatus.PENDING.value,
+        last_sent=old_date,
     )
     db.add(existing)
     db.commit()
@@ -635,9 +688,6 @@ def test_add_friend_old_pending_renews_last_sent(monkeypatch):
     set_access_token(user.id, target_client=local_client)
     response = local_client.get(f"/add_friend/{target.id}")
     assert response.status_code == 200
-
-
-
 
 
 def test_chatbot_missing_message_validation():
@@ -664,7 +714,11 @@ def test_chatbot_missing_message_validation():
 
 def test_chatbot_empty_message_returns_validation():
     result = chatbot_json_error(
-        400, {"error": "validation", "details": {"message": "Message cannot be empty"}}
+        400,
+        {
+            "error": "validation",
+            "details": {"message": "Message cannot be empty"},
+        },
     )
     assert result.status_code == 400
     assert b"Message cannot be empty" in result.body
@@ -716,7 +770,10 @@ def test_add_friend_duplicate_pending():
         "project/static/img/default avatar.png",
     )
     existing = Friend(
-        user1_id=user.id, user2_id=target.id, status="pending", last_sent=datetime.now()
+        user1_id=user.id,
+        user2_id=target.id,
+        status=FriendStatus.PENDING.value,
+        last_sent=datetime.now(),
     )
     db.add(existing)
     db.commit()
@@ -747,7 +804,7 @@ def test_add_friend_duplicate_denied():
     existing = Friend(
         user1_id=user.id,
         user2_id=target.id,
-        status="denied",
+        status=FriendStatus.DENIED.value,
         last_sent=datetime(2020, 1, 1),
     )
     db.add(existing)
@@ -779,7 +836,7 @@ def test_accept_friend():
     req = Friend(
         user1_id=requester.id,
         user2_id=user.id,
-        status="pending",
+        status=FriendStatus.PENDING.value,
         last_sent=datetime.now(),
     )
     db.add(req)
@@ -811,7 +868,7 @@ def test_deny_friend():
     req = Friend(
         user1_id=requester.id,
         user2_id=user.id,
-        status="pending",
+        status=FriendStatus.PENDING.value,
         last_sent=datetime.now(),
     )
     db.add(req)
@@ -843,7 +900,7 @@ def test_block_friend():
     existing = Friend(
         user1_id=user.id,
         user2_id=target.id,
-        status="accepted",
+        status=FriendStatus.ACCEPTED.value,
         last_sent=datetime.now(),
     )
     db.add(existing)
@@ -873,7 +930,10 @@ def test_unblock_friend():
         "project/static/img/default avatar.png",
     )
     existing = Friend(
-        user1_id=user.id, user2_id=target.id, status="blocked", last_sent=datetime.now()
+        user1_id=user.id,
+        user2_id=target.id,
+        status=FriendStatus.BLOCKED.value,
+        last_sent=datetime.now(),
     )
     db.add(existing)
     db.commit()
@@ -900,7 +960,10 @@ def test_chatbot_error_returns_502(monkeypatch):
     def mock_response(*a, **kw):
         raise Exception("mock failure")
 
-    monkeypatch.setattr("project.python.routes.chatbot.chatbot_response", mock_response)
+    monkeypatch.setattr(
+        "project.python.routes.chatbot.chatbot_response",
+        mock_response,
+    )
 
     response = local_client.post(
         "/chatbot",
@@ -927,7 +990,10 @@ def test_chatbot_chatbot_service_error_html(monkeypatch):
     def mock_response(*a, **kw):
         raise Exception("mock failure")
 
-    monkeypatch.setattr("project.python.routes.chatbot.chatbot_response", mock_response)
+    monkeypatch.setattr(
+        "project.python.routes.chatbot.chatbot_response",
+        mock_response,
+    )
 
     response = local_client.post(
         "/chatbot",
@@ -993,9 +1059,7 @@ def test_clear_chatbot_messages():
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
     csrf = generate_csrf_token(user.id)
-    response = local_client.post(
-        "/clear_chatbot_messages", data={"csrf_token": csrf}
-    )
+    response = local_client.post("/clear_chatbot_messages", data={"csrf_token": csrf})
     assert response.status_code == 200
 
 
@@ -1023,7 +1087,7 @@ def test_friend_chat_page_not_found():
     rel = FriendModel(
         user1_id=user.id,
         user2_id=friend.id,
-        status="accepted",
+        status=FriendStatus.ACCEPTED.value,
         last_sent=datetime.now(),
     )
     db.add(rel)
@@ -1055,7 +1119,7 @@ def test_friend_chat_page_found():
     rel = FriendModel(
         user1_id=user.id,
         user2_id=friend.id,
-        status="accepted",
+        status=FriendStatus.ACCEPTED.value,
         last_sent=datetime.now(),
     )
     db.add(rel)
@@ -1064,7 +1128,10 @@ def test_friend_chat_page_found():
     db.add(channel)
     db.commit()
     msg = Message(
-        content="hi", channel_id=ch_id, created_at=datetime.now(), user_id=user.id
+        content="hi",
+        channel_id=ch_id,
+        created_at=datetime.now(),
+        user_id=user.id,
     )
     db.add(msg)
     db.commit()
@@ -1111,18 +1178,25 @@ def test_search_user_with_friends():
     rel = Friend(
         user1_id=user.id,
         user2_id=friend.id,
-        status="accepted",
+        status=FriendStatus.ACCEPTED.value,
         last_sent=datetime.now(),
     )
     db.add(rel)
 
     pending = Friend(
-        user1_id=other.id, user2_id=user.id, status="pending", last_sent=datetime.now()
+        user1_id=other.id,
+        user2_id=user.id,
+        status=FriendStatus.PENDING.value,
+        last_sent=datetime.now(),
     )
     db.add(pending)
     db.commit()
 
-    channel = Channel(channel_id=str(uuid4()), user1_id=user.id, user2_id=friend.id)
+    channel = Channel(
+        channel_id=str(uuid4()),
+        user1_id=user.id,
+        user2_id=friend.id,
+    )
     db.add(channel)
     db.commit()
 
@@ -1153,7 +1227,7 @@ def test_search_user_with_friend_no_channel():
     rel = Friend(
         user1_id=user.id,
         user2_id=friend.id,
-        status="accepted",
+        status=FriendStatus.ACCEPTED.value,
         last_sent=datetime.now(),
     )
     db.add(rel)
@@ -1275,7 +1349,7 @@ def test_single_chat_creates_channel():
     rel = Friend(
         user1_id=user.id,
         user2_id=friend.id,
-        status="accepted",
+        status=FriendStatus.ACCEPTED.value,
         last_sent=datetime.now(),
     )
     db.add(rel)
@@ -1307,14 +1381,14 @@ def test_single_chat_accepts_friend():
     rel = Friend(
         user1_id=user.id,
         user2_id=friend.id,
-        status="accepted",
+        status=FriendStatus.ACCEPTED.value,
         last_sent=datetime.now(),
     )
     db.add(rel)
     incoming = Incoming(
         user1_id=friend.id,
         user2_id=user.id,
-        status="accepted",
+        status=FriendStatus.ACCEPTED.value,
         last_sent=datetime.now(),
     )
     db.add(incoming)
@@ -1423,7 +1497,7 @@ def test_friend_requests_with_pending():
     req = Friend(
         user1_id=requester.id,
         user2_id=user.id,
-        status="pending",
+        status=FriendStatus.PENDING.value,
         last_sent=datetime.now(),
     )
     db.add(req)

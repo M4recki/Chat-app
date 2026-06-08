@@ -35,7 +35,11 @@ def send_email(email_address, subject, message):
     try:
         with SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
             smtp.login(settings.email_sender, settings.email_password)
-            smtp.sendmail(settings.email_sender, settings.email_receiver, email.as_string())
+            smtp.sendmail(
+                settings.email_sender,
+                settings.email_receiver,
+                email.as_string(),
+            )
     except (SMTPException, OSError):
         return "Failed to send email. Please try again later."
 

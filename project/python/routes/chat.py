@@ -4,7 +4,7 @@ from hashlib import sha256
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from ..database import session_scope
-from ..models import Channel, Friend, Message, User
+from ..models import Channel, Friend, FriendStatus, Message, User
 from .helpers import get_current_user, get_user
 from .template import encode_avatar, templates
 
@@ -26,7 +26,10 @@ def generate_channel_id(user1_id, user2_id):
 
 
 @router.get("/single_chat")
-async def single_chat(request: Request, user: User = Depends(get_current_user)):
+async def single_chat(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     """Display the user's chat channels.
 
     Args:
@@ -44,12 +47,9 @@ async def single_chat(request: Request, user: User = Depends(get_current_user)):
                 (Friend.user1_id == User.id) | (Friend.user2_id == User.id),
             )
             .filter(
-                Friend.status == "accepted",
+                Friend.status == FriendStatus.ACCEPTED.value,
                 ((Friend.user1_id == user.id) & (User.id == Friend.user2_id))
-                | (
-                    (Friend.user2_id == user.id)
-                    & (User.id == Friend.user1_id)
-                ),
+                | ((Friend.user2_id == user.id) & (User.id == Friend.user1_id)),
             )
             .all()
         )
@@ -66,8 +66,7 @@ async def single_chat(request: Request, user: User = Depends(get_current_user)):
                 existing_channel = (
                     db.query(Channel)
                     .filter(
-                        (Channel.user1_id == user.id)
-                        & (Channel.user2_id == friend_id)
+                        (Channel.user1_id == user.id) & (Channel.user2_id == friend_id)
                         | (Channel.user1_id == friend_id)
                         & (Channel.user2_id == user.id)
                     )
@@ -90,8 +89,7 @@ async def single_chat(request: Request, user: User = Depends(get_current_user)):
                 friend_status = (
                     db.query(Friend)
                     .filter(
-                        (Friend.user1_id == user.id)
-                        & (Friend.user2_id == friend_id)
+                        (Friend.user1_id == user.id) & (Friend.user2_id == friend_id)
                         | (
                             (Friend.user1_id == friend_id)
                             & (Friend.user2_id == user.id)
@@ -100,9 +98,7 @@ async def single_chat(request: Request, user: User = Depends(get_current_user)):
                     .first()
                 )
 
-                friend_status_value = (
-                    friend_status.status if friend_status else None
-                )
+                friend_status_value = friend_status.status if friend_status else None
 
     return templates.TemplateResponse(
         request,
@@ -145,32 +141,20 @@ async def friend_chat_page(
         if not friend:
             raise HTTPException(status_code=404, detail="Friend not found")
 
-        messages = (
-            db.query(Message)
-            .filter(Message.channel_id == channel_id)
-            .all()
-        )
+        messages = db.query(Message).filter(Message.channel_id == channel_id).all()
 
-        channel = (
-            db.query(Channel)
-            .filter(Channel.channel_id == channel_id)
-            .first()
-        )
+        channel = db.query(Channel).filter(Channel.channel_id == channel_id).first()
 
         friend_status = (
             db.query(Friend)
             .filter(
-                    (Friend.user1_id == user.id)
-                    & (Friend.user2_id == friend_id)
-                    | (Friend.user1_id == friend_id)
-                    & (Friend.user2_id == user.id)
+                (Friend.user1_id == user.id) & (Friend.user2_id == friend_id)
+                | (Friend.user1_id == friend_id) & (Friend.user2_id == user.id)
             )
             .first()
         )
 
-        friend_status_value = (
-            friend_status.status if friend_status else None
-        )
+        friend_status_value = friend_status.status if friend_status else None
 
         if not channel:
             raise HTTPException(status_code=404, detail="Channel not found")

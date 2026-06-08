@@ -62,9 +62,7 @@ def build_chatbot_messages(user_input: str, previous_messages=None):
             if item.message:
                 messages.append({"role": "user", "content": item.message})
             if item.response:
-                messages.append(
-                    {"role": "assistant", "content": item.response}
-                )
+                messages.append({"role": "assistant", "content": item.response})
 
     messages.append({"role": "user", "content": user_input})
     return messages
@@ -122,9 +120,7 @@ def chatbot_response(user_input: str, previous_messages=None):
                     "retrying with longer timeout and fewer tokens",
                     model_name,
                 )
-                retry_max_tokens = max(
-                    256, int(settings.chatbot_max_tokens / 2)
-                )
+                retry_max_tokens = max(256, int(settings.chatbot_max_tokens / 2))
                 completion = client.chat.completions.create(
                     model=model_name,
                     messages=messages,
@@ -133,10 +129,7 @@ def chatbot_response(user_input: str, previous_messages=None):
                     max_tokens=retry_max_tokens,
                     stream=False,
                     timeout=min(
-                        getattr(
-                            settings, "chatbot_timeout_seconds", 30
-                        )
-                        * 2,
+                        getattr(settings, "chatbot_timeout_seconds", 30) * 2,
                         300,
                     ),
                 )
@@ -145,9 +138,7 @@ def chatbot_response(user_input: str, previous_messages=None):
             content = message.content if message else None
             if content:
                 return normalize_chatbot_response(content)
-            model_errors.append(
-                f"Model {model_name} returned an empty response"
-            )
+            model_errors.append(f"Model {model_name} returned an empty response")
 
         except Exception as exc:
             model_errors.append(f"Model {model_name} failed: {exc}")

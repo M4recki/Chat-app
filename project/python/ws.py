@@ -18,9 +18,7 @@ _pending_leave: dict[tuple[str, int], asyncio.Task] = {}
 
 
 @ws_router.websocket("/ws/{channel_id}")
-async def websocket_endpoint(
-    websocket: WebSocket, channel_id: str
-):
+async def websocket_endpoint(websocket: WebSocket, channel_id: str):
     """
     Handle incoming websocket connections.
 
@@ -81,9 +79,7 @@ async def websocket_endpoint(
     )
 
     # Send the new user info about all others already online in this channel
-    for other_uid in manager.get_other_user_ids_in_channel(
-        channel_id, websocket
-    ):
+    for other_uid in manager.get_other_user_ids_in_channel(channel_id, websocket):
         await websocket.send_text(
             dumps(
                 {

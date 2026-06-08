@@ -9,8 +9,11 @@ from itsdangerous.exc import BadSignature, SignatureExpired
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from uvicorn import run
 
-from .handlers import (http_exception_handler, unhandled_exception_handler,
-                       validation_exception_handler)
+from .handlers import (
+    http_exception_handler,
+    unhandled_exception_handler,
+    validation_exception_handler,
+)
 from .rate_limit import RateLimitRule, enforce_rate_limit
 from .routes import router
 from .settings import settings
@@ -101,15 +104,9 @@ async def rate_limit_middleware(request: Request, call_next):
     response = await call_next(request)
 
     if rate_limit_meta:
-        response.headers["X-RateLimit-Limit"] = str(
-            rate_limit_meta["limit"]
-        )
-        response.headers["X-RateLimit-Remaining"] = str(
-            rate_limit_meta["remaining"]
-        )
-        response.headers["X-RateLimit-Reset"] = str(
-            rate_limit_meta["reset"]
-        )
+        response.headers["X-RateLimit-Limit"] = str(rate_limit_meta["limit"])
+        response.headers["X-RateLimit-Remaining"] = str(rate_limit_meta["remaining"])
+        response.headers["X-RateLimit-Reset"] = str(rate_limit_meta["reset"])
 
     return response
 

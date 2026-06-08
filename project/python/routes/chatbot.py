@@ -3,9 +3,13 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, Request
 
-from ..chatbot_utils import (ChatbotServiceError, chatbot_context,
-                             chatbot_json_error, chatbot_json_success,
-                             chatbot_response)
+from ..chatbot_utils import (
+    ChatbotServiceError,
+    chatbot_context,
+    chatbot_json_error,
+    chatbot_json_success,
+    chatbot_response,
+)
 from ..database import session_scope
 from ..models import ChatbotMessage, User
 from ..settings import settings
@@ -16,7 +20,10 @@ router = APIRouter()
 
 
 @router.get("/chatbot")
-async def chatbot_page(request: Request, user: User = Depends(get_current_user)):
+async def chatbot_page(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     """
     Render the chatbot chat page.
 
@@ -33,9 +40,7 @@ async def chatbot_page(request: Request, user: User = Depends(get_current_user))
 
     with session_scope() as db:
         chatbot_messages = (
-            db.query(ChatbotMessage)
-            .filter(ChatbotMessage.user_id == user.id)
-            .all()
+            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
         )
 
     return templates.TemplateResponse(
@@ -54,7 +59,11 @@ async def chatbot_page(request: Request, user: User = Depends(get_current_user))
 
 
 @router.post("/chatbot", dependencies=[Depends(validate_csrf)])
-async def chatbot(request: Request, message: str = Form(...), user: User = Depends(get_current_user)):
+async def chatbot(
+    request: Request,
+    message: str = Form(...),
+    user: User = Depends(get_current_user),
+):
     """
     Send a new message to the chatbot.
 
@@ -77,14 +86,15 @@ async def chatbot(request: Request, message: str = Form(...), user: User = Depen
 
     if errors:
         if is_ajax:
-            return chatbot_json_error(
-                400, {"error": "validation", "details": errors}
-            )
+            return chatbot_json_error(400, {"error": "validation", "details": errors})
         return templates.TemplateResponse(
             request,
             "chatbot_chat.html",
             chatbot_context(
-                user, [], request=request, message=message,
+                user,
+                [],
+                request=request,
+                message=message,
                 errors=errors,
             ),
         )
@@ -160,9 +170,7 @@ async def chatbot(request: Request, message: str = Form(...), user: User = Depen
 
     with session_scope() as db:
         chatbot_messages = (
-            db.query(ChatbotMessage)
-            .filter(ChatbotMessage.user_id == user.id)
-            .all()
+            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
         )
 
     return templates.TemplateResponse(
@@ -182,7 +190,10 @@ async def chatbot(request: Request, message: str = Form(...), user: User = Depen
 
 
 @router.post("/clear_chatbot_messages", dependencies=[Depends(validate_csrf)])
-async def clear_chatbot_messages(request: Request, user: User = Depends(get_current_user)):
+async def clear_chatbot_messages(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     """
     Clear all past chatbot messages for the user.
 
@@ -194,11 +205,7 @@ async def clear_chatbot_messages(request: Request, user: User = Depends(get_curr
         TemplateResponse: The chatbot chat page
     """
     with session_scope() as db:
-        (
-            db.query(ChatbotMessage)
-            .filter(ChatbotMessage.user_id == user.id)
-            .delete()
-        )
+        (db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).delete())
         db.commit()
 
     return templates.TemplateResponse(

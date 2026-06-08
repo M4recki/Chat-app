@@ -3,7 +3,7 @@ from base64 import b64encode
 from fastapi import APIRouter, Depends, Request
 
 from ..database import session_scope
-from ..models import Channel, Friend, User
+from ..models import Channel, Friend, FriendStatus, User
 from .chat import generate_channel_id
 from .helpers import get_current_user
 from .template import templates
@@ -12,7 +12,10 @@ router = APIRouter()
 
 
 @router.get("/search_user")
-async def search_user(request: Request, user: User = Depends(get_current_user)):
+async def search_user(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     """Search for and return other users.
 
     Args:
@@ -27,10 +30,7 @@ async def search_user(request: Request, user: User = Depends(get_current_user)):
 
         friend_statuses = (
             db.query(Friend)
-            .filter(
-                (Friend.user1_id == user.id)
-                | (Friend.user2_id == user.id)
-            )
+            .filter((Friend.user1_id == user.id) | (Friend.user2_id == user.id))
             .all()
         )
 
@@ -44,7 +44,7 @@ async def search_user(request: Request, user: User = Depends(get_current_user)):
 
             friend_status_map[friend_id] = friend.status
 
-            if friend.status == "accepted":
+            if friend.status == FriendStatus.ACCEPTED.value:
                 existing_channel = (
                     db.query(Channel)
                     .filter(
@@ -73,10 +73,7 @@ async def search_user(request: Request, user: User = Depends(get_current_user)):
                     db.commit()
                     channel_ids[friend_id] = channel_id
 
-        avatar_map = {
-            u.id: b64encode(u.avatar).decode()
-            for u in users if u.avatar
-        }
+        avatar_map = {u.id: b64encode(u.avatar).decode() for u in users if u.avatar}
 
     return templates.TemplateResponse(
         request,

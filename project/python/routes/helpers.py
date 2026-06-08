@@ -64,7 +64,10 @@ def is_authenticated(request: Request):
     return True
 
 
-def get_user_from_request(request: Request, max_age: int = settings.token_max_age):
+def get_user_from_request(
+    request: Request,
+    max_age: int = settings.token_max_age,
+):
     """Get user object and ID from request based on access token.
 
     Args:
@@ -157,21 +160,45 @@ def get_current_user_id(request: Request) -> int | None:
 
 
 def csrf_context(request: Request) -> dict:
-    """Template context processor providing a CSRF token for authenticated users.
+    """Template context processor providing a CSRF token
+    for all users (authenticated and anonymous).
 
     Args:
         request: The incoming request
 
     Returns:
-        dict: A dict with a 'csrf_token' key, empty string if unauthenticated
+        dict: A dict with a 'csrf_token' key
     """
-    user_id = get_current_user_id(request)
-    if user_id is None:
-        return {"csrf_token": ""}
+    user_id = get_current_user_id(request) or 0
     return {"csrf_token": generate_csrf_token(user_id)}
 
 
-async def validate_csrf(request: Request, user: User = Depends(get_current_user)):
+async def validate_csrf_optional(request: Request):
+    """Validate CSRF token for endpoints accessible
+    without authentication (login, sign_up, contact).
+
+    Checks signature validity and expiry only —
+    does not require the user to be logged in.
+
+    Args:
+        request: The incoming request
+
+    Raises:
+        HTTPException 403: If CSRF token is missing or invalid
+    """
+    token: str = request.headers.get("X-CSRF-Token", "")
+    if not token:
+        form = await request.form()
+        raw = form.get("csrf_token", "")
+        token = raw if isinstance(raw, str) else ""
+    if not token or not is_csrf_token_valid(token, 0):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+
+async def validate_csrf(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     """Validate CSRF token from X-CSRF-Token header or form field.
 
     Args:

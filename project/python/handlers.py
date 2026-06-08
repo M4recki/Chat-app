@@ -4,7 +4,6 @@ from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
-from starlette.exceptions import HTTPException as StarletteHTTPException
 
 templates = Jinja2Templates(
     directory=Path(__file__).parent.parent / "templates",
@@ -31,9 +30,7 @@ def prefers_json(request: Request) -> bool:
     return "application/json" in accept.lower()
 
 
-async def http_exception_handler(
-    request: Request, exc: Exception
-):
+async def http_exception_handler(request: Request, exc: Exception):
     """Handle HTTP exceptions and return appropriate responses based on
     client preferences.
 

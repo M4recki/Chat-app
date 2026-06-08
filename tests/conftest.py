@@ -9,7 +9,10 @@ from contextlib import contextmanager
 project_root = Path(__file__).parent.parent
 path.insert(0, str(project_root))
 
-from tests.model_test import engine as test_engine, TestingSessionLocal
+from tests.model_test import (
+    engine as test_engine,
+    TestingSessionLocal,
+)
 
 prod_db = import_module("project.python.database")
 prod_db.engine = test_engine
@@ -36,7 +39,7 @@ def session_scope():
     try:
         yield session
         session.commit()
-    except:
+    except Exception:
         session.rollback()
         raise
     finally:

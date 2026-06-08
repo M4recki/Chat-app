@@ -1,8 +1,17 @@
-from sqlalchemy import (Column, DateTime, ForeignKey, Integer, LargeBinary,
-                        String, Text)
+from enum import Enum
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import relationship
 
 from .database import Base
+
+
+class FriendStatus(str, Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    BLOCKED = "blocked"
+    DENIED = "denied"
+
 
 # User table
 
@@ -15,9 +24,10 @@ class User(Base):
     name = Column(String(100), nullable=False)
     surname = Column(String(100), nullable=False)
     email = Column(String(100), nullable=False, unique=True)
-    password = Column(String(100), nullable=False)
+    password = Column(String(255), nullable=False)
     avatar = Column(LargeBinary, nullable=False)
     created_at = Column(DateTime, nullable=False)
+    chatbot_messages = relationship("ChatbotMessage", back_populates="user")
 
 
 # Messages table
@@ -29,9 +39,7 @@ class Message(Base):
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True)
     content = Column(String(500), nullable=False)
-    channel_id = Column(
-        String(100), ForeignKey("channels.channel_id"), nullable=False
-    )
+    channel_id = Column(String(100), ForeignKey("channels.channel_id"), nullable=False)
     created_at = Column(DateTime, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     channel = relationship("Channel", foreign_keys="Message.channel_id")
@@ -83,7 +91,7 @@ class ChatbotMessage(Base):
     message = Column(Text, nullable=False)
     response = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=False)
-    user = relationship("User", backref="chatbot_messages")
+    user = relationship("User", back_populates="chatbot_messages")
 
 
 # Do not call `Base.metadata.create_all()` on import.

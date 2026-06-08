@@ -2,18 +2,22 @@ from base64 import b64encode
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm.exc import NoResultFound
 
 from ..database import session_scope
-from ..models import Friend, User
+from ..models import Friend, FriendStatus, User
 from .helpers import get_current_user
-from .template import render_template, templates
+from .template import templates
 
 router = APIRouter()
 
 
 @router.get("/friend_requests")
-async def friend_requests(request: Request, user: User = Depends(get_current_user)):
+async def friend_requests(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
     """Get pending friend requests for logged-in user.
 
     Args:
@@ -26,7 +30,9 @@ async def friend_requests(request: Request, user: User = Depends(get_current_use
     with session_scope() as db:
         friend_requests = (
             db.query(Friend)
-            .filter(Friend.user2_id == user.id, Friend.status == "pending")
+            .filter(
+                Friend.user2_id == user.id, Friend.status == FriendStatus.PENDING.value
+            )
             .all()
         )
         friend_request_avatars = {
@@ -47,7 +53,11 @@ async def friend_requests(request: Request, user: User = Depends(get_current_use
 
 
 @router.get("/block_friend/{friend_id}")
-async def block_friend(request: Request, friend_id: int, user: User = Depends(get_current_user)):
+async def block_friend(
+    request: Request,
+    friend_id: int,
+    user: User = Depends(get_current_user),
+):
     """
     Block a friend from the user's friend list.
 
@@ -63,33 +73,35 @@ async def block_friend(request: Request, friend_id: int, user: User = Depends(ge
         existing_friendship = (
             db.query(Friend)
             .filter(
-                (Friend.user1_id == user.id)
-                & (Friend.user2_id == friend_id)
-                | (Friend.user1_id == friend_id)
-                & (Friend.user2_id == user.id)
+                (Friend.user1_id == user.id) & (Friend.user2_id == friend_id)
+                | (Friend.user1_id == friend_id) & (Friend.user2_id == user.id)
             )
             .first()
         )
 
         if existing_friendship:
-            existing_friendship.status = "blocked"
+            existing_friendship.status = FriendStatus.BLOCKED.value
             existing_friendship.last_sent = datetime.now()
             db.commit()
         else:
             new_friendship = Friend(
                 user1_id=user.id,
                 user2_id=friend_id,
-                status="blocked",
+                status=FriendStatus.BLOCKED.value,
                 last_sent=datetime.now(),
             )
             db.add(new_friendship)
             db.commit()
 
-    return render_template("single_chat.html", request)
+    return RedirectResponse(request.url_for("single_chat"), status_code=303)
 
 
 @router.get("/unblock_friend/{friend_id}")
-async def unblock_friend(request: Request, friend_id: int, user: User = Depends(get_current_user)):
+async def unblock_friend(
+    request: Request,
+    friend_id: int,
+    user: User = Depends(get_current_user),
+):
     """
     Unblock a previously blocked friend.
 
@@ -105,16 +117,14 @@ async def unblock_friend(request: Request, friend_id: int, user: User = Depends(
         existing_friendship = (
             db.query(Friend)
             .filter(
-                (Friend.user1_id == user.id)
-                & (Friend.user2_id == friend_id)
-                | (Friend.user1_id == friend_id)
-                & (Friend.user2_id == user.id)
+                (Friend.user1_id == user.id) & (Friend.user2_id == friend_id)
+                | (Friend.user1_id == friend_id) & (Friend.user2_id == user.id)
             )
             .first()
         )
 
         if existing_friendship:
-            existing_friendship.status = "accepted"
+            existing_friendship.status = FriendStatus.ACCEPTED.value
             existing_friendship.blocked_by_user = None
             existing_friendship.last_sent = datetime.now()
             db.commit()
@@ -122,17 +132,21 @@ async def unblock_friend(request: Request, friend_id: int, user: User = Depends(
             new_friendship = Friend(
                 user1_id=user.id,
                 user2_id=friend_id,
-                status="accepted",
+                status=FriendStatus.ACCEPTED.value,
                 last_sent=datetime.now(),
             )
             db.add(new_friendship)
             db.commit()
 
-    return render_template("single_chat.html", request)
+    return RedirectResponse(request.url_for("single_chat"), status_code=303)
 
 
 @router.get("/add_friend/{friend_id}")
-async def add_friend(request: Request, friend_id: int, user: User = Depends(get_current_user)):
+async def add_friend(
+    request: Request,
+    friend_id: int,
+    user: User = Depends(get_current_user),
+):
     """
     Add a friend request.
 
@@ -154,18 +168,12 @@ async def add_friend(request: Request, friend_id: int, user: User = Depends(get_
         try:
             existing_request = (
                 db.query(Friend)
-                .filter(
-                    (Friend.user1_id == user.id)
-                    & (Friend.user2_id == friend_id)
-                )
+                .filter((Friend.user1_id == user.id) & (Friend.user2_id == friend_id))
                 .one()
             )
 
-            if existing_request.status == "pending":
-                if (
-                    datetime.now() - existing_request.last_sent
-                    > timedelta(days=14)
-                ):
+            if existing_request.status == FriendStatus.PENDING.value:
+                if datetime.now() - existing_request.last_sent > timedelta(days=14):
                     existing_request.last_sent = datetime.now()
                     db.commit()
                 else:
@@ -173,8 +181,8 @@ async def add_friend(request: Request, friend_id: int, user: User = Depends(get_
                         status_code=400,
                         detail="Friend request already sent recently",
                     )
-            elif existing_request.status == "denied":
-                existing_request.status = "pending"
+            elif existing_request.status == FriendStatus.DENIED.value:
+                existing_request.status = FriendStatus.PENDING.value
                 existing_request.last_sent = datetime.now()
                 db.commit()
 
@@ -182,17 +190,21 @@ async def add_friend(request: Request, friend_id: int, user: User = Depends(get_
             new_friendship = Friend(
                 user1_id=user.id,
                 user2_id=friend_id,
-                status="pending",
+                status=FriendStatus.PENDING.value,
                 last_sent=datetime.now(),
             )
             db.add(new_friendship)
             db.commit()
 
-    return render_template("single_chat.html", request)
+    return RedirectResponse(request.url_for("single_chat"), status_code=303)
 
 
 @router.get("/accept_friend/{friend_id}")
-async def accept_friend(request: Request, friend_id: int, user: User = Depends(get_current_user)):
+async def accept_friend(
+    request: Request,
+    friend_id: int,
+    user: User = Depends(get_current_user),
+):
     """
     Accept a pending friend request.
 
@@ -209,19 +221,22 @@ async def accept_friend(request: Request, friend_id: int, user: User = Depends(g
     with session_scope() as db:
         friend = (
             db.query(Friend)
-            .filter(Friend.user1_id == friend_id,
-                    Friend.user2_id == user.id)
+            .filter(Friend.user1_id == friend_id, Friend.user2_id == user.id)
             .first()
         )
-        friend.status = "accepted"
+        friend.status = FriendStatus.ACCEPTED.value
 
         db.commit()
 
-    return render_template("single_chat.html", request)
+    return RedirectResponse(request.url_for("single_chat"), status_code=303)
 
 
 @router.get("/deny_friend/{friend_id}")
-async def deny_friend(request: Request, friend_id: int, user: User = Depends(get_current_user)):
+async def deny_friend(
+    request: Request,
+    friend_id: int,
+    user: User = Depends(get_current_user),
+):
     """
     Deny a pending friend request.
 
@@ -238,12 +253,11 @@ async def deny_friend(request: Request, friend_id: int, user: User = Depends(get
     with session_scope() as db:
         friend = (
             db.query(Friend)
-            .filter(Friend.user1_id == friend_id,
-                    Friend.user2_id == user.id)
+            .filter(Friend.user1_id == friend_id, Friend.user2_id == user.id)
             .first()
         )
-        friend.status = "denied"
+        friend.status = FriendStatus.DENIED.value
 
         db.commit()
 
-    return render_template("single_chat.html", request)
+    return RedirectResponse(request.url_for("single_chat"), status_code=303)

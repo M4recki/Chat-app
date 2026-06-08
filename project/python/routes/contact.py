@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Depends, Form, Request
 
 from .email import send_email
+from .helpers import validate_csrf_optional
 from .template import render_template
 
 router = APIRouter()
@@ -19,7 +20,7 @@ def contact_page(request: Request):
     return render_template("contact.html", request)
 
 
-@router.post("/contact")
+@router.post("/contact", dependencies=[Depends(validate_csrf_optional)])
 async def contact_data(
     request: Request,
     name: str = Form(...),
@@ -53,6 +54,4 @@ async def contact_data(
 
     flash_messages = ["Your message has been sent"]
 
-    return render_template(
-        "main_page.html", request, flash_messages=flash_messages
-    )
+    return render_template("main_page.html", request, flash_messages=flash_messages)

@@ -2,7 +2,11 @@ from itsdangerous import URLSafeTimedSerializer as Serializer
 from fastapi.testclient import TestClient
 from project.python.models import ChatbotMessage
 from project.python.chatbot_utils import ChatbotServiceError
-from project.python.routes import send_email, chatbot_response, generate_csrf_token
+from project.python.routes import (
+    send_email,
+    chatbot_response,
+    generate_csrf_token,
+)
 from project.python.settings import settings
 from project.python.main import app
 from project.python.rate_limit import rate_limiter
@@ -23,9 +27,16 @@ def test_send_email():
     subject = "Test Subject"
     message = "Test Message"
 
+    csrf_token = generate_csrf_token(0)
     response = client.post(
         "/contact",
-        data={"name": name, "email": email, "subject": subject, "message": message},
+        data={
+            "name": name,
+            "email": email,
+            "subject": subject,
+            "message": message,
+            "csrf_token": csrf_token,
+        },
     )
 
     send_email(email, subject, message)
@@ -76,7 +87,10 @@ def test_chatbot_api_failure_returns_structured_error(monkeypatch):
             {"models": ["test-model"], "attempts": ["forced failure"]},
         )
 
-    monkeypatch.setattr("project.python.routes.chatbot.chatbot_response", raise_chatbot_error)
+    monkeypatch.setattr(
+        "project.python.routes.chatbot.chatbot_response",
+        raise_chatbot_error,
+    )
 
     csrf = generate_csrf_token(user.id)
     response = client.post(
@@ -102,6 +116,9 @@ def test_chatbot_api_failure_returns_structured_error(monkeypatch):
 #  Pydantic edge cases
 
 
+_csrf = generate_csrf_token(0)
+
+
 def test_very_long_strings_in_signup():
     rate_limiter._buckets.clear()
     long_name = "A" * 500
@@ -114,6 +131,7 @@ def test_very_long_strings_in_signup():
             "password": "Pass123",
             "confirm_password": "Pass123",
             "terms_conditions": "on",
+            "csrf_token": _csrf,
         },
     )
     assert response.status_code in (200, 303, 422)
@@ -130,6 +148,7 @@ def test_unicode_in_signup():
             "password": "Pass123",
             "confirm_password": "Pass123",
             "terms_conditions": "on",
+            "csrf_token": _csrf,
         },
     )
     assert response.status_code in (200, 303, 422)
@@ -146,6 +165,7 @@ def test_special_characters_in_name():
             "password": "Pass123",
             "confirm_password": "Pass123",
             "terms_conditions": "on",
+            "csrf_token": _csrf,
         },
     )
     assert response.status_code in (200, 303, 422)
@@ -163,6 +183,7 @@ def test_very_long_email():
             "password": "Pass123",
             "confirm_password": "Pass123",
             "terms_conditions": "on",
+            "csrf_token": _csrf,
         },
     )
     assert response.status_code in (200, 303, 422)
@@ -208,7 +229,10 @@ def test_html_injection_in_chatbot():
     csrf = generate_csrf_token(user.id)
     response = local.post(
         "/chatbot",
-        data={"message": "<b>bold</b><script>alert(1)</script>", "csrf_token": csrf},
+        data={
+            "message": "<b>bold</b><script>alert(1)</script>",
+            "csrf_token": csrf,
+        },
         headers={"X-Requested-With": "XMLHttpRequest"},
     )
     assert response.status_code in (200, 502)
@@ -223,6 +247,7 @@ def test_contact_with_long_message():
             "email": "long-msg@example.com",
             "subject": "Test",
             "message": "A" * 10000,
+            "csrf_token": _csrf,
         },
     )
     assert response.status_code == 200
