@@ -156,9 +156,7 @@ async def add_friend(
         TemplateResponse: On success
     """
     async with async_session_scope() as db:
-        existing_request = await get_friendship_by_direction(
-            db, user.id, friend_id
-        )
+        existing_request = await get_friendship_by_direction(db, user.id, friend_id)
 
         if existing_request:
             if existing_request.status == FriendStatus.PENDING.value:

@@ -237,6 +237,7 @@ def generate_csrf_token(user_id: int) -> str:
     s = Serializer(settings.chat_secret_key + "_csrf")
     return s.dumps({"user_id": user_id})
 
+
 _EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
 
 
@@ -307,9 +308,7 @@ async def get_or_create_channel(db, user_id: int, other_id: int) -> Channel:
 async def get_friendship_by_direction(db, user1_id: int, user2_id: int):
     """Find a friendship where user1_id sent a request to user2_id."""
     result = await db.execute(
-        select(Friend).filter(
-            Friend.user1_id == user1_id, Friend.user2_id == user2_id
-        )
+        select(Friend).filter(Friend.user1_id == user1_id, Friend.user2_id == user2_id)
     )
     return result.scalar()
 

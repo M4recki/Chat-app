@@ -322,7 +322,11 @@ def test_chatbot_context_basic():
     }
     request = Request(scope)
     ctx = chatbot_context(
-        cast(User, cast(object, "fake-user")), [], request=request, message="hi", response="hello"
+        cast(User, cast(object, "fake-user")),
+        [],
+        request=request,
+        message="hi",
+        response="hello",
     )
     assert ctx["user"] == "fake-user"
     assert ctx["message"] == "hi"
@@ -396,7 +400,12 @@ def test_chatbot_context_with_extra():
     }
     request = Request(scope)
     ctx = chatbot_context(
-        cast(User, cast(object, "user")), [], request=request, message="m", response="r", extra_field="x"
+        cast(User, cast(object, "user")),
+        [],
+        request=request,
+        message="m",
+        response="r",
+        extra_field="x",
     )
     assert ctx["extra_field"] == "x"
     assert ctx["message"] == "m"

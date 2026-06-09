@@ -39,7 +39,9 @@ class Message(Base):
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True)
     content = Column(Text, nullable=False)
-    channel_id = Column(String(100), ForeignKey("channels.channel_id"), nullable=False, index=True)
+    channel_id = Column(
+        String(100), ForeignKey("channels.channel_id"), nullable=False, index=True
+    )
     created_at = Column(DateTime, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     channel = relationship("Channel", foreign_keys="Message.channel_id")

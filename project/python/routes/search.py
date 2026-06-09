@@ -47,7 +47,8 @@ async def search_user(
             friend_status_map[friend_id] = friend.status
 
         accepted_ids = [
-            fid for fid, st in friend_status_map.items()
+            fid
+            for fid, st in friend_status_map.items()
             if st == FriendStatus.ACCEPTED.value
         ]
 
@@ -55,8 +56,10 @@ async def search_user(
             result_channels = await db.execute(
                 select(Channel).filter(
                     or_(
-                        (Channel.user1_id == user.id) & (Channel.user2_id.in_(accepted_ids)),
-                        (Channel.user2_id == user.id) & (Channel.user1_id.in_(accepted_ids)),
+                        (Channel.user1_id == user.id)
+                        & (Channel.user2_id.in_(accepted_ids)),
+                        (Channel.user2_id == user.id)
+                        & (Channel.user1_id.in_(accepted_ids)),
                     )
                 )
             )

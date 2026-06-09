@@ -33,13 +33,16 @@ async def single_chat(
     """
     async with async_session_scope() as db:
         result = await db.execute(
-            select(User).distinct()
+            select(User)
+            .distinct()
             .join(
                 Friend,
                 or_(Friend.user1_id == User.id, Friend.user2_id == User.id),
             )
             .filter(
-                Friend.status.in_([FriendStatus.ACCEPTED.value, FriendStatus.BLOCKED.value]),
+                Friend.status.in_(
+                    [FriendStatus.ACCEPTED.value, FriendStatus.BLOCKED.value]
+                ),
                 or_(
                     (Friend.user1_id == user.id) & (User.id == Friend.user2_id),
                     (Friend.user2_id == user.id) & (User.id == Friend.user1_id),
@@ -54,16 +57,15 @@ async def single_chat(
 
         if friends:
             friend_ids = [f.id for f in friends]
-            friend_avatars = {
-                f.id: b64encode(f.avatar).decode()
-                for f in friends
-            }
+            friend_avatars = {f.id: b64encode(f.avatar).decode() for f in friends}
 
             result_friendships = await db.execute(
                 select(Friend).filter(
                     or_(
-                        (Friend.user1_id == user.id) & (Friend.user2_id.in_(friend_ids)),
-                        (Friend.user2_id == user.id) & (Friend.user1_id.in_(friend_ids)),
+                        (Friend.user1_id == user.id)
+                        & (Friend.user2_id.in_(friend_ids)),
+                        (Friend.user2_id == user.id)
+                        & (Friend.user1_id.in_(friend_ids)),
                     )
                 )
             )
@@ -74,8 +76,10 @@ async def single_chat(
             result_channels = await db.execute(
                 select(Channel).filter(
                     or_(
-                        (Channel.user1_id == user.id) & (Channel.user2_id.in_(friend_ids)),
-                        (Channel.user2_id == user.id) & (Channel.user1_id.in_(friend_ids)),
+                        (Channel.user1_id == user.id)
+                        & (Channel.user2_id.in_(friend_ids)),
+                        (Channel.user2_id == user.id)
+                        & (Channel.user1_id.in_(friend_ids)),
                     )
                 )
             )

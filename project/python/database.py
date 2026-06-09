@@ -72,6 +72,7 @@ def get_db():
 # Async engine – used in route handlers to avoid blocking the event loop
 # ---------------------------------------------------------------------------
 
+
 def _async_url(url: str | URL) -> str | URL:
     """Replace the database driver with its async counterpart."""
     if isinstance(url, URL):
