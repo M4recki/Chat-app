@@ -73,7 +73,6 @@ def clear_tables():
     models.Base.metadata.drop_all(bind=test_engine)
     models.Base.metadata.create_all(bind=test_engine)
     test_engine.dispose()
-    test_engine.dispose()
 
 
 @pytest.fixture(scope="function", autouse=True)
