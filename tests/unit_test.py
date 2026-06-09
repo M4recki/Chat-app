@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 from hashlib import sha256
 from io import BytesIO
+from typing import cast
 from unittest.mock import AsyncMock
 
 import httpx
@@ -29,7 +30,7 @@ from project.python.database import get_db
 from project.python.main import app
 from project.python.main import app as ws_app
 from project.python.models import User
-from project.python.rate_limit import RateLimiter, get_client_identifier
+from project.python.rate_limit import MemoryBackend, RateLimiter, get_client_identifier
 from project.python.routes import (
     authentication_in_header,
     chatbot_response,
@@ -104,31 +105,37 @@ def test_rate_limiter_get_client_identifier_no_client():
 #  RateLimiter.enforce edge cases
 
 
-def test_rate_limiter_enforce_zero_max_requests():
+@pytest.mark.asyncio
+async def test_rate_limiter_enforce_zero_max_requests():
     limiter = RateLimiter()
     request = _make_request()
-    result = limiter.enforce(request, "test", 0, 60)
+    result = await limiter.enforce(request, "test", 0, 60)
     assert result is None
 
 
-def test_rate_limiter_enforce_negative_window():
+@pytest.mark.asyncio
+async def test_rate_limiter_enforce_negative_window():
     limiter = RateLimiter()
     request = _make_request()
-    result = limiter.enforce(request, "test", 5, -1)
+    result = await limiter.enforce(request, "test", 5, -1)
     assert result is None
 
 
-def test_rate_limiter_enforce_bucket_cleanup():
-    limiter = RateLimiter()
-    request = _make_request()
+@pytest.mark.asyncio
+async def test_rate_limiter_enforce_bucket_cleanup():
+    from collections import deque as _deque
 
-    limiter._buckets["cleanup:127.0.0.1"] = __import__("collections").deque(
+    limiter = RateLimiter()
+    backend = limiter.backend
+    assert isinstance(backend, MemoryBackend)
+    backend.buckets["cleanup:127.0.0.1"] = _deque(
         [
             time.monotonic() - 120,
             time.monotonic() - 100,
         ]
     )
-    result = limiter.enforce(request, "cleanup", 5, 30)
+    request = _make_request()
+    result = await limiter.enforce(request, "cleanup", 5, 30)
     assert result is not None
     assert result["remaining"] >= 4
 
@@ -168,15 +175,17 @@ def test_not_request(func, expected):
 #  get_user_from_request
 
 
-def test_get_user_from_request_no_token():
+@pytest.mark.asyncio
+async def test_get_user_from_request_no_token():
     request = _make_request()
-    user, user_id = get_user_from_request(request)
+    user, user_id = await get_user_from_request(request)
     assert user is None
     assert user_id is None
 
 
-def test_get_user_from_request_invalid_token():
-    user, user_id = get_user_from_request(_make_request_with_cookie("bad"))
+@pytest.mark.asyncio
+async def test_get_user_from_request_invalid_token():
+    user, user_id = await get_user_from_request(_make_request_with_cookie("bad"))
     assert user is None
     assert user_id is None
 
@@ -193,17 +202,13 @@ def test_get_user_not_found():
 
 
 def test_encode_avatar_empty():
-    class FakeUser:
-        avatar = None
-
-    assert encode_avatar(FakeUser()) == ""
+    user = cast(User, type("FakeUser", (), {"avatar": None})())
+    assert encode_avatar(user) == ""
 
 
 def test_encode_avatar_with_avatar():
-    class FakeUserWithAvatar:
-        avatar = b"fake-binary-data"
-
-    result = encode_avatar(FakeUserWithAvatar())
+    user = cast(User, type("FakeUserWithAvatar", (), {"avatar": b"fake-binary-data"})())
+    result = encode_avatar(user)
     assert isinstance(result, str)
     assert len(result) > 0
 
@@ -317,7 +322,7 @@ def test_chatbot_context_basic():
     }
     request = Request(scope)
     ctx = chatbot_context(
-        "fake-user", [], request=request, message="hi", response="hello"
+        cast(User, cast(object, "fake-user")), [], request=request, message="hi", response="hello"
     )
     assert ctx["user"] == "fake-user"
     assert ctx["message"] == "hi"
@@ -391,7 +396,7 @@ def test_chatbot_context_with_extra():
     }
     request = Request(scope)
     ctx = chatbot_context(
-        "user", [], request=request, message="m", response="r", extra_field="x"
+        cast(User, cast(object, "user")), [], request=request, message="m", response="r", extra_field="x"
     )
     assert ctx["extra_field"] == "x"
     assert ctx["message"] == "m"
@@ -461,9 +466,6 @@ def test_routes_chatbot_response_openai_success(monkeypatch):
 
 def test_routes_chatbot_response_retry_failure(monkeypatch):
     _enable_openai(monkeypatch)
-
-    def _fail(*a, **kw):
-        raise openai_mod.APITimeoutError(httpx.Request("GET", "http://test"))
 
     class MockClient:
         class Chat:

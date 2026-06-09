@@ -1,4 +1,6 @@
-// This file contains JavaScript code for handling chatbot interactions, dynamic textarea resizing, and conversation deletion with confirmation dialogs. It also includes error handling and markdown rendering for chatbot responses.
+/* global marked, DOMPurify */
+
+// This file contains JavaScript code for handling chatbot interactions, dynamic textarea resizing, and conversation deletion with confirmation dialogs. It also includes error handling and Markdown rendering for chatbot responses.
 
 document.addEventListener("DOMContentLoaded", () => {
     const messageTextareas = document.querySelectorAll(".chat_textarea");
@@ -23,9 +25,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (confirmDeleteConversation) {
         confirmDeleteConversation.addEventListener("click", async () => {
+            const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            const csrfToken = csrfMeta ? csrfMeta.getAttribute("content") : "";
+
             try {
-                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
-                const csrfToken = csrfMeta ? csrfMeta.getAttribute("content") : "";
                 const response = await fetch("/clear_chatbot_messages", {
                     method: "POST",
                     headers: {
@@ -36,7 +39,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Request failed with status ${response.status}`);
+                    console.error("Request failed:", response.status);
+                    alert("Could not delete the conversation. Please try again.");
+                    return;
                 }
 
                 window.location.href = "/chatbot";
@@ -131,6 +136,7 @@ document.addEventListener("DOMContentLoaded", () => {
             lines.pop();
         }
 
+        /** @type {number[]} */
         const indents = lines
             .filter((line) => line.trim())
             .map((line) => line.match(/^\s*/)?.[0].length || 0);
@@ -140,7 +146,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return lines.map((line) => line.slice(minIndent)).join("\n").trim();
     };
 
-    // Render chatbot responses that may contain markdown, ensuring any existing content is processed on page load
+    // Render chatbot responses that may contain Markdown, ensuring any existing content is processed on page load
 
     const renderChatbotMarkdown = (element, sourceText) => {
         if (!element) {
@@ -169,7 +175,7 @@ document.addEventListener("DOMContentLoaded", () => {
         element.dataset.chatbotRendered = "true";
     };
 
-    // On page load, find any existing chatbot responses and render their markdown content properly
+    // On page load, find any existing chatbot responses and render their Markdown content properly
 
     const hydrateExistingChatbotResponses = () => {
         document.querySelectorAll("[data-chatbot-response]").forEach((element) => {
@@ -320,6 +326,23 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }
 
+        /** @param {({ message?: string, details?: unknown, error_type?: string }|null)} [payload]
+         * @param {Error} [error] */
+        const handleSendError = (payload, error) => {
+            const title =
+                payload?.message ||
+                payload?.details?.message ||
+                error?.message ||
+                "Could not send the message. Please try again.";
+            const details =
+                payload?.details || payload?.error_type || payload?.message || error?.message;
+            showChatbotStatus(title, details);
+
+            if (pendingCard) {
+                pendingCard.botMessage.textContent = "Chatbot failed to respond. Please try again.";
+            }
+        };
+
         try {
             const response = await fetch(chatbotForm.action, {
                 method: chatbotForm.method,
@@ -350,9 +373,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                 }
 
-                const error = new Error(errorPayload.message || "Could not send the message");
-                error.payload = errorPayload;
-                throw error;
+                handleSendError(errorPayload, null);
+                console.error("Request failed:", errorPayload);
+                return;
             }
 
             const contentType = response.headers.get("content-type") || "";
@@ -376,35 +399,16 @@ document.addEventListener("DOMContentLoaded", () => {
             messageTextareas.forEach((textarea) => {
                 textarea.style.height = "auto";
             });
-            if (loadingOverlay) {
-                loadingOverlay.classList.remove("is-visible");
-            }
-            if (submitButton) {
-                submitButton.disabled = false;
-            }
         } catch (error) {
+            handleSendError(null, error);
+            console.error(error);
+        } finally {
             if (loadingOverlay) {
                 loadingOverlay.classList.remove("is-visible");
             }
-
             if (submitButton) {
                 submitButton.disabled = false;
             }
-
-            const payload = error && error.payload ? error.payload : null;
-            const title =
-                payload?.message ||
-                payload?.details?.message ||
-                error.message ||
-                "Could not send the message. Please try again.";
-            const details =
-                payload?.details || payload?.error_type || payload?.message || error.message;
-            showChatbotStatus(title, details);
-
-            if (pendingCard) {
-                pendingCard.botMessage.textContent = "Chatbot failed to respond. Please try again.";
-            }
-            console.error(error);
         }
     });
 });

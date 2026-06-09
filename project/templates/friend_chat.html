@@ -205,9 +205,10 @@
                   onclick="DeleteConfirmationClose()">
                   Cancel
                 </button>
-                <a href="{{ url_for('block_friend', friend_id=friend.id) }}"
-                  ><button class="btn btn-danger text-dark">Confirm</button></a
-                >
+                <form action="{{ url_for('block_friend', friend_id=friend.id) }}" method="POST" style="display:inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button type="submit" class="btn btn-danger text-dark">Confirm</button>
+                </form>
               </div>
             </dialog>
             {% else %}
@@ -227,9 +228,10 @@
                   onclick="DeleteConfirmationClose()">
                   Cancel
                 </button>
-                <a href="{{ url_for('unblock_friend', friend_id=friend.id) }}"
-                  ><button class="btn btn-danger text-dark">Confirm</button></a
-                >
+                <form action="{{ url_for('unblock_friend', friend_id=friend.id) }}" method="POST" style="display:inline">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button type="submit" class="btn btn-danger text-dark">Confirm</button>
+                </form>
               </div>
             </dialog>
             {% endif %}

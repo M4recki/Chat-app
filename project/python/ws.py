@@ -5,9 +5,10 @@ from json import dumps, loads
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from itsdangerous.exc import BadSignature, SignatureExpired
+from sqlalchemy import select
 
 from .connection_manager import manager
-from .database import session_scope
+from .database import async_session_scope
 from .models import Message, User
 from .settings import settings
 
@@ -50,9 +51,10 @@ async def websocket_endpoint(websocket: WebSocket, channel_id: str):
         await websocket.close(code=4008)
         return
 
-    # Look up user name from database
-    with session_scope() as db:
-        user = db.query(User).filter(User.id == user_id).first()
+    # Look up username from database
+    async with async_session_scope() as db:
+        result = await db.execute(select(User).filter(User.id == user_id))
+        user = result.scalar()
         if user is None:
             await websocket.close(code=4008)
             return
@@ -123,7 +125,7 @@ async def websocket_endpoint(websocket: WebSocket, channel_id: str):
 
                 await manager.broadcast(dumps(message_object), channel_id)
 
-                with session_scope() as db:
+                async with async_session_scope() as db:
                     new_message = Message(
                         content=message,
                         channel_id=channel_id,
@@ -131,7 +133,6 @@ async def websocket_endpoint(websocket: WebSocket, channel_id: str):
                         user_id=user_id,
                     )
                     db.add(new_message)
-                    db.commit()
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, channel_id, user_id)

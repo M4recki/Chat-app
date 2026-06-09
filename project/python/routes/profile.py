@@ -1,12 +1,13 @@
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
+from sqlalchemy import select
 from werkzeug.security import generate_password_hash
 
-from ..database import session_scope
+from ..database import async_session_scope
 from ..models import User
-from .helpers import get_current_user, validate_csrf
+from .helpers import get_current_user, validate_csrf, validate_email
 from .template import templates
 
 router = APIRouter()
@@ -16,7 +17,7 @@ router = APIRouter()
 async def update_profile_page(
     request: Request,
     user: User = Depends(get_current_user),
-):
+) -> Response:
     """Render the update profile page.
 
     Args:
@@ -43,7 +44,7 @@ async def update_profile_data(
     password: str = Form(None),
     confirm_password: str = Form(None),
     user: User = Depends(get_current_user),
-):
+) -> Response:
     """Handle update profile form submission.
 
     Args:
@@ -61,6 +62,9 @@ async def update_profile_data(
     """
 
     errors = {}
+
+    if email is not None and not validate_email(email):
+        errors["email"] = "Invalid email format"
 
     if password is not None and len(password) < 8:
         errors["password"] = "Password must be at least 8 characters long"
@@ -87,8 +91,9 @@ async def update_profile_data(
                 img_binary.write(avatar_data)
                 user.avatar = img_binary.getvalue()
 
-    with session_scope() as db:
-        updated_user = db.query(User).filter(User.id == user.id).first()
+    async with async_session_scope() as db:
+        result = await db.execute(select(User).filter(User.id == user.id))
+        updated_user = result.scalar()
         if name is not None:
             updated_user.name = name
         if surname is not None:
@@ -99,6 +104,5 @@ async def update_profile_data(
             updated_user.password = generate_password_hash(password)
         if avatar and avatar.content_type:
             updated_user.avatar = user.avatar
-        db.commit()
 
     return RedirectResponse(request.url_for("single_chat"), status_code=303)

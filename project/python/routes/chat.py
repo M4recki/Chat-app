@@ -1,35 +1,27 @@
 from base64 import b64encode
-from hashlib import sha256
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
+from sqlalchemy import or_, select
 
-from ..database import session_scope
+from ..database import async_session_scope
 from ..models import Channel, Friend, FriendStatus, Message, User
-from .helpers import get_current_user, get_user
+from .helpers import (
+    create_channel,
+    get_current_user,
+    get_friendship,
+    get_user,
+)
 from .template import encode_avatar, templates
 
 router = APIRouter()
-
-
-def generate_channel_id(user1_id, user2_id):
-    """Generate a unique channel ID.
-
-    Args:
-        user1_id: ID of first user
-        user2_id: ID of second user
-
-    Returns:
-        str: The generated channel ID
-    """
-    unique_string = f"{user1_id}{user2_id}"
-    return sha256(unique_string.encode()).hexdigest()
 
 
 @router.get("/single_chat")
 async def single_chat(
     request: Request,
     user: User = Depends(get_current_user),
-):
+) -> Response:
     """Display the user's chat channels.
 
     Args:
@@ -39,66 +31,62 @@ async def single_chat(
     Returns:
         Response: Single chat template
     """
-    with session_scope() as db:
-        friends = (
-            db.query(User)
+    async with async_session_scope() as db:
+        result = await db.execute(
+            select(User).distinct()
             .join(
                 Friend,
-                (Friend.user1_id == User.id) | (Friend.user2_id == User.id),
+                or_(Friend.user1_id == User.id, Friend.user2_id == User.id),
             )
             .filter(
-                Friend.status == FriendStatus.ACCEPTED.value,
-                ((Friend.user1_id == user.id) & (User.id == Friend.user2_id))
-                | ((Friend.user2_id == user.id) & (User.id == Friend.user1_id)),
+                Friend.status.in_([FriendStatus.ACCEPTED.value, FriendStatus.BLOCKED.value]),
+                or_(
+                    (Friend.user1_id == user.id) & (User.id == Friend.user2_id),
+                    (Friend.user2_id == user.id) & (User.id == Friend.user1_id),
+                ),
             )
-            .all()
         )
+        friends = result.scalars().all()
 
-        friend_status_value = None
         friend_avatars = {}
+        friend_status_map = {}
         channel_ids = {}
 
         if friends:
-            for friend in friends:
-                friend_id = friend.id
-                friend_avatars[friend_id] = b64encode(friend.avatar).decode()
+            friend_ids = [f.id for f in friends]
+            friend_avatars = {
+                f.id: b64encode(f.avatar).decode()
+                for f in friends
+            }
 
-                existing_channel = (
-                    db.query(Channel)
-                    .filter(
-                        (Channel.user1_id == user.id) & (Channel.user2_id == friend_id)
-                        | (Channel.user1_id == friend_id)
-                        & (Channel.user2_id == user.id)
+            result_friendships = await db.execute(
+                select(Friend).filter(
+                    or_(
+                        (Friend.user1_id == user.id) & (Friend.user2_id.in_(friend_ids)),
+                        (Friend.user2_id == user.id) & (Friend.user1_id.in_(friend_ids)),
                     )
-                    .first()
                 )
+            )
+            for fs in result_friendships.scalars().all():
+                other_id = fs.user2_id if fs.user1_id == user.id else fs.user1_id
+                friend_status_map[other_id] = fs.status
 
-                if existing_channel:
-                    channel_ids[friend_id] = existing_channel.channel_id
-                else:
-                    channel_id = generate_channel_id(user.id, friend_id)
-                    new_channel = Channel(
-                        channel_id=channel_id,
-                        user1_id=user.id,
-                        user2_id=friend_id,
+            result_channels = await db.execute(
+                select(Channel).filter(
+                    or_(
+                        (Channel.user1_id == user.id) & (Channel.user2_id.in_(friend_ids)),
+                        (Channel.user2_id == user.id) & (Channel.user1_id.in_(friend_ids)),
                     )
-                    db.add(new_channel)
-                    db.commit()
-                    channel_ids[friend_id] = channel_id
-
-                friend_status = (
-                    db.query(Friend)
-                    .filter(
-                        (Friend.user1_id == user.id) & (Friend.user2_id == friend_id)
-                        | (
-                            (Friend.user1_id == friend_id)
-                            & (Friend.user2_id == user.id)
-                        )
-                    )
-                    .first()
                 )
+            )
+            for ch in result_channels.scalars().all():
+                other_id = ch.user2_id if ch.user1_id == user.id else ch.user1_id
+                channel_ids[other_id] = ch.channel_id
 
-                friend_status_value = friend_status.status if friend_status else None
+            for fid in friend_ids:
+                if fid not in channel_ids:
+                    ch = await create_channel(db, user.id, fid)
+                    channel_ids[fid] = ch.channel_id
 
     return templates.TemplateResponse(
         request,
@@ -108,7 +96,7 @@ async def single_chat(
             "friends": friends,
             "user": user,
             "friend_avatars": friend_avatars,
-            "friend_status": friend_status_value,
+            "friend_status_map": friend_status_map,
             "channel_ids": channel_ids,
         },
     )
@@ -120,7 +108,7 @@ async def friend_chat_page(
     channel_id: str,
     friend_id: int,
     user: User = Depends(get_current_user),
-):
+) -> Response:
     """
     Retrieve chat messages for a friend chat channel.
 
@@ -136,24 +124,25 @@ async def friend_chat_page(
     Returns:
         TemplateResponse: Rendered template with chat context
     """
-    with session_scope() as db:
-        friend = db.query(User).filter(User.id == friend_id).first()
+    async with async_session_scope() as db:
+        result = await db.execute(select(User).filter(User.id == friend_id))
+        friend = result.scalar()
         if not friend:
             raise HTTPException(status_code=404, detail="Friend not found")
 
-        messages = db.query(Message).filter(Message.channel_id == channel_id).all()
-
-        channel = db.query(Channel).filter(Channel.channel_id == channel_id).first()
-
-        friend_status = (
-            db.query(Friend)
-            .filter(
-                (Friend.user1_id == user.id) & (Friend.user2_id == friend_id)
-                | (Friend.user1_id == friend_id) & (Friend.user2_id == user.id)
-            )
-            .first()
+        result_messages = await db.execute(
+            select(Message)
+            .filter(Message.channel_id == channel_id)
+            .order_by(Message.created_at.asc())
         )
+        messages = result_messages.scalars().all()
 
+        result_channel = await db.execute(
+            select(Channel).filter(Channel.channel_id == channel_id)
+        )
+        channel = result_channel.scalar()
+
+        friend_status = await get_friendship(db, user.id, friend_id)
         friend_status_value = friend_status.status if friend_status else None
 
         if not channel:

@@ -14,7 +14,7 @@ from project.python.models import User, Friend, Channel, Message
 from project.python.routes import generate_csrf_token
 from project.python.models import Friend as FriendModel, FriendStatus
 from project.python.models import Friend as Incoming
-from project.python.rate_limit import rate_limiter
+from project.python.rate_limit import clear_rate_limiter
 
 
 def set_access_token(user_id: int, target_client=client) -> None:
@@ -111,7 +111,7 @@ def test_chatbot_requires_auth_returns_401_json():
 
 
 def test_search_user_rate_limit_429_headers():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     local_client = TestClient(app, raise_server_exceptions=False)
     db = TestingSessionLocal()
     user = create_user(
@@ -213,7 +213,7 @@ def test_authenticated_page_returns_401_html():
 
 
 def test_chatbot_rate_limit_429_json():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     local_client = TestClient(app, raise_server_exceptions=False)
     db = TestingSessionLocal()
     user = create_user(
@@ -248,7 +248,7 @@ def test_chatbot_rate_limit_429_json():
 
 
 def test_login_rate_limit_429():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     local_client = TestClient(app, raise_server_exceptions=False)
     csrf_token = generate_csrf_token(0)
     limit = settings.rate_limit_login_max_requests
@@ -274,7 +274,7 @@ def test_login_rate_limit_429():
 
 
 def test_rate_limit_429_contains_all_headers():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     local_client = TestClient(app, raise_server_exceptions=False)
     limit = settings.rate_limit_search_max_requests
     for _ in range(limit):
@@ -413,7 +413,7 @@ def test_sign_up_password_not_alphanumeric():
 
 
 def test_sign_up_and_login():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     local_client = TestClient(
         app, raise_server_exceptions=False, follow_redirects=False
     )
@@ -686,12 +686,15 @@ def test_add_friend_old_pending_renews_last_sent(monkeypatch):
 
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
-    response = local_client.get(f"/add_friend/{target.id}")
+    response = local_client.post(
+        f"/add_friend/{target.id}",
+        data={"csrf_token": generate_csrf_token(user.id)},
+    )
     assert response.status_code == 200
 
 
 def test_chatbot_missing_message_validation():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     db = TestingSessionLocal()
     user = create_user(
         db,
@@ -747,7 +750,10 @@ def test_add_friend():
     )
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
-    response = local_client.get(f"/add_friend/{target.id}")
+    response = local_client.post(
+        f"/add_friend/{target.id}",
+        data={"csrf_token": generate_csrf_token(user.id)},
+    )
     assert response.status_code == 200
 
 
@@ -779,7 +785,10 @@ def test_add_friend_duplicate_pending():
     db.commit()
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
-    response = local_client.get(f"/add_friend/{target.id}")
+    response = local_client.post(
+        f"/add_friend/{target.id}",
+        data={"csrf_token": generate_csrf_token(user.id)},
+    )
     assert response.status_code == 400
 
 
@@ -811,7 +820,10 @@ def test_add_friend_duplicate_denied():
     db.commit()
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
-    response = local_client.get(f"/add_friend/{target.id}")
+    response = local_client.post(
+        f"/add_friend/{target.id}",
+        data={"csrf_token": generate_csrf_token(user.id)},
+    )
     assert response.status_code == 200
 
 
@@ -843,7 +855,10 @@ def test_accept_friend():
     db.commit()
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
-    response = local_client.get(f"/accept_friend/{requester.id}")
+    response = local_client.post(
+        f"/accept_friend/{requester.id}",
+        data={"csrf_token": generate_csrf_token(user.id)},
+    )
     assert response.status_code == 200
 
 
@@ -875,7 +890,10 @@ def test_deny_friend():
     db.commit()
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
-    response = local_client.get(f"/deny_friend/{requester.id}")
+    response = local_client.post(
+        f"/deny_friend/{requester.id}",
+        data={"csrf_token": generate_csrf_token(user.id)},
+    )
     assert response.status_code == 200
 
 
@@ -907,7 +925,10 @@ def test_block_friend():
     db.commit()
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
-    response = local_client.get(f"/block_friend/{target.id}")
+    response = local_client.post(
+        f"/block_friend/{target.id}",
+        data={"csrf_token": generate_csrf_token(user.id)},
+    )
     assert response.status_code == 200
 
 
@@ -939,7 +960,10 @@ def test_unblock_friend():
     db.commit()
     local_client = TestClient(app, raise_server_exceptions=False)
     set_access_token(user.id, target_client=local_client)
-    response = local_client.get(f"/unblock_friend/{target.id}")
+    response = local_client.post(
+        f"/unblock_friend/{target.id}",
+        data={"csrf_token": generate_csrf_token(user.id)},
+    )
     assert response.status_code == 200
 
 

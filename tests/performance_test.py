@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from conftest import client
 from project.python.main import app
-from project.python.rate_limit import rate_limiter
+from project.python.rate_limit import clear_rate_limiter
 from project.python.routes import generate_csrf_token
 from project.python.settings import settings
 from tests.model_test import TestingSessionLocal
@@ -15,7 +15,7 @@ from PIL import Image
 
 
 def test_rate_limiter_parallel_requests():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     n_requests = 20
     results = []
 
@@ -34,7 +34,7 @@ def test_rate_limiter_parallel_requests():
 
 
 def test_concurrent_signup():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     n_users = 5
     users = []
 
@@ -65,7 +65,7 @@ def test_concurrent_signup():
 
 
 def test_concurrent_login():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     email = f"perf-login-{time.time_ns()}@example.com"
 
     reg_client = TestClient(app, follow_redirects=False)
@@ -145,7 +145,7 @@ def test_websocket_multiple_broadcast():
 
 
 def test_endpoint_response_times():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     endpoints = ["/", "/login", "/sign_up", "/contact"]
     max_time_ms = 500
 

@@ -46,6 +46,9 @@ class Settings(BaseSettings):
         "mistralai/mistral-large-3-675b-instruct-2512",
     ]
 
+    # Redis
+    redis_url: str = ""
+
     # Rate limiting
     rate_limit_login_max_requests: int = 10
     rate_limit_login_window_seconds: int = 60

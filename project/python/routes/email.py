@@ -5,7 +5,7 @@ from ssl import create_default_context
 from ..settings import settings
 
 
-def send_email(email_address, subject, message):
+def send_email(email_address: str, subject: str, message: str) -> str | None:
     """Send an email using SMTP.
 
     Args:

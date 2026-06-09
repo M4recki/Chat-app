@@ -4,7 +4,7 @@ from conftest import client
 from project.python.main import app
 from project.python.settings import settings
 from project.python.routes import generate_csrf_token
-from project.python.rate_limit import rate_limiter
+from project.python.rate_limit import clear_rate_limiter
 from tests.integration_test import create_user
 from tests.model_test import TestingSessionLocal
 from project.python.models import Friend
@@ -29,7 +29,7 @@ def _auth_client():
 
 
 def _clear_rate_limiter():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
 
 
 #  SQL injection
@@ -156,7 +156,10 @@ def test_token_for_other_user():
     token_a = serializer.dumps({"user_id": user_a.id})
     local = TestClient(app, raise_server_exceptions=False)
     local.cookies.set("access_token", token_a)
-    response = local.get(f"/add_friend/{user_b.id}")
+    response = local.post(
+        f"/add_friend/{user_b.id}",
+        data={"csrf_token": generate_csrf_token(user_a.id)},
+    )
     assert response.status_code == 200
 
     # Verify the friend request was created for

@@ -9,7 +9,7 @@ from project.python.routes import (
 )
 from project.python.settings import settings
 from project.python.main import app
-from project.python.rate_limit import rate_limiter
+from project.python.rate_limit import clear_rate_limiter
 from tests.integration_test import create_user
 from tests.model_test import TestingSessionLocal
 from conftest import client
@@ -120,7 +120,7 @@ _csrf = generate_csrf_token(0)
 
 
 def test_very_long_strings_in_signup():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     long_name = "A" * 500
     response = client.post(
         "/sign_up",
@@ -138,7 +138,7 @@ def test_very_long_strings_in_signup():
 
 
 def test_unicode_in_signup():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     response = client.post(
         "/sign_up",
         data={
@@ -155,7 +155,7 @@ def test_unicode_in_signup():
 
 
 def test_special_characters_in_name():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     response = client.post(
         "/sign_up",
         data={
@@ -172,7 +172,7 @@ def test_special_characters_in_name():
 
 
 def test_very_long_email():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     local_part = "a" * 200
     response = client.post(
         "/sign_up",
@@ -239,7 +239,7 @@ def test_html_injection_in_chatbot():
 
 
 def test_contact_with_long_message():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     response = client.post(
         "/contact",
         data={

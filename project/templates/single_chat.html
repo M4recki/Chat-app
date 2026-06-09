@@ -46,9 +46,33 @@
               </div>
 
               {% for friend in friends %}
+              {% set status = friend_status_map.get(friend.id) %}
               <div
                 class="col-12 col-sm-6 col-xl-4 d-flex justify-content-center">
                 <div class="card sidebar-list-card search-user-card">
+                  {% if status == "blocked" %}
+                  <div class="card-body text-center search-user-card-body">
+                    <div class="position-relative d-inline-block">
+                      <img
+                        class="card-img-top user-image mx-auto mt-2"
+                        src="data:image/jpeg;base64,{{ friend_avatars[friend.id] }}"
+                        alt="{{ friend.name }}'s avatar" />
+                      <span
+                        class="online-indicator-dot"
+                        data-user-id="{{ friend.id }}"></span>
+                    </div>
+                    <div class="card-body px-2 pb-2">
+                      <p class="card-title lead text-secondary mb-2">
+                        {{ friend.name }} {{ friend.surname }}
+                      </p>
+                      <p class="text-muted mb-2">Blocked</p>
+                      <form action="{{ url_for('unblock_friend', friend_id=friend.id) }}" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn btn-outline-success btn-sm w-100">Unblock</button>
+                      </form>
+                    </div>
+                  </div>
+                  {% else %}
                   <a
                     href="{{ url_for('friend_chat_page', channel_id=channel_ids[friend.id], friend_id=friend.id) }}"
                     class="text-decoration-none text-body">
@@ -70,6 +94,7 @@
                       </div>
                     </div>
                   </a>
+                  {% endif %}
                 </div>
               </div>
               {% endfor %}

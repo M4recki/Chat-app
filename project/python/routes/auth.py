@@ -2,15 +2,16 @@ from datetime import datetime
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from PIL import Image
+from sqlalchemy import select
 from werkzeug.security import generate_password_hash
 
-from ..database import session_scope
+from ..database import async_session_scope
 from ..models import User
 from ..settings import settings
-from .helpers import is_authenticated, validate_csrf_optional
+from .helpers import is_authenticated, validate_csrf_optional, validate_email
 from .template import DEFAULT_AVATAR_PATH, render_template
 
 router = APIRouter()
@@ -38,7 +39,7 @@ async def sign_up_data(
     password: str = Form(...),
     confirm_password: str = Form(...),
     terms_conditions: bool = Form(...),
-):
+) -> Response:
     """Handle sign up form submission.
 
     Args:
@@ -53,12 +54,16 @@ async def sign_up_data(
     Returns:
         Response: Redirect to home or sign up template
     """
-    with session_scope() as db:
-        user = db.query(User).filter(User.email == email).first()
+    async with async_session_scope() as db:
+        result = await db.execute(select(User).filter(User.email == email))
+        user = result.scalar()
 
         errors = {}
 
-        if user:
+        if not validate_email(email):
+            errors["email"] = "Invalid email format"
+
+        if user and "email" not in errors:
             errors["email"] = "User with this email already exists"
 
         if len(password) < 8:
@@ -86,7 +91,8 @@ async def sign_up_data(
             created_at=datetime.now(),
         )
         db.add(new_user)
-        db.commit()
+        await db.commit()
+        await db.refresh(new_user)
 
     s = Serializer(settings.chat_secret_key)
     token = s.dumps({"user_id": new_user.id})
@@ -122,7 +128,7 @@ def login_page(request: Request):
 @router.post("/login", dependencies=[Depends(validate_csrf_optional)])
 async def login_data(
     request: Request, email: str = Form(...), password: str = Form(...)
-):
+) -> Response:
     """Handle login form submission.
 
     Args:
@@ -135,8 +141,9 @@ async def login_data(
     """
     from werkzeug.security import check_password_hash
 
-    with session_scope() as db:
-        user = db.query(User).filter(User.email == email).first()
+    async with async_session_scope() as db:
+        result = await db.execute(select(User).filter(User.email == email))
+        user = result.scalar()
 
         errors = {}
 
@@ -165,7 +172,7 @@ async def login_data(
 
 
 @router.get("/logout", dependencies=[Depends(is_authenticated)])
-def logout(request: Request):
+def logout(request: Request) -> Response:
     """Logout the currently authenticated user.
 
     Args:

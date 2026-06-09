@@ -83,7 +83,7 @@ async def rate_limit_middleware(request: Request, call_next):
     try:
         for rule in RATE_LIMIT_RULES:
             if path == rule["path"] and method in rule["methods"]:
-                rate_limit_meta = enforce_rate_limit(
+                rate_limit_meta = await enforce_rate_limit(
                     request,
                     rule["scope"],
                     rule["max_requests"],

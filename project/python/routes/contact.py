@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Form, Request
 
 from .email import send_email
-from .helpers import validate_csrf_optional
+from .helpers import validate_csrf_optional, validate_email
 from .template import render_template
 
 router = APIRouter()
@@ -41,6 +41,9 @@ async def contact_data(
         Response: Redirect to home page on success
     """
     errors = {}
+
+    if not validate_email(email):
+        errors["email"] = "Invalid email format"
 
     if len(message) < 10:
         errors["message"] = "Message must contain at least 10 characters"

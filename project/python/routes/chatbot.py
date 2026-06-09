@@ -2,6 +2,8 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, Request
+from fastapi.responses import Response
+from sqlalchemy import select
 
 from ..chatbot_utils import (
     ChatbotServiceError,
@@ -10,7 +12,7 @@ from ..chatbot_utils import (
     chatbot_json_success,
     chatbot_response,
 )
-from ..database import session_scope
+from ..database import async_session_scope
 from ..models import ChatbotMessage, User
 from ..settings import settings
 from .helpers import get_current_user, validate_csrf
@@ -23,7 +25,7 @@ router = APIRouter()
 async def chatbot_page(
     request: Request,
     user: User = Depends(get_current_user),
-):
+) -> Response:
     """
     Render the chatbot chat page.
 
@@ -38,10 +40,11 @@ async def chatbot_page(
     """
     user.avatar = encode_avatar(user)
 
-    with session_scope() as db:
-        chatbot_messages = (
-            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
+    async with async_session_scope() as db:
+        result = await db.execute(
+            select(ChatbotMessage).filter(ChatbotMessage.user_id == user.id)
         )
+        chatbot_messages = result.scalars().all()
 
     return templates.TemplateResponse(
         request,
@@ -63,7 +66,7 @@ async def chatbot(
     request: Request,
     message: str = Form(...),
     user: User = Depends(get_current_user),
-):
+) -> Response:
     """
     Send a new message to the chatbot.
 
@@ -100,14 +103,14 @@ async def chatbot(
         )
 
     history_limit = max(0, settings.chatbot_history_limit)
-    with session_scope() as db:
-        recent_history = (
-            db.query(ChatbotMessage)
+    async with async_session_scope() as db:
+        result = await db.execute(
+            select(ChatbotMessage)
             .filter(ChatbotMessage.user_id == user.id)
             .order_by(ChatbotMessage.created_at.desc())
             .limit(history_limit)
-            .all()
         )
+        recent_history = result.scalars().all()
         recent_history.reverse()
 
     try:
@@ -161,17 +164,17 @@ async def chatbot(
         response=response,
         created_at=created_at,
     )
-    with session_scope() as db:
+    async with async_session_scope() as db:
         db.add(chatbot_message)
-        db.commit()
 
     if is_ajax:
         return chatbot_json_success(message, response, created_at)
 
-    with session_scope() as db:
-        chatbot_messages = (
-            db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).all()
+    async with async_session_scope() as db:
+        result = await db.execute(
+            select(ChatbotMessage).filter(ChatbotMessage.user_id == user.id)
         )
+        chatbot_messages = result.scalars().all()
 
     return templates.TemplateResponse(
         request,
@@ -193,7 +196,7 @@ async def chatbot(
 async def clear_chatbot_messages(
     request: Request,
     user: User = Depends(get_current_user),
-):
+) -> Response:
     """
     Clear all past chatbot messages for the user.
 
@@ -204,9 +207,12 @@ async def clear_chatbot_messages(
     Returns:
         TemplateResponse: The chatbot chat page
     """
-    with session_scope() as db:
-        (db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).delete())
-        db.commit()
+    async with async_session_scope() as db:
+        result = await db.execute(
+            select(ChatbotMessage).filter(ChatbotMessage.user_id == user.id)
+        )
+        for msg in result.scalars().all():
+            await db.delete(msg)
 
     return templates.TemplateResponse(
         request,

@@ -17,7 +17,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_AVATAR_PATH = PROJECT_DIR / "static" / "img" / "default avatar.png"
 
 
-def encode_avatar(user):
+def encode_avatar(user: User | None) -> str:
     """Encode user avatar to base64 string for display in templates.
 
     Args:
@@ -35,7 +35,7 @@ def encode_avatar(user):
 # User image
 
 
-def user_image(request: object):
+def user_image(request: Request) -> dict[str, str]:
     """Get user image from database.
 
     Args:
@@ -68,7 +68,7 @@ def user_image(request: object):
 # Username
 
 
-def user_name(request: object):
+def user_name(request: Request) -> dict[str, str | None]:
     """Get username from database.
 
     Args:
@@ -125,7 +125,7 @@ templates = Jinja2Templates(
 )
 
 
-def render_template(name: str, request: Request, **kwargs):
+def render_template(name: str, request: Request, **kwargs: object) -> HTMLResponse:
     """Render template with auto-injected context data.
 
     Args:
@@ -136,7 +136,7 @@ def render_template(name: str, request: Request, **kwargs):
     Returns:
         HTMLResponse with rendered template
     """
-    context = {"request": request}
+    context: dict[str, object] = {"request": request}
     context.update(authentication_in_header(request))
     context.update(csrf_context(request))
     context.update(user_image(request))

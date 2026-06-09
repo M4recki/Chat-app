@@ -44,11 +44,10 @@
                       </p>
                       <p class="text-muted mb-3">Wants to be your friend.</p>
                       <div class="d-grid gap-2">
-                        <a
-                          href="{{ url_for('accept_friend', friend_id=friend_request.user1_id) }}"
-                          class="btn btn-success">
-                          Accept
-                        </a>
+                        <form action="{{ url_for('accept_friend', friend_id=friend_request.user1_id) }}" method="POST">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                          <button type="submit" class="btn btn-success w-100">Accept</button>
+                        </form>
                         <button
                           class="btn btn-outline-danger"
                           onclick="document.getElementById('delete-confirmation-{{ friend_request.user1_id }}').showModal()">
@@ -68,12 +67,10 @@
                         onclick="DeleteConfirmationClose('delete-confirmation-{{ friend_request.user1_id }}')">
                         Cancel
                       </button>
-                      <a
-                        href="{{ url_for('deny_friend', friend_id=friend_request.user1_id) }}">
-                        <button class="btn btn-danger text-dark">
-                          Confirm
-                        </button>
-                      </a>
+                      <form action="{{ url_for('deny_friend', friend_id=friend_request.user1_id) }}" method="POST" style="display:inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn btn-danger text-dark">Confirm</button>
+                      </form>
                     </div>
                   </dialog>
                 </div>

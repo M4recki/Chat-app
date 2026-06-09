@@ -38,10 +38,10 @@ class Message(Base):
 
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True)
-    content = Column(String(500), nullable=False)
-    channel_id = Column(String(100), ForeignKey("channels.channel_id"), nullable=False)
+    content = Column(Text, nullable=False)
+    channel_id = Column(String(100), ForeignKey("channels.channel_id"), nullable=False, index=True)
     created_at = Column(DateTime, nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     channel = relationship("Channel", foreign_keys="Message.channel_id")
     user = relationship("User", foreign_keys="Message.user_id")
 
@@ -55,8 +55,8 @@ class Channel(Base):
     __tablename__ = "channels"
     id = Column(Integer, primary_key=True)
     channel_id = Column(String(100), nullable=False, unique=True)
-    user1_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    user2_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user1_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user2_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     user1 = relationship("User", foreign_keys="Channel.user1_id")
     user2 = relationship("User", foreign_keys="Channel.user2_id")
 
@@ -69,10 +69,10 @@ class Friend(Base):
 
     __tablename__ = "friends"
     id = Column(Integer, primary_key=True)
-    user1_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    user2_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user1_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user2_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     status = Column(String(10), nullable=False)
-    blocked_by_user = Column(Integer, ForeignKey("users.id"), nullable=True)
+    blocked_by_user = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     last_sent = Column(DateTime, nullable=False)
     user1 = relationship("User", foreign_keys="Friend.user1_id")
     user2 = relationship("User", foreign_keys="Friend.user2_id")
@@ -87,7 +87,7 @@ class ChatbotMessage(Base):
 
     __tablename__ = "chatbot_messages"
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     message = Column(Text, nullable=False)
     response = Column(Text, nullable=True)
     created_at = Column(DateTime, nullable=False)

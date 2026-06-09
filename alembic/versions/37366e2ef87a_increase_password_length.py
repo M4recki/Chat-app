@@ -17,7 +17,8 @@ depends_on = None
 
 def upgrade():
     op.alter_column(
-        "users", "password",
+        "users",
+        "password",
         type_=sa.String(255),
         existing_type=sa.String(100),
         nullable=False,
@@ -26,7 +27,8 @@ def upgrade():
 
 def downgrade():
     op.alter_column(
-        "users", "password",
+        "users",
+        "password",
         type_=sa.String(100),
         existing_type=sa.String(255),
         nullable=False,

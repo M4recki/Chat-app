@@ -2,11 +2,17 @@ import logging
 from datetime import datetime
 from os import environ
 from textwrap import dedent
-
 import openai
 from fastapi.responses import JSONResponse
 from openai import OpenAI
+from openai.types.chat import (
+    ChatCompletionAssistantMessageParam,
+    ChatCompletionMessageParam,
+    ChatCompletionSystemMessageParam,
+    ChatCompletionUserMessageParam,
+)
 
+from .models import User
 from .settings import settings
 
 
@@ -19,7 +25,7 @@ class ChatbotServiceError(RuntimeError):
 
 
 def normalize_chatbot_response(response_text: str | None):
-    """Normalize the chatbot response by stripping whitespace and dedenting.
+    """Normalize the chatbot response by stripping whitespace and dedent.
 
     Args:
         response_text (str): The raw response text from the chatbot
@@ -32,7 +38,9 @@ def normalize_chatbot_response(response_text: str | None):
     return dedent(response_text).strip()
 
 
-def build_chatbot_messages(user_input: str, previous_messages=None):
+def build_chatbot_messages(
+    user_input: str, previous_messages: list | None = None
+) -> list[ChatCompletionMessageParam]:
     """
     Build the message history for the chatbot API request.
 
@@ -56,19 +64,27 @@ def build_chatbot_messages(user_input: str, previous_messages=None):
         "give a concise estimate, key factors, and a brief caveat."
     )
 
-    messages = [{"role": "system", "content": system_prompt}]
+    messages: list[ChatCompletionMessageParam] = [
+        ChatCompletionSystemMessageParam(role="system", content=system_prompt)
+    ]
     if previous_messages:
         for item in previous_messages:
             if item.message:
-                messages.append({"role": "user", "content": item.message})
+                messages.append(
+                    ChatCompletionUserMessageParam(role="user", content=item.message)
+                )
             if item.response:
-                messages.append({"role": "assistant", "content": item.response})
+                messages.append(
+                    ChatCompletionAssistantMessageParam(
+                        role="assistant", content=item.response
+                    )
+                )
 
-    messages.append({"role": "user", "content": user_input})
+    messages.append(ChatCompletionUserMessageParam(role="user", content=user_input))
     return messages
 
 
-def chatbot_response(user_input: str, previous_messages=None):
+def chatbot_response(user_input: str, previous_messages: list | None = None) -> str:
     """
     Get a response from the chatbot for the given user input.
 
@@ -153,7 +169,9 @@ def chatbot_response(user_input: str, previous_messages=None):
     )
 
 
-def chatbot_context(user, chatbot_messages, **extra):
+def chatbot_context(
+    user: User, chatbot_messages: list, **extra: object
+) -> dict[str, object]:
     """
     Build the context for rendering chatbot templates.
 

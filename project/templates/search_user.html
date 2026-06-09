@@ -61,11 +61,10 @@
                         Request pending
                       </button>
                       {% else %}
-                      <a
-                        href="{{ url_for('add_friend', friend_id=user.id) }}"
-                        class="btn btn-primary mt-3 w-100">
-                        Add friend
-                      </a>
+                      <form action="{{ url_for('add_friend', friend_id=user.id) }}" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn btn-primary mt-3 w-100">Add friend</button>
+                      </form>
                       {% endif %}
                     </div>
                   </div>

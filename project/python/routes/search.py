@@ -1,11 +1,12 @@
 from base64 import b64encode
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import Response
+from sqlalchemy import or_, select
 
-from ..database import session_scope
+from ..database import async_session_scope
 from ..models import Channel, Friend, FriendStatus, User
-from .chat import generate_channel_id
-from .helpers import get_current_user
+from .helpers import create_channel, get_current_user
 from .template import templates
 
 router = APIRouter()
@@ -15,7 +16,7 @@ router = APIRouter()
 async def search_user(
     request: Request,
     user: User = Depends(get_current_user),
-):
+) -> Response:
     """Search for and return other users.
 
     Args:
@@ -25,14 +26,16 @@ async def search_user(
     Returns:
         Response: User search template
     """
-    with session_scope() as db:
-        users = db.query(User).filter(User.id != user.id).all()
+    async with async_session_scope() as db:
+        result = await db.execute(select(User).filter(User.id != user.id))
+        users = result.scalars().all()
 
-        friend_statuses = (
-            db.query(Friend)
-            .filter((Friend.user1_id == user.id) | (Friend.user2_id == user.id))
-            .all()
+        result_friends = await db.execute(
+            select(Friend).filter(
+                or_(Friend.user1_id == user.id, Friend.user2_id == user.id)
+            )
         )
+        friend_statuses = result_friends.scalars().all()
 
         friend_status_map = {}
         channel_ids = {}
@@ -41,37 +44,30 @@ async def search_user(
                 friend_id = friend.user2_id
             else:
                 friend_id = friend.user1_id
-
             friend_status_map[friend_id] = friend.status
 
-            if friend.status == FriendStatus.ACCEPTED.value:
-                existing_channel = (
-                    db.query(Channel)
-                    .filter(
-                        (
-                            (Channel.user1_id == user.id)
-                            & (Channel.user2_id == friend_id)
-                        )
-                        | (
-                            (Channel.user1_id == friend_id)
-                            & (Channel.user2_id == user.id)
-                        )
-                    )
-                    .first()
-                )
+        accepted_ids = [
+            fid for fid, st in friend_status_map.items()
+            if st == FriendStatus.ACCEPTED.value
+        ]
 
-                if existing_channel:
-                    channel_ids[friend_id] = existing_channel.channel_id
-                else:
-                    channel_id = generate_channel_id(user.id, friend_id)
-                    new_channel = Channel(
-                        channel_id=channel_id,
-                        user1_id=user.id,
-                        user2_id=friend_id,
+        if accepted_ids:
+            result_channels = await db.execute(
+                select(Channel).filter(
+                    or_(
+                        (Channel.user1_id == user.id) & (Channel.user2_id.in_(accepted_ids)),
+                        (Channel.user2_id == user.id) & (Channel.user1_id.in_(accepted_ids)),
                     )
-                    db.add(new_channel)
-                    db.commit()
-                    channel_ids[friend_id] = channel_id
+                )
+            )
+            for ch in result_channels.scalars().all():
+                other_id = ch.user2_id if ch.user1_id == user.id else ch.user1_id
+                channel_ids[other_id] = ch.channel_id
+
+            for fid in accepted_ids:
+                if fid not in channel_ids:
+                    ch = await create_channel(db, user.id, fid)
+                    channel_ids[fid] = ch.channel_id
 
         avatar_map = {u.id: b64encode(u.avatar).decode() for u in users if u.avatar}
 

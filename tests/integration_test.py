@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from project.python.main import app
 from project.python.models import User
 from project.python.settings import settings
-from project.python.rate_limit import rate_limiter
+from project.python.rate_limit import clear_rate_limiter
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from project.python.routes import generate_csrf_token
 from tests.model_test import TestingSessionLocal
@@ -148,7 +148,7 @@ def test_login_user(test_db_session):
 
 
 def test_full_flow_register_login_action_logout():
-    rate_limiter._buckets.clear()
+    clear_rate_limiter()
     local = TestClient(
         app,
         raise_server_exceptions=False,

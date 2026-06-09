@@ -1,10 +1,14 @@
+import re
+from hashlib import sha256
+
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from itsdangerous.exc import BadSignature, SignatureExpired
 
 from fastapi import Depends, HTTPException, Request
+from sqlalchemy import or_, select
 
-from ..database import session_scope
-from ..models import User
+from ..database import async_session_scope, session_scope
+from ..models import Channel, Friend, User
 from ..settings import settings
 
 
@@ -32,7 +36,7 @@ def authentication_in_header(request: object) -> dict:
         return {"is_authenticated": False}
 
 
-def is_authenticated(request: Request):
+async def is_authenticated(request: Request) -> bool:
     """Check if user is authenticated based on access token.
 
     Args:
@@ -56,15 +60,16 @@ def is_authenticated(request: Request):
     except BadSignature:
         raise HTTPException(status_code=401, detail="Invalid session token")
 
-    with session_scope() as db:
-        user = db.query(User).filter(User.id == user_id).first()
+    async with async_session_scope() as db:
+        result = await db.execute(select(User).filter(User.id == user_id))
+        user = result.scalar()
 
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return True
 
 
-def get_user_from_request(
+async def get_user_from_request(
     request: Request,
     max_age: int = settings.token_max_age,
 ):
@@ -88,13 +93,14 @@ def get_user_from_request(
     except (SignatureExpired, BadSignature):
         return None, None
 
-    with session_scope() as db:
-        user = db.query(User).filter(User.id == user_id).first()
+    async with async_session_scope() as db:
+        result = await db.execute(select(User).filter(User.id == user_id))
+        user = result.scalar()
 
     return user, user_id
 
 
-def get_user(user_id):
+def get_user(user_id: int) -> User | None:
     """Get user object from database by user ID.
 
     Args:
@@ -108,7 +114,7 @@ def get_user(user_id):
     return user
 
 
-def get_current_user(request: Request) -> User:
+async def get_current_user(request: Request) -> User:
     """FastAPI dependency: extract authenticated user from access token cookie.
 
     Args:
@@ -132,8 +138,9 @@ def get_current_user(request: Request) -> User:
     except BadSignature:
         raise HTTPException(status_code=401, detail="Invalid session token")
 
-    with session_scope() as db:
-        user = db.query(User).filter(User.id == user_id).first()
+    async with async_session_scope() as db:
+        result = await db.execute(select(User).filter(User.id == user_id))
+        user = result.scalar()
 
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
@@ -229,6 +236,82 @@ def generate_csrf_token(user_id: int) -> str:
     """
     s = Serializer(settings.chat_secret_key + "_csrf")
     return s.dumps({"user_id": user_id})
+
+_EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+
+
+def validate_email(email: str) -> bool:
+    """Check if the given string is a valid email address.
+
+    Args:
+        email: The email string to validate
+
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    return bool(_EMAIL_PATTERN.match(email))
+
+
+async def get_friendship(db, user_id: int, other_id: int):
+    """Find a friendship between two users (either direction)."""
+    result = await db.execute(
+        select(Friend).filter(
+            or_(
+                (Friend.user1_id == user_id) & (Friend.user2_id == other_id),
+                (Friend.user1_id == other_id) & (Friend.user2_id == user_id),
+            )
+        )
+    )
+    return result.scalar()
+
+
+async def get_channel(db, user_id: int, other_id: int):
+    """Find a channel between two users (either direction)."""
+    result = await db.execute(
+        select(Channel).filter(
+            or_(
+                (Channel.user1_id == user_id) & (Channel.user2_id == other_id),
+                (Channel.user1_id == other_id) & (Channel.user2_id == user_id),
+            )
+        )
+    )
+    return result.scalar()
+
+
+def generate_channel_id(user1_id: int, user2_id: int) -> str:
+    """Generate a unique channel ID."""
+    unique_string = f"{user1_id}{user2_id}"
+    return sha256(unique_string.encode()).hexdigest()
+
+
+async def create_channel(db, user_id: int, other_id: int) -> Channel:
+    """Create a new channel between two users."""
+    channel_id = generate_channel_id(user_id, other_id)
+    channel = Channel(
+        channel_id=channel_id,
+        user1_id=user_id,
+        user2_id=other_id,
+    )
+    db.add(channel)
+    return channel
+
+
+async def get_or_create_channel(db, user_id: int, other_id: int) -> Channel:
+    """Find an existing channel between two users or create a new one."""
+    existing = await get_channel(db, user_id, other_id)
+    if existing:
+        return existing
+    return await create_channel(db, user_id, other_id)
+
+
+async def get_friendship_by_direction(db, user1_id: int, user2_id: int):
+    """Find a friendship where user1_id sent a request to user2_id."""
+    result = await db.execute(
+        select(Friend).filter(
+            Friend.user1_id == user1_id, Friend.user2_id == user2_id
+        )
+    )
+    return result.scalar()
 
 
 def is_csrf_token_valid(token: str, user_id: int) -> bool:

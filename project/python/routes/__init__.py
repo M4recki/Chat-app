@@ -3,7 +3,7 @@ from fastapi import APIRouter
 # Re-exports for backward compatibility with tests
 from ..chatbot_utils import chatbot_response  # noqa: F401
 from ..settings import settings  # noqa: F401
-from .chat import generate_channel_id
+from .helpers import generate_channel_id
 from .email import send_email
 from .helpers import (
     authentication_in_header,
