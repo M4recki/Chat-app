@@ -72,6 +72,8 @@ def clear_tables():
     """Reset test database by dropping and recreating all tables."""
     models.Base.metadata.drop_all(bind=test_engine)
     models.Base.metadata.create_all(bind=test_engine)
+    test_engine.dispose()
+    test_engine.dispose()
 
 
 @pytest.fixture(scope="function", autouse=True)
