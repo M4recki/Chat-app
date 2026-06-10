@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+from html import escape
 from json import dumps, loads
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -73,7 +74,7 @@ async def websocket_endpoint(websocket: WebSocket, channel_id: str):
             {
                 "type": "user_online",
                 "user_id": user_id,
-                "user_name": user_name,
+                "user_name": escape(user_name),
             }
         ),
         channel_id,
@@ -105,7 +106,7 @@ async def websocket_endpoint(websocket: WebSocket, channel_id: str):
                         {
                             "type": "typing",
                             "user_id": user_id,
-                            "user_name": user_name,
+                            "user_name": escape(user_name),
                             "typing": message_data.get("typing", False),
                         }
                     ),
@@ -119,8 +120,8 @@ async def websocket_endpoint(websocket: WebSocket, channel_id: str):
                 message_object = {
                     "type": "message",
                     "userId": user_id,
-                    "senderName": user_name,
-                    "content": message,
+                    "senderName": escape(user_name),
+                    "content": escape(message),
                 }
 
                 await manager.broadcast(dumps(message_object), channel_id)
@@ -146,9 +147,9 @@ async def websocket_endpoint(websocket: WebSocket, channel_id: str):
                     dumps(
                         {
                             "type": "system",
-                            "content": f"{user_name} left the chat",
+                            "content": f"{escape(user_name)} left the chat",
                             "user_id": user_id,
-                            "user_name": user_name,
+                            "user_name": escape(user_name),
                         }
                     ),
                     channel_id,
@@ -158,7 +159,7 @@ async def websocket_endpoint(websocket: WebSocket, channel_id: str):
                         {
                             "type": "user_offline",
                             "user_id": user_id,
-                            "user_name": user_name,
+                            "user_name": escape(user_name),
                         }
                     ),
                     channel_id,

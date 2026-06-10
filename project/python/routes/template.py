@@ -136,14 +136,4 @@ def render_template(name: str, request: Request, **kwargs: object) -> HTMLRespon
     Returns:
         HTMLResponse with rendered template
     """
-    context: dict[str, object] = {"request": request}
-    context.update(authentication_in_header(request))
-    context.update(csrf_context(request))
-    context.update(user_image(request))
-    context.update(user_name(request))
-    context.update(current_year(request))
-    context.update(kwargs)
-    template = templates.get_template(name)
-    html_content = template.render(context)
-
-    return HTMLResponse(content=html_content)
+    return templates.TemplateResponse(request, name, kwargs)

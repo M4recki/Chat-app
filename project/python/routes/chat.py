@@ -10,7 +10,6 @@ from .helpers import (
     create_channel,
     get_current_user,
     get_friendship,
-    get_user,
 )
 from .template import encode_avatar, templates
 
@@ -141,6 +140,16 @@ async def friend_chat_page(
         )
         messages = result_messages.scalars().all()
 
+        # Bulk-load all message authors to avoid N+1 queries
+        author_ids = {m.user_id for m in messages}
+        if author_ids:
+            result_authors = await db.execute(
+                select(User).filter(User.id.in_(author_ids))
+            )
+            users_map = {u.id: u for u in result_authors.scalars().all()}
+        else:
+            users_map = {}
+
         result_channel = await db.execute(
             select(Channel).filter(Channel.channel_id == channel_id)
         )
@@ -167,6 +176,6 @@ async def friend_chat_page(
             "friend_status": friend_status_value,
             "messages": messages,
             "channel_id": channel_id,
-            "get_user": get_user,
+            "users": users_map,
         },
     )

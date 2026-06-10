@@ -1,5 +1,3 @@
-from io import BytesIO
-
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import select
@@ -87,9 +85,7 @@ async def update_profile_data(
             if len(avatar_data) > 5 * 1024 * 1024:
                 errors["avatar"] = "Avatar must be smaller than 5 MB"
             else:
-                img_binary = BytesIO()
-                img_binary.write(avatar_data)
-                user.avatar = img_binary.getvalue()
+                user.avatar = avatar_data
 
     async with async_session_scope() as db:
         result = await db.execute(select(User).filter(User.id == user.id))
