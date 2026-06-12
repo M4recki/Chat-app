@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import httpx
 import openai as openai_mod
 import pytest
-from conftest import client
+from conftest import async_session_scope, client, create_user
 from fastapi.testclient import TestClient
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from PIL import Image
@@ -29,7 +29,7 @@ from project.python.connection_manager import ConnectionManager
 from project.python.database import get_db
 from project.python.main import app
 from project.python.main import app as ws_app
-from project.python.models import User
+from project.python.models import Message, User
 from project.python.rate_limit import MemoryBackend, RateLimiter, get_client_identifier
 from project.python.routes import (
     authentication_in_header,
@@ -896,3 +896,112 @@ def test_get_db():
         next(gen)
     except StopIteration:
         pass
+
+
+#  helpers
+
+
+@pytest.mark.asyncio
+async def test_get_user_by_id_found():
+    db_sync = TestingSessionLocal()
+    user = create_user(
+        db_sync, "Helper", "One", "helper1@example.com", "Password123",
+        "project/static/img/default avatar.png",
+    )
+    db_sync.close()
+    from project.python.routes.helpers import get_user_by_id
+
+    async with async_session_scope() as db:
+        result = await get_user_by_id(db, user.id)
+    assert result is not None
+    assert result.id == user.id
+    assert result.name == "Helper"
+
+
+@pytest.mark.asyncio
+async def test_get_user_by_id_not_found():
+    from project.python.routes.helpers import get_user_by_id
+
+    async with async_session_scope() as db:
+        result = await get_user_by_id(db, 99999)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_message_or_404_found():
+    db_sync = TestingSessionLocal()
+    user = create_user(
+        db_sync, "Msg", "User", "msg-user@example.com", "Password123",
+        "project/static/img/default avatar.png",
+    )
+    msg = Message(content="test", channel_id="ch", created_at=datetime.now(), user_id=user.id)
+    db_sync.add(msg)
+    db_sync.commit()
+    msg_id = msg.id
+    db_sync.close()
+    from project.python.routes.helpers import get_message_or_404
+
+    async with async_session_scope() as db:
+        result = await get_message_or_404(db, msg_id)
+    assert result.id == msg_id
+
+
+@pytest.mark.asyncio
+async def test_get_message_or_404_not_found():
+    from project.python.routes.helpers import get_message_or_404
+    from fastapi import HTTPException
+
+    async with async_session_scope() as db:
+        with pytest.raises(HTTPException) as exc:
+            await get_message_or_404(db, 99999)
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_friend_status_map():
+    db_sync = TestingSessionLocal()
+    u1 = create_user(
+        db_sync, "FSM", "One", "fsm1@example.com", "Password123",
+        "project/static/img/default avatar.png",
+    )
+    u2 = create_user(
+        db_sync, "FSM", "Two", "fsm2@example.com", "Password123",
+        "project/static/img/default avatar.png",
+    )
+    from project.python.models import Friend as FriendModel, FriendStatus
+
+    rel = FriendModel(
+        user1_id=u1.id, user2_id=u2.id, status=FriendStatus.ACCEPTED.value, last_sent=datetime.now(),
+    )
+    db_sync.add(rel)
+    db_sync.commit()
+    db_sync.close()
+    from project.python.routes.helpers import get_friend_status_map
+
+    async with async_session_scope() as db:
+        smap = await get_friend_status_map(db, u1.id, [u2.id])
+    assert smap[u2.id] == FriendStatus.ACCEPTED.value
+
+
+@pytest.mark.asyncio
+async def test_get_channel_id_map():
+    db_sync = TestingSessionLocal()
+    u1 = create_user(
+        db_sync, "CIM", "One", "cim1@example.com", "Password123",
+        "project/static/img/default avatar.png",
+    )
+    u2 = create_user(
+        db_sync, "CIM", "Two", "cim2@example.com", "Password123",
+        "project/static/img/default avatar.png",
+    )
+    from project.python.models import Channel
+
+    ch = Channel(channel_id="test-ch", user1_id=u1.id, user2_id=u2.id)
+    db_sync.add(ch)
+    db_sync.commit()
+    db_sync.close()
+    from project.python.routes.helpers import get_channel_id_map
+
+    async with async_session_scope() as db:
+        cmap = await get_channel_id_map(db, u1.id, [u2.id])
+    assert cmap[u2.id] == "test-ch"

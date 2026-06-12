@@ -1,26 +1,33 @@
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from fastapi.testclient import TestClient
-from conftest import client
+from conftest import client, create_friendship, create_channel, create_message, create_user
 from project.python.main import app
 from project.python.settings import settings
-from tests.integration_test import create_user
 from tests.model_test import TestingSessionLocal
 from datetime import datetime, timedelta
 from uuid import uuid4
 from starlette.requests import Request
 from project.python.chatbot_utils import chatbot_json_error
 from project.python.main import get_rate_limit_identifier
-from project.python.models import User, Friend, Channel, Message
+from project.python.models import User, Channel, Message
 from project.python.routes import generate_csrf_token
-from project.python.models import Friend as FriendModel, FriendStatus
-from project.python.models import Friend as Incoming
+from project.python.models import FriendStatus
 from project.python.rate_limit import clear_rate_limiter
+
+
+DEFAULT_AVATAR = "project/static/img/default avatar.png"
 
 
 def set_access_token(user_id: int, target_client=client) -> None:
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": user_id})
     target_client.cookies.set("access_token", token)
+
+
+def authed_client(user) -> TestClient:
+    c = TestClient(app, raise_server_exceptions=False)
+    set_access_token(user.id, target_client=c)
+    return c
 
 
 def test_chatbot_ajax_response():
@@ -31,7 +38,7 @@ def test_chatbot_ajax_response():
         "User",
         "chat-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
 
     set_access_token(user.id)
@@ -58,7 +65,7 @@ def test_search_user_returns_other_users():
         "Owner",
         "search-owner@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     other = create_user(
         db,
@@ -66,7 +73,7 @@ def test_search_user_returns_other_users():
         "Target",
         "search-target@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
 
     set_access_token(user.id)
@@ -120,7 +127,7 @@ def test_search_user_rate_limit_429_headers():
         "Limiter",
         "rate-limit@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
 
     set_access_token(user.id, target_client=local_client)
@@ -175,7 +182,7 @@ def test_chatbot_deleted_user_returns_401_json():
         "Me",
         "deleted-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": user.id})
@@ -222,7 +229,7 @@ def test_chatbot_rate_limit_429_json():
         "Rater",
         "chat-rater@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": user.id})
@@ -377,7 +384,7 @@ def test_sign_up_duplicate_email():
         "User",
         "existing@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     csrf_token = generate_csrf_token(0)
     response = client.post(
@@ -471,7 +478,7 @@ def test_logout_clears_cookie():
         "Tester",
         "logout-tester@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     set_access_token(user.id)
     response = client.get("/logout", follow_redirects=False)
@@ -498,7 +505,7 @@ def test_login_wrong_password():
         "Wrong",
         "login-wrong@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     csrf_token = generate_csrf_token(0)
     response = client.post(
@@ -576,7 +583,7 @@ def test_single_chat_returns_200():
         "Chat",
         "single-chat@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
@@ -584,26 +591,12 @@ def test_single_chat_returns_200():
         "One",
         "friend-one@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    friend_rel = Friend(
-        user1_id=user.id,
-        user2_id=friend.id,
-        status=FriendStatus.ACCEPTED.value,
-        last_sent=datetime.now(),
-    )
-    db.add(friend_rel)
-    db.commit()
-    channel = Channel(
-        channel_id=str(uuid4()),
-        user1_id=user.id,
-        user2_id=friend.id,
-    )
-    db.add(channel)
-    db.commit()
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED.value)
+    channel = create_channel(db, user, friend)
 
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     response = local_client.get("/single_chat")
     assert response.status_code == 200
 
@@ -616,10 +609,9 @@ def test_single_chat_no_friends():
         "Alone",
         "single-alone@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     response = local_client.get("/single_chat")
     assert response.status_code == 200
 
@@ -632,10 +624,9 @@ def test_friend_requests_returns_200():
         "Req",
         "friend-req@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     response = local_client.get("/friend_requests")
     assert response.status_code == 200
 
@@ -648,10 +639,9 @@ def test_update_profile_page_returns_200():
         "Profile",
         "update-profile@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     response = local_client.get("/update_profile")
     assert response.status_code == 200
 
@@ -664,7 +654,7 @@ def test_add_friend_old_pending_renews_last_sent(monkeypatch):
         "Pending",
         "old-pending@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     target = create_user(
         db,
@@ -672,20 +662,12 @@ def test_add_friend_old_pending_renews_last_sent(monkeypatch):
         "Old",
         "target-old@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     old_date = datetime.now() - timedelta(days=20)
-    existing = Friend(
-        user1_id=user.id,
-        user2_id=target.id,
-        status=FriendStatus.PENDING.value,
-        last_sent=old_date,
-    )
-    db.add(existing)
-    db.commit()
+    create_friendship(db, user, target, FriendStatus.PENDING.value, last_sent=old_date)
 
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     response = local_client.post(
         f"/add_friend/{target.id}",
         data={"csrf_token": generate_csrf_token(user.id)},
@@ -702,10 +684,9 @@ def test_chatbot_missing_message_validation():
         "Missing",
         "chat-missing@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
     response = local_client.post(
         "/chatbot",
@@ -738,7 +719,7 @@ def test_add_friend():
         "Friend",
         "add-friend@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     target = create_user(
         db,
@@ -746,10 +727,9 @@ def test_add_friend():
         "User",
         "target-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     response = local_client.post(
         f"/add_friend/{target.id}",
         data={"csrf_token": generate_csrf_token(user.id)},
@@ -765,7 +745,7 @@ def test_add_friend_duplicate_pending():
         "Dup",
         "add-dup@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     target = create_user(
         db,
@@ -773,18 +753,10 @@ def test_add_friend_duplicate_pending():
         "Dup",
         "target-dup@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    existing = Friend(
-        user1_id=user.id,
-        user2_id=target.id,
-        status=FriendStatus.PENDING.value,
-        last_sent=datetime.now(),
-    )
-    db.add(existing)
-    db.commit()
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    create_friendship(db, user, target, FriendStatus.PENDING.value)
+    local_client = authed_client(user)
     response = local_client.post(
         f"/add_friend/{target.id}",
         data={"csrf_token": generate_csrf_token(user.id)},
@@ -800,7 +772,7 @@ def test_add_friend_duplicate_denied():
         "Den",
         "add-den@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     target = create_user(
         db,
@@ -808,18 +780,10 @@ def test_add_friend_duplicate_denied():
         "Den",
         "target-den@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    existing = Friend(
-        user1_id=user.id,
-        user2_id=target.id,
-        status=FriendStatus.DENIED.value,
-        last_sent=datetime(2020, 1, 1),
-    )
-    db.add(existing)
-    db.commit()
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    create_friendship(db, user, target, FriendStatus.DENIED.value, last_sent=datetime(2020, 1, 1))
+    local_client = authed_client(user)
     response = local_client.post(
         f"/add_friend/{target.id}",
         data={"csrf_token": generate_csrf_token(user.id)},
@@ -835,7 +799,7 @@ def test_accept_friend():
         "User",
         "accept-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     requester = create_user(
         db,
@@ -843,18 +807,10 @@ def test_accept_friend():
         "er",
         "requester@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    req = Friend(
-        user1_id=requester.id,
-        user2_id=user.id,
-        status=FriendStatus.PENDING.value,
-        last_sent=datetime.now(),
-    )
-    db.add(req)
-    db.commit()
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    create_friendship(db, requester, user, FriendStatus.PENDING.value)
+    local_client = authed_client(user)
     response = local_client.post(
         f"/accept_friend/{requester.id}",
         data={"csrf_token": generate_csrf_token(user.id)},
@@ -870,7 +826,7 @@ def test_deny_friend():
         "User",
         "deny-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     requester = create_user(
         db,
@@ -878,18 +834,10 @@ def test_deny_friend():
         "deny",
         "requester-deny@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    req = Friend(
-        user1_id=requester.id,
-        user2_id=user.id,
-        status=FriendStatus.PENDING.value,
-        last_sent=datetime.now(),
-    )
-    db.add(req)
-    db.commit()
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    create_friendship(db, requester, user, FriendStatus.PENDING.value)
+    local_client = authed_client(user)
     response = local_client.post(
         f"/deny_friend/{requester.id}",
         data={"csrf_token": generate_csrf_token(user.id)},
@@ -905,7 +853,7 @@ def test_block_friend():
         "User",
         "block-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     target = create_user(
         db,
@@ -913,18 +861,10 @@ def test_block_friend():
         "Target",
         "blocked-target@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    existing = Friend(
-        user1_id=user.id,
-        user2_id=target.id,
-        status=FriendStatus.ACCEPTED.value,
-        last_sent=datetime.now(),
-    )
-    db.add(existing)
-    db.commit()
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    create_friendship(db, user, target, FriendStatus.ACCEPTED.value)
+    local_client = authed_client(user)
     response = local_client.post(
         f"/block_friend/{target.id}",
         data={"csrf_token": generate_csrf_token(user.id)},
@@ -940,7 +880,7 @@ def test_unblock_friend():
         "User",
         "unblock-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     target = create_user(
         db,
@@ -948,18 +888,10 @@ def test_unblock_friend():
         "Target",
         "unblocked-target@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    existing = Friend(
-        user1_id=user.id,
-        user2_id=target.id,
-        status=FriendStatus.BLOCKED.value,
-        last_sent=datetime.now(),
-    )
-    db.add(existing)
-    db.commit()
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    create_friendship(db, user, target, FriendStatus.BLOCKED.value)
+    local_client = authed_client(user)
     response = local_client.post(
         f"/unblock_friend/{target.id}",
         data={"csrf_token": generate_csrf_token(user.id)},
@@ -975,10 +907,9 @@ def test_chatbot_error_returns_502(monkeypatch):
         "Err",
         "chat-err@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
 
     def mock_response(*a, **kw):
@@ -1005,10 +936,9 @@ def test_chatbot_chatbot_service_error_html(monkeypatch):
         "ErrH",
         "chat-err-html@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
 
     def mock_response(*a, **kw):
@@ -1038,10 +968,9 @@ def test_chatbot_page_returns_200():
         "Page",
         "chat-page@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     response = local_client.get("/chatbot")
     assert response.status_code == 200
 
@@ -1057,10 +986,9 @@ def test_chatbot_success_non_ajax():
         "User",
         "cs-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
     response = local_client.post(
         "/chatbot",
@@ -1078,10 +1006,9 @@ def test_clear_chatbot_messages():
         "Chat",
         "clear-chat@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
     response = local_client.post("/clear_chatbot_messages", data={"csrf_token": csrf})
     assert response.status_code == 200
@@ -1098,7 +1025,7 @@ def test_friend_chat_page_not_found():
         "User",
         "fc-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
@@ -1106,18 +1033,10 @@ def test_friend_chat_page_not_found():
         "Friend",
         "fc-friend@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    rel = FriendModel(
-        user1_id=user.id,
-        user2_id=friend.id,
-        status=FriendStatus.ACCEPTED.value,
-        last_sent=datetime.now(),
-    )
-    db.add(rel)
-    db.commit()
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED.value)
+    local_client = authed_client(user)
     response = local_client.get(f"/friend_chat/nonexistent/{friend.id}")
     assert response.status_code == 404
 
@@ -1130,7 +1049,7 @@ def test_friend_chat_page_found():
         "User",
         "fc2-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
@@ -1138,31 +1057,196 @@ def test_friend_chat_page_found():
         "Friend",
         "fc2-friend@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    rel = FriendModel(
-        user1_id=user.id,
-        user2_id=friend.id,
-        status=FriendStatus.ACCEPTED.value,
-        last_sent=datetime.now(),
-    )
-    db.add(rel)
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED.value)
     ch_id = str(uuid4())
     channel = Channel(channel_id=ch_id, user1_id=user.id, user2_id=friend.id)
     db.add(channel)
     db.commit()
-    msg = Message(
-        content="hi",
-        channel_id=ch_id,
-        created_at=datetime.now(),
-        user_id=user.id,
-    )
-    db.add(msg)
-    db.commit()
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    msg = create_message(db, "hi", ch_id, user)
+    local_client = authed_client(user)
     response = local_client.get(f"/friend_chat/{ch_id}/{friend.id}")
     assert response.status_code == 200
+
+
+#  Edit / delete message
+
+
+def test_edit_message_success():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "Edit", "User", "edit-user@example.com", "Password123",
+        DEFAULT_AVATAR,
+    )
+    friend = create_user(
+        db, "Edit", "Friend", "edit-friend@example.com", "Password123",
+        DEFAULT_AVATAR,
+    )
+    ch_id = str(uuid4())
+    channel = Channel(channel_id=ch_id, user1_id=user.id, user2_id=friend.id)
+    db.add(channel)
+    msg = create_message(db, "original", ch_id, user)
+
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        f"/edit_message/{msg.id}",
+        data={"content": "updated", "csrf_token": csrf},
+    )
+    assert response.status_code == 200
+
+    db2 = TestingSessionLocal()
+    updated = db2.query(Message).filter(Message.id == msg.id).first()
+    assert updated is not None
+    assert updated.content == "updated"
+    assert updated.edited_at is not None
+    db2.close()
+
+
+def test_edit_message_not_owner():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "Edit2", "User", "edit2-user@example.com", "Password123",
+        DEFAULT_AVATAR,
+    )
+    other = create_user(
+        db, "Edit2", "Other", "edit2-other@example.com", "Password123",
+        DEFAULT_AVATAR,
+    )
+    ch_id = str(uuid4())
+    channel = Channel(channel_id=ch_id, user1_id=user.id, user2_id=other.id)
+    db.add(channel)
+    msg = create_message(db, "mine", ch_id, other)
+
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        f"/edit_message/{msg.id}",
+        data={"content": "hacked", "csrf_token": csrf},
+    )
+    assert response.status_code == 403
+
+
+def test_edit_message_not_found():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "ENF", "User", "enf-user@example.com", "Password123",
+        DEFAULT_AVATAR,
+    )
+    db.close()
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        "/edit_message/99999",
+        data={"content": "test", "csrf_token": csrf},
+    )
+    assert response.status_code == 404
+
+
+def test_delete_message_success():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "Del", "User", "del-user@example.com", "Password123",
+        DEFAULT_AVATAR,
+    )
+    friend = create_user(
+        db, "Del", "Friend", "del-friend@example.com", "Password123",
+        DEFAULT_AVATAR,
+    )
+    ch_id = str(uuid4())
+    channel = Channel(channel_id=ch_id, user1_id=user.id, user2_id=friend.id)
+    db.add(channel)
+    msg = create_message(db, "delete me", ch_id, user)
+    msg_id = msg.id
+
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        f"/delete_message/{msg_id}",
+        data={"csrf_token": csrf},
+    )
+    assert response.status_code == 200
+
+    db2 = TestingSessionLocal()
+    deleted = db2.query(Message).filter(Message.id == msg_id).first()
+    assert deleted is None
+    db2.close()
+
+
+def test_delete_message_not_owner():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "Del2", "User", "del2-user@example.com", "Password123",
+        DEFAULT_AVATAR,
+    )
+    other = create_user(
+        db, "Del2", "Other", "del2-other@example.com", "Password123",
+        DEFAULT_AVATAR,
+    )
+    ch_id = str(uuid4())
+    channel = Channel(channel_id=ch_id, user1_id=user.id, user2_id=other.id)
+    db.add(channel)
+    msg = create_message(db, "not mine", ch_id, other)
+
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        f"/delete_message/{msg.id}",
+        data={"csrf_token": csrf},
+    )
+    assert response.status_code == 403
+
+
+def test_delete_message_not_found():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "DNF", "User", "dnf-user@example.com", "Password123",
+        DEFAULT_AVATAR,
+    )
+    db.close()
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        "/delete_message/99999",
+        data={"csrf_token": csrf},
+    )
+    assert response.status_code == 404
+
+
+def test_edit_message_empty_content():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "EMC", "User", "emc-user@example.com", "Password123",
+        DEFAULT_AVATAR,
+    )
+    friend = create_user(
+        db, "EMC", "Friend", "emc-friend@example.com", "Password123",
+        DEFAULT_AVATAR,
+    )
+    ch_id = str(uuid4())
+    channel = Channel(channel_id=ch_id, user1_id=user.id, user2_id=friend.id)
+    db.add(channel)
+    msg = create_message(db, "hello", ch_id, user)
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        f"/edit_message/{msg.id}",
+        data={"content": "   ", "csrf_token": csrf},
+    )
+    assert response.status_code == 400
+
+
+def test_friend_chat_page_friend_not_found():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "FNF", "User", "fnf-user@example.com", "Password123",
+        DEFAULT_AVATAR,
+    )
+    db.close()
+    local_client = authed_client(user)
+    response = local_client.get(f"/friend_chat/some-ch/99999")
+    assert response.status_code == 404
 
 
 #  Search user
@@ -1181,7 +1265,7 @@ def test_search_user_with_friends():
         "User",
         "search-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
@@ -1189,7 +1273,7 @@ def test_search_user_with_friends():
         "Friend",
         "search-friend@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     other = create_user(
         db,
@@ -1197,35 +1281,14 @@ def test_search_user_with_friends():
         "User",
         "other-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    rel = Friend(
-        user1_id=user.id,
-        user2_id=friend.id,
-        status=FriendStatus.ACCEPTED.value,
-        last_sent=datetime.now(),
-    )
-    db.add(rel)
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED.value)
+    create_friendship(db, other, user, FriendStatus.PENDING.value)
 
-    pending = Friend(
-        user1_id=other.id,
-        user2_id=user.id,
-        status=FriendStatus.PENDING.value,
-        last_sent=datetime.now(),
-    )
-    db.add(pending)
-    db.commit()
+    channel = create_channel(db, user, friend)
 
-    channel = Channel(
-        channel_id=str(uuid4()),
-        user1_id=user.id,
-        user2_id=friend.id,
-    )
-    db.add(channel)
-    db.commit()
-
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     response = local_client.get("/search_user")
     assert response.status_code == 200
 
@@ -1238,7 +1301,7 @@ def test_search_user_with_friend_no_channel():
         "User",
         "search-user2@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
@@ -1246,18 +1309,10 @@ def test_search_user_with_friend_no_channel():
         "Friend",
         "search-friend2@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    rel = Friend(
-        user1_id=user.id,
-        user2_id=friend.id,
-        status=FriendStatus.ACCEPTED.value,
-        last_sent=datetime.now(),
-    )
-    db.add(rel)
-    db.commit()
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED.value)
+    local_client = authed_client(user)
     response = local_client.get("/search_user")
     assert response.status_code == 200
 
@@ -1276,10 +1331,9 @@ def test_update_profile_data_password_mismatch():
         "User",
         "up-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
     response = local_client.post(
         "/update_profile",
@@ -1303,10 +1357,9 @@ def test_update_profile_data_non_alphanumeric_password():
         "User",
         "up2-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
     response = local_client.post(
         "/update_profile",
@@ -1330,10 +1383,9 @@ def test_update_profile_data_success():
         "User",
         "up3-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
     response = local_client.post(
         "/update_profile",
@@ -1360,7 +1412,7 @@ def test_single_chat_creates_channel():
         "Create",
         "sc-create@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
@@ -1368,18 +1420,10 @@ def test_single_chat_creates_channel():
         "Friend",
         "sc-friend@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    rel = Friend(
-        user1_id=user.id,
-        user2_id=friend.id,
-        status=FriendStatus.ACCEPTED.value,
-        last_sent=datetime.now(),
-    )
-    db.add(rel)
-    db.commit()
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED.value)
+    local_client = authed_client(user)
     response = local_client.get("/single_chat")
     assert response.status_code == 200
 
@@ -1392,7 +1436,7 @@ def test_single_chat_accepts_friend():
         "User",
         "sca-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
@@ -1400,25 +1444,11 @@ def test_single_chat_accepts_friend():
         "Friend",
         "sca-friend@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    rel = Friend(
-        user1_id=user.id,
-        user2_id=friend.id,
-        status=FriendStatus.ACCEPTED.value,
-        last_sent=datetime.now(),
-    )
-    db.add(rel)
-    incoming = Incoming(
-        user1_id=friend.id,
-        user2_id=user.id,
-        status=FriendStatus.ACCEPTED.value,
-        last_sent=datetime.now(),
-    )
-    db.add(incoming)
-    db.commit()
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED.value)
+    create_friendship(db, friend, user, FriendStatus.ACCEPTED.value)
+    local_client = authed_client(user)
     response = local_client.get("/single_chat")
     assert response.status_code == 200
 
@@ -1434,12 +1464,11 @@ def test_update_profile_avatar_jpeg():
         "Test",
         "avatar-test@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
-    img_path = "project/static/img/default avatar.png"
+    img_path = DEFAULT_AVATAR
     with open(img_path, "rb") as f:
         response = local_client.post(
             "/update_profile",
@@ -1464,10 +1493,9 @@ def test_update_profile_avatar_wrong_type():
         "Test",
         "avatar-test2@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
     response = local_client.post(
         "/update_profile",
@@ -1508,7 +1536,7 @@ def test_friend_requests_with_pending():
         "User",
         "fr-user@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
     requester = create_user(
         db,
@@ -1516,17 +1544,9 @@ def test_friend_requests_with_pending():
         "Requester",
         "fr-requester@example.com",
         "Password123",
-        "project/static/img/default avatar.png",
+        DEFAULT_AVATAR,
     )
-    req = Friend(
-        user1_id=requester.id,
-        user2_id=user.id,
-        status=FriendStatus.PENDING.value,
-        last_sent=datetime.now(),
-    )
-    db.add(req)
-    db.commit()
-    local_client = TestClient(app, raise_server_exceptions=False)
-    set_access_token(user.id, target_client=local_client)
+    create_friendship(db, requester, user, FriendStatus.PENDING.value)
+    local_client = authed_client(user)
     response = local_client.get("/friend_requests")
     assert response.status_code == 200

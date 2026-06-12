@@ -28,9 +28,9 @@
                 title="Offline"></span>
               <span class="text-muted small">{{ friend.name }}</span>
             </div>
-            {% if messages %} {% for
-            message in messages %}
-            <div class="card my-3">
+            {% if messages %}
+            {% for message in messages %}
+            <div class="card my-3" data-message-id="{{ message.id }}">
               <div class="card-body">
                 <p class="card-title">
                   {{ message.created_at.strftime(' %H:%M, %Y-%m-%d') }}
@@ -48,12 +48,24 @@
                     src="data:image/jpeg;base64,{{ friend_avatar_b64 }}"
                     alt="{{ friend.name }}'s avatar" />
                   {% endif %}
-                  <strong class="text-primary">{{ sender.name }}:</strong> {{
-                  message.content }}
+                  <strong class="text-primary">{{ sender.name }}:</strong>
+                  <span class="message-content">{{ message.content }}</span>
+                  {% if message.edited_at %}
+                  <small class="text-muted fst-italic">(edited)</small>
+                  {% endif %}
                 </p>
+                {% if sender.id == user.id %}
+                <div class="d-flex gap-2 justify-content-end">
+                  <button
+                    class="btn btn-sm btn-outline-secondary edit-btn"
+                    data-message-id="{{ message.id }}">Edit</button>
+                  <button
+                    class="btn btn-sm btn-outline-danger delete-btn"
+                    data-message-id="{{ message.id }}">Delete</button>
+                </div>
+                {% endif %}
               </div>
             </div>
-
             {% endfor %}
             <div id="messages"></div>
             <div id="typing-indicator" class="text-muted small fst-italic d-none py-1"></div>
@@ -121,7 +133,7 @@
             {% else %} {% if messages %} {% for message in messages %} {% set
             sender = users[message.user_id] %} {% if sender.id == user.id or
             sender.id == friend.id %}
-            <div class="card my-3">
+            <div class="card my-3" data-message-id="{{ message.id }}">
               <div class="card-body">
                 <p class="card-title">
                   {{ message.created_at.strftime(' %H:%M, %Y-%m-%d') }}
@@ -138,9 +150,22 @@
                     src="data:image/jpeg;base64,{{ friend_avatar_b64 }}"
                     alt="{{ friend.name }}'s avatar" />
                   {% endif %}
-                  <strong class="text-primary">{{ sender.name }}:</strong> {{
-                  message.content }}
+                  <strong class="text-primary">{{ sender.name }}:</strong>
+                  <span class="message-content">{{ message.content }}</span>
+                  {% if message.edited_at %}
+                  <small class="text-muted fst-italic">(edited)</small>
+                  {% endif %}
                 </p>
+                {% if sender.id == user.id %}
+                <div class="d-flex gap-2 justify-content-end">
+                  <button
+                    class="btn btn-sm btn-outline-secondary edit-btn"
+                    data-message-id="{{ message.id }}">Edit</button>
+                  <button
+                    class="btn btn-sm btn-outline-danger delete-btn"
+                    data-message-id="{{ message.id }}">Delete</button>
+                </div>
+                {% endif %}
               </div>
             </div>
             {% endif %} {% endfor %} {% endif %}
@@ -293,14 +318,15 @@
 
       // Function to append a new chat message to the messages container
 
-      function appendChatMessage(senderName, messageContent, senderId) {
+      function appendChatMessage(senderName, messageContent, senderId, messageId) {
         const heading = document.getElementById("start-new-conversation");
         if (heading) {
-          heading.remove();
+          heading.parentNode.removeChild(heading);
         }
         const messages = document.getElementById("messages");
         const container = document.createElement("div");
         container.classList.add("card", "my-3");
+        container.dataset.messageId = messageId;
 
         const body = document.createElement("div");
         body.classList.add("card-body");
@@ -329,10 +355,33 @@
         content.appendChild(name);
 
         const text = document.createElement("span");
+        text.classList.add("message-content");
         text.textContent = messageContent;
         content.appendChild(text);
 
         body.appendChild(content);
+
+        if (senderId === user_id) {
+          const btnDiv = document.createElement("div");
+          btnDiv.classList.add("d-flex", "gap-2", "justify-content-end");
+
+          const editBtn = document.createElement("button");
+          editBtn.classList.add("btn", "btn-sm", "btn-outline-secondary", "edit-btn");
+          editBtn.dataset.messageId = messageId;
+          editBtn.textContent = "Edit";
+          editBtn.addEventListener("click", function () { editMessage(messageId); });
+          btnDiv.appendChild(editBtn);
+
+          const deleteBtn = document.createElement("button");
+          deleteBtn.classList.add("btn", "btn-sm", "btn-outline-danger", "delete-btn");
+          deleteBtn.dataset.messageId = messageId;
+          deleteBtn.textContent = "Delete";
+          deleteBtn.addEventListener("click", function () { deleteMessage(messageId); });
+          btnDiv.appendChild(deleteBtn);
+
+          body.appendChild(btnDiv);
+        }
+
         container.appendChild(body);
         messages.appendChild(container);
       }
@@ -380,7 +429,27 @@
           appendSystemMessage(data.user_name, data.content);
         } else if (data.type === "message") {
           showTyping(null, false);
-          appendChatMessage(data.senderName, data.content, data.userId);
+          appendChatMessage(data.senderName, data.content, data.userId, data.message_id);
+        } else if (data.type === "edit_message") {
+          const card = document.querySelector('[data-message-id="' + data.message_id + '"]');
+          if (card) {
+            const contentSpan = card.querySelector(".message-content");
+            if (contentSpan) {
+              contentSpan.textContent = data.content;
+            }
+            let editedTag = card.querySelector(".edited-tag");
+            if (!editedTag) {
+              editedTag = document.createElement("small");
+              editedTag.className = "text-muted fst-italic edited-tag";
+              editedTag.textContent = " (edited)";
+              contentSpan?.parentNode?.insertBefore(editedTag, contentSpan.nextSibling);
+            }
+          }
+        } else if (data.type === "delete_message") {
+          const card = document.querySelector('[data-message-id="' + data.message_id + '"]');
+          if (card) {
+            card.remove();
+          }
         }
       };
 
@@ -451,9 +520,100 @@
         input.value = "";
       }
 
+      function getCsrfToken() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.getAttribute("content") : "";
+      }
+
+      function editMessage(messageId) {
+        const card = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (!card) { return; }
+        const contentSpan = card.querySelector(".message-content");
+        const currentText = contentSpan.textContent;
+
+        contentSpan.innerHTML =
+          '<textarea class="form-control edit-textarea" rows="2">' +
+          currentText.replace(/</g, "&lt;").replace(/>/g, "&gt;") +
+          '</textarea>' +
+          '<div class="mt-2 d-flex gap-2">' +
+          '<button class="btn btn-sm btn-success save-edit" data-message-id="' + messageId + '">Save</button>' +
+          '<button class="btn btn-sm btn-danger cancel-edit">Cancel</button>' +
+          '</div>';
+
+        const editBtn = card.querySelector(".edit-btn");
+        const deleteBtn = card.querySelector(".delete-btn");
+        if (editBtn) { editBtn.classList.add("d-none"); }
+        if (deleteBtn) { deleteBtn.classList.add("d-none"); }
+
+        const saveBtn = contentSpan.querySelector(".save-edit");
+        const cancelBtn = contentSpan.querySelector(".cancel-edit");
+
+        saveBtn.addEventListener("click", async function () {
+          const textarea = contentSpan.querySelector(".edit-textarea");
+          const newContent = textarea.value.trim();
+          if (!newContent) { return; }
+
+          try {
+            const formData = new FormData();
+            formData.append("content", newContent);
+            formData.append("csrf_token", getCsrfToken());
+
+            const response = await fetch("/edit_message/" + messageId, {
+              method: "POST",
+              body: formData,
+            });
+
+            if (!response.ok) {
+              const errText = await response.text();
+              alert("Edit failed: " + (errText || response.statusText));
+            }
+          } catch (err) {
+            alert("Edit failed: " + err.message);
+          }
+        });
+
+        cancelBtn.addEventListener("click", function () {
+          contentSpan.textContent = currentText;
+          const editBtn = card.querySelector(".edit-btn");
+          const deleteBtn = card.querySelector(".delete-btn");
+          if (editBtn) { editBtn.classList.remove("d-none"); }
+          if (deleteBtn) { deleteBtn.classList.remove("d-none"); }
+        });
+      }
+
+      function deleteMessage(messageId) {
+        if (!confirm("Are you sure you want to delete this message?")) return;
+
+        const formData = new FormData();
+        formData.append("csrf_token", getCsrfToken());
+
+        fetch("/delete_message/" + messageId, {
+          method: "POST",
+          body: formData,
+        }).then(function (response) {
+          if (!response.ok) {
+            alert("Delete failed: " + response.statusText);
+          }
+        }).catch(function (err) {
+          alert("Delete failed: " + err.message);
+        });
+      }
+
       document.addEventListener("DOMContentLoaded", function () {
         document.querySelectorAll("form.chat-form").forEach(function (form) {
           form.addEventListener("submit", sendMessage);
+        });
+
+        document.querySelectorAll(".edit-btn").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            editMessage(parseInt(this.dataset.messageId));
+          });
+        });
+
+        document.querySelectorAll(".delete-btn").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            deleteMessage(parseInt(this.dataset.messageId));
+          });
         });
 
         const textarea =

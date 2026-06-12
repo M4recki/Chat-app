@@ -2,7 +2,7 @@ from itsdangerous import URLSafeTimedSerializer as Serializer
 from conftest import client
 from project.python.routes import generate_csrf_token
 from project.python.settings import settings
-from tests.integration_test import create_user
+from conftest import create_user
 from tests.model_test import TestingSessionLocal
 
 

@@ -1,15 +1,23 @@
 from base64 import b64encode
+from datetime import datetime
+from json import dumps
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy import or_, select
 
+from ..connection_manager import manager
 from ..database import async_session_scope
 from ..models import Channel, Friend, FriendStatus, Message, User
 from .helpers import (
     create_channel,
+    get_channel_id_map,
     get_current_user,
+    get_friend_status_map,
     get_friendship,
+    get_message_or_404,
+    get_user_by_id,
+    validate_csrf,
 )
 from .template import encode_avatar, templates
 
@@ -58,33 +66,8 @@ async def single_chat(
             friend_ids = [f.id for f in friends]
             friend_avatars = {f.id: b64encode(f.avatar).decode() for f in friends}
 
-            result_friendships = await db.execute(
-                select(Friend).filter(
-                    or_(
-                        (Friend.user1_id == user.id)
-                        & (Friend.user2_id.in_(friend_ids)),
-                        (Friend.user2_id == user.id)
-                        & (Friend.user1_id.in_(friend_ids)),
-                    )
-                )
-            )
-            for fs in result_friendships.scalars().all():
-                other_id = fs.user2_id if fs.user1_id == user.id else fs.user1_id
-                friend_status_map[other_id] = fs.status
-
-            result_channels = await db.execute(
-                select(Channel).filter(
-                    or_(
-                        (Channel.user1_id == user.id)
-                        & (Channel.user2_id.in_(friend_ids)),
-                        (Channel.user2_id == user.id)
-                        & (Channel.user1_id.in_(friend_ids)),
-                    )
-                )
-            )
-            for ch in result_channels.scalars().all():
-                other_id = ch.user2_id if ch.user1_id == user.id else ch.user1_id
-                channel_ids[other_id] = ch.channel_id
+            friend_status_map = await get_friend_status_map(db, user.id, friend_ids)
+            channel_ids = await get_channel_id_map(db, user.id, friend_ids)
 
             for fid in friend_ids:
                 if fid not in channel_ids:
@@ -128,8 +111,7 @@ async def friend_chat_page(
         TemplateResponse: Rendered template with chat context
     """
     async with async_session_scope() as db:
-        result = await db.execute(select(User).filter(User.id == friend_id))
-        friend = result.scalar()
+        friend = await get_user_by_id(db, friend_id)
         if not friend:
             raise HTTPException(status_code=404, detail="Friend not found")
 
@@ -179,3 +161,61 @@ async def friend_chat_page(
             "users": users_map,
         },
     )
+
+
+@router.post("/edit_message/{message_id}", dependencies=[Depends(validate_csrf)])
+async def edit_message(
+    request: Request,
+    message_id: int,
+    content: str = Form(...),
+    user: User = Depends(get_current_user),
+) -> Response:
+    async with async_session_scope() as db:
+        message = await get_message_or_404(db, message_id)
+        if message.user_id != user.id:
+            raise HTTPException(status_code=403, detail="Not your message")
+        if not content.strip():
+            raise HTTPException(status_code=400, detail="Content cannot be empty")
+
+        now = datetime.now()
+        message.content = content
+        message.edited_at = now
+        await db.commit()
+
+        await manager.broadcast(
+            dumps({
+                "type": "edit_message",
+                "message_id": message_id,
+                "content": content,
+                "edited_at": now.isoformat(),
+            }),
+            message.channel_id,
+        )
+
+    return Response(status_code=200)
+
+
+@router.post("/delete_message/{message_id}", dependencies=[Depends(validate_csrf)])
+async def delete_message(
+    request: Request,
+    message_id: int,
+    user: User = Depends(get_current_user),
+) -> Response:
+    async with async_session_scope() as db:
+        message = await get_message_or_404(db, message_id)
+        if message.user_id != user.id:
+            raise HTTPException(status_code=403, detail="Not your message")
+
+        channel_id = message.channel_id
+        await db.delete(message)
+        await db.commit()
+
+        await manager.broadcast(
+            dumps({
+                "type": "delete_message",
+                "message_id": message_id,
+            }),
+            channel_id,
+        )
+
+    return Response(status_code=200)

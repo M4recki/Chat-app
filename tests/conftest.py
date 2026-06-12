@@ -1,12 +1,17 @@
 from contextlib import asynccontextmanager, contextmanager
+from datetime import datetime
 from importlib import import_module
+from io import BytesIO
 from os import environ
 from pathlib import Path
 from sys import path
+from uuid import uuid4
 from warnings import filterwarnings
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
+from sqlalchemy.orm import Session
 
 filterwarnings("ignore", message="unclosed database", category=ResourceWarning)
 
@@ -36,6 +41,93 @@ environ["CHAT_SECRET_KEY"] = "test-secret"
 from project.python.main import app
 
 client = TestClient(app)
+
+
+def create_user(
+    db: Session,
+    name: str,
+    surname: str,
+    email: str,
+    password: str,
+    avatar_path: str,
+):
+    """Create a new user and save to the database.
+
+    Args:
+        db (Session): The database session
+        name (str): The user's name
+        surname (str): The user's surname
+        email (str): The user's email
+        password (str): The user's password
+        avatar_path (str): Path to the user's avatar image
+
+    Returns:
+        User: The new user object
+    """
+    img = Image.open(avatar_path)
+
+    if img.mode == "RGBA":
+        img = img.convert("RGB")
+    img_binary = BytesIO()
+    img.save(img_binary, format="JPEG")
+    img_binary = img_binary.getvalue()
+
+    user = models.User(
+        name=name,
+        surname=surname,
+        email=email,
+        password=password,
+        avatar=img_binary,
+        created_at=datetime.now(),
+    )
+    db.add(user)
+    db.commit()
+    return user
+
+
+def create_friendship(
+    db,
+    user1,
+    user2,
+    status: str,
+    last_sent=None,
+):
+    """Create a friendship between two users."""
+
+    rel = models.Friend(
+        user1_id=user1.id,
+        user2_id=user2.id,
+        status=status,
+        last_sent=last_sent or datetime.now(),
+    )
+    db.add(rel)
+    db.commit()
+    return rel
+
+
+def create_channel(db, user1, user2):
+    """Create a channel between two users."""
+    channel = models.Channel(
+        channel_id=str(uuid4()),
+        user1_id=user1.id,
+        user2_id=user2.id,
+    )
+    db.add(channel)
+    db.commit()
+    return channel
+
+
+def create_message(db, content: str, channel_id: str, user):
+    """Create a message in a channel."""
+    msg = models.Message(
+        content=content,
+        channel_id=channel_id,
+        created_at=datetime.now(),
+        user_id=user.id,
+    )
+    db.add(msg)
+    db.commit()
+    return msg
 
 
 @contextmanager
@@ -72,7 +164,6 @@ def clear_tables():
     """Reset test database by dropping and recreating all tables."""
     models.Base.metadata.drop_all(bind=test_engine)
     models.Base.metadata.create_all(bind=test_engine)
-    test_engine.dispose()
 
 
 @pytest.fixture(scope="function", autouse=True)

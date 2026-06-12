@@ -8,7 +8,7 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy import or_, select
 
 from ..database import async_session_scope, session_scope
-from ..models import Channel, Friend, User
+from ..models import Channel, Friend, Message, User
 from ..settings import settings
 
 
@@ -61,8 +61,7 @@ async def is_authenticated(request: Request) -> bool:
         raise HTTPException(status_code=401, detail="Invalid session token")
 
     async with async_session_scope() as db:
-        result = await db.execute(select(User).filter(User.id == user_id))
-        user = result.scalar()
+        user = await get_user_by_id(db, user_id)
 
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
@@ -94,8 +93,7 @@ async def get_user_from_request(
         return None, None
 
     async with async_session_scope() as db:
-        result = await db.execute(select(User).filter(User.id == user_id))
-        user = result.scalar()
+        user = await get_user_by_id(db, user_id)
 
     return user, user_id
 
@@ -139,8 +137,7 @@ async def get_current_user(request: Request) -> User:
         raise HTTPException(status_code=401, detail="Invalid session token")
 
     async with async_session_scope() as db:
-        result = await db.execute(select(User).filter(User.id == user_id))
-        user = result.scalar()
+        user = await get_user_by_id(db, user_id)
 
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
@@ -303,6 +300,59 @@ async def get_or_create_channel(db, user_id: int, other_id: int) -> Channel:
     if existing:
         return existing
     return await create_channel(db, user_id, other_id)
+
+
+async def get_friend_status_map(
+    db, user_id: int, friend_ids: list[int]
+) -> dict[int, str]:
+    """Get a map of friend_id -> status for a list of friend IDs."""
+    result = await db.execute(
+        select(Friend).filter(
+            or_(
+                (Friend.user1_id == user_id) & (Friend.user2_id.in_(friend_ids)),
+                (Friend.user2_id == user_id) & (Friend.user1_id.in_(friend_ids)),
+            )
+        )
+    )
+    status_map = {}
+    for fs in result.scalars().all():
+        other_id = fs.user2_id if fs.user1_id == user_id else fs.user1_id
+        status_map[other_id] = fs.status
+    return status_map
+
+
+async def get_channel_id_map(
+    db, user_id: int, friend_ids: list[int]
+) -> dict[int, str]:
+    """Get a map of friend_id -> channel_id for a list of friend IDs."""
+    result = await db.execute(
+        select(Channel).filter(
+            or_(
+                (Channel.user1_id == user_id) & (Channel.user2_id.in_(friend_ids)),
+                (Channel.user2_id == user_id) & (Channel.user1_id.in_(friend_ids)),
+            )
+        )
+    )
+    channel_map = {}
+    for ch in result.scalars().all():
+        other_id = ch.user2_id if ch.user1_id == user_id else ch.user1_id
+        channel_map[other_id] = ch.channel_id
+    return channel_map
+
+
+async def get_user_by_id(db, user_id: int) -> User | None:
+    """Get a user by ID."""
+    result = await db.execute(select(User).filter(User.id == user_id))
+    return result.scalar()
+
+
+async def get_message_or_404(db, message_id: int) -> Message:
+    """Get a message by ID or raise 404."""
+    result = await db.execute(select(Message).filter(Message.id == message_id))
+    message = result.scalar()
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return message
 
 
 async def get_friendship_by_direction(db, user1_id: int, user2_id: int):

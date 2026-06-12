@@ -10,7 +10,7 @@ from project.python.routes import (
 from project.python.settings import settings
 from project.python.main import app
 from project.python.rate_limit import clear_rate_limiter
-from tests.integration_test import create_user
+from conftest import create_user
 from tests.model_test import TestingSessionLocal
 from conftest import client
 

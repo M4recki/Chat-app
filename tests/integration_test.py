@@ -1,10 +1,5 @@
-from base64 import b64encode
-from datetime import datetime
-from PIL import Image
-from io import BytesIO
 from fastapi.testclient import TestClient
-from conftest import client
-from sqlalchemy.orm import Session
+from conftest import client, create_user
 from project.python.main import app
 from project.python.models import User
 from project.python.settings import settings
@@ -12,52 +7,6 @@ from project.python.rate_limit import clear_rate_limiter
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from project.python.routes import generate_csrf_token
 from tests.model_test import TestingSessionLocal
-
-
-def create_user(
-    db: Session,
-    name: str,
-    surname: str,
-    email: str,
-    password: str,
-    avatar_path: str,
-):
-    """
-    Create a new user and save to the database.
-
-    Encodes the user avatar to base64.
-
-    Args:
-        db (Session): The database session
-        name (str): The user's name
-        surname (str): The user's surname
-        email (str): The user's email
-        password (str): The user's password
-        avatar_path (str): Path to the user's avatar image
-
-    Returns:
-        User: The new user object
-    """
-    img = Image.open(avatar_path)
-
-    # Convert RGBA to RGB for JPEG format
-    if img.mode == "RGBA":
-        img = img.convert("RGB")
-    img_binary = BytesIO()
-    img.save(img_binary, format="JPEG")
-    img_binary = img_binary.getvalue()
-
-    user = User(
-        name=name,
-        surname=surname,
-        email=email,
-        password=password,
-        avatar=b64encode(img_binary),
-        created_at=datetime.now(),
-    )
-    db.add(user)
-    db.commit()
-    return user
 
 
 def test_register_user(test_db_session):

@@ -117,15 +117,6 @@ async def websocket_endpoint(websocket: WebSocket, channel_id: str):
             elif msg_type == "message":
                 message = message_data["message"]
 
-                message_object = {
-                    "type": "message",
-                    "userId": user_id,
-                    "senderName": escape(user_name),
-                    "content": escape(message),
-                }
-
-                await manager.broadcast(dumps(message_object), channel_id)
-
                 async with async_session_scope() as db:
                     new_message = Message(
                         content=message,
@@ -133,7 +124,18 @@ async def websocket_endpoint(websocket: WebSocket, channel_id: str):
                         created_at=datetime.now(),
                         user_id=user_id,
                     )
-                    db.add(new_message)
+                    db.add(new_message)  # type: ignore[attr-defined]
+                    await db.flush()
+
+                    message_object = {
+                        "type": "message",
+                        "message_id": new_message.id,
+                        "userId": user_id,
+                        "senderName": escape(user_name),
+                        "content": escape(message),
+                    }
+
+                await manager.broadcast(dumps(message_object), channel_id)
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, channel_id, user_id)
