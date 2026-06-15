@@ -2,7 +2,7 @@ from base64 import b64encode
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -206,6 +206,8 @@ async def accept_friend(
     """
     async with async_session_scope() as db:
         friend = await get_friendship_by_direction(db, friend_id, user.id)
+        if friend is None:
+            return HTMLResponse("Friend request not found", status_code=404)
         friend.status = FriendStatus.ACCEPTED.value
 
     return RedirectResponse(request.url_for("single_chat"), status_code=303)
@@ -232,6 +234,8 @@ async def deny_friend(
     """
     async with async_session_scope() as db:
         friend = await get_friendship_by_direction(db, friend_id, user.id)
+        if friend is None:
+            return HTMLResponse("Friend request not found", status_code=404)
         friend.status = FriendStatus.DENIED.value
 
     return RedirectResponse(request.url_for("single_chat"), status_code=303)

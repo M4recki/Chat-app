@@ -818,6 +818,25 @@ def test_accept_friend():
     assert response.status_code == 200
 
 
+def test_accept_friend_not_found():
+    db = TestingSessionLocal()
+    user = create_user(
+        db,
+        "AFNF",
+        "User",
+        "afnf-user@example.com",
+        "Password123",
+        DEFAULT_AVATAR,
+    )
+    db.close()
+    local_client = authed_client(user)
+    response = local_client.post(
+        "/accept_friend/99999",
+        data={"csrf_token": generate_csrf_token(user.id)},
+    )
+    assert response.status_code == 404
+
+
 def test_deny_friend():
     db = TestingSessionLocal()
     user = create_user(
@@ -843,6 +862,25 @@ def test_deny_friend():
         data={"csrf_token": generate_csrf_token(user.id)},
     )
     assert response.status_code == 200
+
+
+def test_deny_friend_not_found():
+    db = TestingSessionLocal()
+    user = create_user(
+        db,
+        "DNFNF",
+        "User",
+        "dnfnf-user@example.com",
+        "Password123",
+        DEFAULT_AVATAR,
+    )
+    db.close()
+    local_client = authed_client(user)
+    response = local_client.post(
+        "/deny_friend/99999",
+        data={"csrf_token": generate_csrf_token(user.id)},
+    )
+    assert response.status_code == 404
 
 
 def test_block_friend():

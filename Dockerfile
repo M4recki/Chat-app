@@ -13,11 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 # copy and install requirements
-COPY requirements.txt requirements-dev.txt ./
+COPY requirements.txt ./
 RUN python -m pip install --upgrade pip
 RUN pip install -r requirements.txt
-# install dev requirements (alembic + dev tools) so migrations can run inside the container
-RUN if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
 
 # copy app
 COPY . /app

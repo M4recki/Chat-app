@@ -46,6 +46,8 @@ from tests.model_test import TestingSessionLocal
 
 
 class FakeMessage:
+    __slots__ = ("message", "response")
+
     def __init__(self, message, response):
         self.message = message
         self.response = response

@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: chatapp
+      POSTGRES_DB: chat_app
     volumes:
       - pgdata:/var/lib/postgresql/data
     # map to a different host port to avoid collisions with local Postgres
@@ -20,7 +20,7 @@ services:
     depends_on:
       - db
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/chatapp
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/chat_app
 
 volumes:
   pgdata:

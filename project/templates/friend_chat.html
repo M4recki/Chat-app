@@ -4,7 +4,7 @@
     <!-- Head -->
     {% include "head.html" %}
 
-    <title>Chat app - Chatbot</title>
+    <title>Chat app - {{ friend.name }}</title>
   </head>
   <body>
     <!-- Navbar -->
@@ -91,7 +91,6 @@
                       Send
                     </button>
                   </div>
-                  <div id="messages"></div>
                 </form>
               </div>
             </div>
@@ -212,17 +211,16 @@
             <button
               class="btn btn-danger btn-lg text-decoration-none text-dark bold mt-5 mx-3 mb-3 float-end"
               onclick="
-                document.getElementById('delete-confirmation').showModal()
+                document.getElementById('block-confirmation').showModal()
               ">
               Block
             </button>
-            <dialog id="delete-confirmation">
+            <dialog id="block-confirmation">
               Are you sure you want to block this user?
               <div class="button-container my-5 d-flex justify-content-center">
                 <button
                   class="btn btn-success me-3 text-dark"
-                  id="close-dialog"
-                  onclick="DeleteConfirmationClose()">
+                  onclick="document.getElementById('block-confirmation').close()">
                   Cancel
                 </button>
                 <form action="{{ url_for('block_friend', friend_id=friend.id) }}" method="POST" style="display:inline">
@@ -235,17 +233,16 @@
             <button
               class="btn btn-success btn-lg text-decoration-none text-dark bold mt-5 mx-3 mb-3 float-end"
               onclick="
-                document.getElementById('delete-confirmation').showModal()
+                document.getElementById('unblock-confirmation').showModal()
               ">
               Unblock
             </button>
-            <dialog id="delete-confirmation">
+            <dialog id="unblock-confirmation">
               Are you sure you want to unblock this user?
               <div class="button-container my-5 d-flex justify-content-center">
                 <button
                   class="btn btn-success me-3 text-dark"
-                  id="close-dialog"
-                  onclick="DeleteConfirmationClose()">
+                  onclick="document.getElementById('unblock-confirmation').close()">
                   Cancel
                 </button>
                 <form action="{{ url_for('unblock_friend', friend_id=friend.id) }}" method="POST" style="display:inline">
@@ -265,10 +262,10 @@
 
     <!-- WebSocket handling for real-time chat -->
     <script>
-      const user_name = "{{ user.name }}";
-      const client_avatar = "{{ avatar_b64 }}";
-      const friend_avatar = "{{ friend_avatar_b64 }}";
-      const channel_id = "{{ channel_id }}";
+      const user_name = {{ user.name|tojson }};
+      const client_avatar = {{ avatar_b64|tojson }};
+      const friend_avatar = {{ friend_avatar_b64|tojson }};
+      const channel_id = {{ channel_id|tojson }};
       const friend_id = parseInt("{{ friend.id }}", 10);
       const user_id = parseInt("{{ user.id }}", 10);
 

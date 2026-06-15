@@ -376,8 +376,7 @@ header {
 }
 
 /* Markdown content styling */
-.card-body,
-  > div:has(> div > *:is(h1, h2, h3, h4, h5, h6, p, ul, ol, blockquote, code)) {
+.card-body > div:has(> div > *:is(h1, h2, h3, h4, h5, h6, p, ul, ol, blockquote, code)) {
   word-wrap: break-word;
   overflow-wrap: break-word;
 }

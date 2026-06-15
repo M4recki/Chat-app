@@ -42,7 +42,7 @@ class Message(Base):
     channel_id = Column(
         String(100), ForeignKey("channels.channel_id"), nullable=False, index=True
     )
-    created_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, nullable=False, index=True)
     edited_at = Column(DateTime, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     channel = relationship("Channel", foreign_keys="Message.channel_id")
