@@ -87,6 +87,13 @@ async def update_profile_data(
             else:
                 user.avatar = avatar_data
 
+    if errors:
+        return templates.TemplateResponse(
+            request,
+            "update_profile.html",
+            {"request": request, "user": user, "errors": errors},
+        )
+
     async with async_session_scope() as db:
         result = await db.execute(select(User).filter(User.id == user.id))
         updated_user = result.scalar()

@@ -1,19 +1,34 @@
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from fastapi.testclient import TestClient
-from conftest import client, create_friendship, create_channel, create_message, create_user
+from conftest import (
+    client,
+    create_friendship,
+    create_channel,
+    create_message,
+    create_user,
+    create_group,
+    create_group_member,
+    create_group_message,
+)
 from project.python.main import app
 from project.python.settings import settings
 from tests.model_test import TestingSessionLocal
 from datetime import datetime, timedelta
 from uuid import uuid4
 from starlette.requests import Request
-from project.python.chatbot_utils import chatbot_json_error
+from project.python.chatbot_utils import ChatbotServiceError, chatbot_json_error
 from project.python.main import get_rate_limit_identifier
-from project.python.models import User, Channel, Message
+from project.python.models import (
+    User,
+    Channel,
+    Message,
+    GroupChat,
+    GroupMember,
+    GroupMessage,
+)
 from project.python.routes import generate_csrf_token
 from project.python.models import FriendStatus
 from project.python.rate_limit import clear_rate_limiter
-
 
 DEFAULT_AVATAR = "project/static/img/default avatar.png"
 
@@ -376,6 +391,40 @@ def test_contact_short_message_error():
     assert response.status_code == 200
 
 
+def test_contact_invalid_email():
+    csrf_token = generate_csrf_token(0)
+    response = client.post(
+        "/contact",
+        data={
+            "name": "Test",
+            "email": "not-an-email",
+            "subject": "Hi",
+            "message": "This is a long enough message",
+            "csrf_token": csrf_token,
+        },
+    )
+    assert response.status_code == 200
+
+
+def test_contact_email_send_failure(monkeypatch):
+    monkeypatch.setattr(
+        "project.python.routes.contact.send_email",
+        lambda *_a, **_kw: "SMTP error occurred",
+    )
+    csrf_token = generate_csrf_token(0)
+    response = client.post(
+        "/contact",
+        data={
+            "name": "Test",
+            "email": "test@example.com",
+            "subject": "Hi",
+            "message": "This is a long enough message",
+            "csrf_token": csrf_token,
+        },
+    )
+    assert response.status_code == 200
+
+
 def test_sign_up_duplicate_email():
     db = TestingSessionLocal()
     _ = create_user(
@@ -410,8 +459,8 @@ def test_sign_up_password_not_alphanumeric():
             "name": "Test",
             "surname": "User",
             "email": "alphanum@example.com",
-            "password": "haslo-123",
-            "confirm_password": "haslo-123",
+            "password": "Password123",
+            "confirm_password": "Password123",
             "terms_conditions": "on",
             "csrf_token": csrf_token,
         },
@@ -512,7 +561,7 @@ def test_login_wrong_password():
         "/login",
         data={
             "email": "login-wrong@example.com",
-            "password": "wrongpass",
+            "password": "wrong_pass",
             "csrf_token": csrf_token,
         },
     )
@@ -548,7 +597,7 @@ def test_validation_error_returns_422_html():
 def test_unhandled_exception_returns_500_json(monkeypatch):
     monkeypatch.setattr(
         "project.python.routes.main_page.render_template",
-        lambda *a, **kw: (_ for _ in ()).throw(Exception("unexpected error")),
+        lambda *_a, **_kw: (_ for _ in ()).throw(Exception("unexpected error")),
     )
     local_client = TestClient(app, raise_server_exceptions=False)
     response = local_client.get(
@@ -564,7 +613,7 @@ def test_unhandled_exception_returns_500_json(monkeypatch):
 def test_unhandled_exception_returns_500_html(monkeypatch):
     monkeypatch.setattr(
         "project.python.routes.main_page.render_template",
-        lambda *a, **kw: (_ for _ in ()).throw(Exception("unexpected error")),
+        lambda *_a, **_kw: (_ for _ in ()).throw(Exception("unexpected error")),
     )
     local_client = TestClient(app, raise_server_exceptions=False)
     response = local_client.get("/")
@@ -782,7 +831,9 @@ def test_add_friend_duplicate_denied():
         "Password123",
         DEFAULT_AVATAR,
     )
-    create_friendship(db, user, target, FriendStatus.DENIED.value, last_sent=datetime(2020, 1, 1))
+    create_friendship(
+        db, user, target, FriendStatus.DENIED.value, last_sent=datetime(2020, 1, 1)
+    )
     local_client = authed_client(user)
     response = local_client.post(
         f"/add_friend/{target.id}",
@@ -950,7 +1001,7 @@ def test_chatbot_error_returns_502(monkeypatch):
     local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
 
-    def mock_response(*a, **kw):
+    def mock_response(*args, **kwargs):
         raise Exception("mock failure")
 
     monkeypatch.setattr(
@@ -979,7 +1030,7 @@ def test_chatbot_chatbot_service_error_html(monkeypatch):
     local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
 
-    def mock_response(*a, **kw):
+    def mock_response(*args, **kwargs):
         raise Exception("mock failure")
 
     monkeypatch.setattr(
@@ -1052,6 +1103,30 @@ def test_clear_chatbot_messages():
     assert response.status_code == 200
 
 
+def test_chatbot_service_error_non_ajax(monkeypatch):
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "Chat", "SvcErr", "chat-svcerr@example.com", "Password123", DEFAULT_AVATAR
+    )
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+
+    def mock_response(*_a, **_kw):
+        raise ChatbotServiceError("service error")
+
+    monkeypatch.setattr(
+        "project.python.routes.chatbot.chatbot_response",
+        mock_response,
+    )
+
+    response = local_client.post(
+        "/chatbot",
+        data={"message": "hi", "csrf_token": csrf},
+    )
+    assert response.status_code == 200
+    assert "service error" in response.text
+
+
 #  Friend chat page
 
 
@@ -1114,11 +1189,19 @@ def test_friend_chat_page_found():
 def test_edit_message_success():
     db = TestingSessionLocal()
     user = create_user(
-        db, "Edit", "User", "edit-user@example.com", "Password123",
+        db,
+        "Edit",
+        "User",
+        "edit-user@example.com",
+        "Password123",
         DEFAULT_AVATAR,
     )
     friend = create_user(
-        db, "Edit", "Friend", "edit-friend@example.com", "Password123",
+        db,
+        "Edit",
+        "Friend",
+        "edit-friend@example.com",
+        "Password123",
         DEFAULT_AVATAR,
     )
     ch_id = str(uuid4())
@@ -1145,11 +1228,19 @@ def test_edit_message_success():
 def test_edit_message_not_owner():
     db = TestingSessionLocal()
     user = create_user(
-        db, "Edit2", "User", "edit2-user@example.com", "Password123",
+        db,
+        "Edit2",
+        "User",
+        "edit2-user@example.com",
+        "Password123",
         DEFAULT_AVATAR,
     )
     other = create_user(
-        db, "Edit2", "Other", "edit2-other@example.com", "Password123",
+        db,
+        "Edit2",
+        "Other",
+        "edit2-other@example.com",
+        "Password123",
         DEFAULT_AVATAR,
     )
     ch_id = str(uuid4())
@@ -1169,7 +1260,11 @@ def test_edit_message_not_owner():
 def test_edit_message_not_found():
     db = TestingSessionLocal()
     user = create_user(
-        db, "ENF", "User", "enf-user@example.com", "Password123",
+        db,
+        "ENF",
+        "User",
+        "enf-user@example.com",
+        "Password123",
         DEFAULT_AVATAR,
     )
     db.close()
@@ -1185,11 +1280,19 @@ def test_edit_message_not_found():
 def test_delete_message_success():
     db = TestingSessionLocal()
     user = create_user(
-        db, "Del", "User", "del-user@example.com", "Password123",
+        db,
+        "Del",
+        "User",
+        "del-user@example.com",
+        "Password123",
         DEFAULT_AVATAR,
     )
     friend = create_user(
-        db, "Del", "Friend", "del-friend@example.com", "Password123",
+        db,
+        "Del",
+        "Friend",
+        "del-friend@example.com",
+        "Password123",
         DEFAULT_AVATAR,
     )
     ch_id = str(uuid4())
@@ -1215,11 +1318,19 @@ def test_delete_message_success():
 def test_delete_message_not_owner():
     db = TestingSessionLocal()
     user = create_user(
-        db, "Del2", "User", "del2-user@example.com", "Password123",
+        db,
+        "Del2",
+        "User",
+        "del2-user@example.com",
+        "Password123",
         DEFAULT_AVATAR,
     )
     other = create_user(
-        db, "Del2", "Other", "del2-other@example.com", "Password123",
+        db,
+        "Del2",
+        "Other",
+        "del2-other@example.com",
+        "Password123",
         DEFAULT_AVATAR,
     )
     ch_id = str(uuid4())
@@ -1239,7 +1350,11 @@ def test_delete_message_not_owner():
 def test_delete_message_not_found():
     db = TestingSessionLocal()
     user = create_user(
-        db, "DNF", "User", "dnf-user@example.com", "Password123",
+        db,
+        "DNF",
+        "User",
+        "dnf-user@example.com",
+        "Password123",
         DEFAULT_AVATAR,
     )
     db.close()
@@ -1255,11 +1370,19 @@ def test_delete_message_not_found():
 def test_edit_message_empty_content():
     db = TestingSessionLocal()
     user = create_user(
-        db, "EMC", "User", "emc-user@example.com", "Password123",
+        db,
+        "EMC",
+        "User",
+        "emc-user@example.com",
+        "Password123",
         DEFAULT_AVATAR,
     )
     friend = create_user(
-        db, "EMC", "Friend", "emc-friend@example.com", "Password123",
+        db,
+        "EMC",
+        "Friend",
+        "emc-friend@example.com",
+        "Password123",
         DEFAULT_AVATAR,
     )
     ch_id = str(uuid4())
@@ -1278,7 +1401,11 @@ def test_edit_message_empty_content():
 def test_friend_chat_page_friend_not_found():
     db = TestingSessionLocal()
     user = create_user(
-        db, "FNF", "User", "fnf-user@example.com", "Password123",
+        db,
+        "FNF",
+        "User",
+        "fnf-user@example.com",
+        "Password123",
         DEFAULT_AVATAR,
     )
     db.close()
@@ -1405,8 +1532,8 @@ def test_update_profile_data_non_alphanumeric_password():
             "name": "Updated",
             "surname": "User",
             "email": "up2-user@example.com",
-            "password": "haslo-123",
-            "confirm_password": "haslo-123",
+            "password": "Password123",
+            "confirm_password": "Password123",
             "csrf_token": csrf,
         },
     )
@@ -1550,6 +1677,74 @@ def test_update_profile_avatar_wrong_type():
     assert response.status_code == 200
 
 
+def test_update_profile_invalid_email():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "UP", "Email", "up-email@example.com", "Password123", DEFAULT_AVATAR
+    )
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        "/update_profile",
+        data={
+            "email": "not-an-email",
+            "name": "UP",
+            "surname": "Email",
+            "password": "Password1",
+            "confirm_password": "Password1",
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 200
+    assert "Invalid email format" in response.text
+
+
+def test_update_profile_short_password():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "UP", "Pwd", "up-pwd@example.com", "Password123", DEFAULT_AVATAR
+    )
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        "/update_profile",
+        data={
+            "email": "up-pwd@example.com",
+            "name": "UP",
+            "surname": "Pwd",
+            "password": "Short1",
+            "confirm_password": "Short1",
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 200
+    assert "Password must be at least 8 characters long" in response.text
+
+
+def test_update_profile_large_avatar():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "UP", "Avatar", "up-avatar-lg@example.com", "Password123", DEFAULT_AVATAR
+    )
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    large_data = b"\xff\xd8\xff\xe0" + b"\x00" * 5300000
+    response = local_client.post(
+        "/update_profile",
+        data={
+            "email": "up-avatar-lg@example.com",
+            "name": "UP",
+            "surname": "Avatar",
+            "password": "Password1",
+            "confirm_password": "Password1",
+            "csrf_token": csrf,
+        },
+        files={"avatar": ("avatar.jpg", large_data, "image/jpeg")},
+    )
+    assert response.status_code == 200
+    assert "Avatar must be smaller than 5 MB" in response.text
+
+
 #  Chatbot page
 
 
@@ -1588,3 +1783,516 @@ def test_friend_requests_with_pending():
     local_client = authed_client(user)
     response = local_client.get("/friend_requests")
     assert response.status_code == 200
+
+
+#  Group chat
+
+
+def test_group_chat_list_empty():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "GL", "Empty", "gl-empty@example.com", "Password123", DEFAULT_AVATAR
+    )
+    local_client = authed_client(user)
+    response = local_client.get("/group_chat_list")
+    assert response.status_code == 200
+
+
+def test_group_chat_list_with_groups():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "GL", "With", "gl-with@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Test Group", user)
+    create_group_member(db, group.id, user)
+    local_client = authed_client(user)
+    response = local_client.get("/group_chat_list")
+    assert response.status_code == 200
+
+
+def test_create_group_form():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "CG", "Form", "cg-form@example.com", "Password123", DEFAULT_AVATAR
+    )
+    local_client = authed_client(user)
+    response = local_client.get("/create_group")
+    assert response.status_code == 200
+
+
+def test_create_group_success():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "CG", "Create", "cg-create@example.com", "Password123", DEFAULT_AVATAR
+    )
+    friend = create_user(
+        db, "CG", "Friend", "cg-friend@example.com", "Password123", DEFAULT_AVATAR
+    )
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        "/create_group",
+        data={
+            "name": "New Group",
+            "member_ids": str(friend.id),
+            "csrf_token": csrf,
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "/group_chat/" in response.headers["location"]
+    db_check = TestingSessionLocal()
+    groups = db_check.query(GroupChat).all()
+    assert len(groups) == 1
+    assert groups[0].name == "New Group"
+    members = (
+        db_check.query(GroupMember).filter(GroupMember.group_id == groups[0].id).all()
+    )
+    assert len(members) == 2
+
+
+def test_create_group_empty_name():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "CG", "Empty", "cg-empty@example.com", "Password123", DEFAULT_AVATAR
+    )
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        "/create_group",
+        data={
+            "name": "",
+            "member_ids": "",
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_create_group_whitespace_name():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "CG", "WS", "cg-ws@example.com", "Password123", DEFAULT_AVATAR
+    )
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        "/create_group",
+        data={
+            "name": "   ",
+            "member_ids": "",
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_group_chat_page():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "GP", "View", "gp-view@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "View Group", user)
+    create_group_member(db, group.id, user)
+    local_client = authed_client(user)
+    response = local_client.get(f"/group_chat/{group.id}")
+    assert response.status_code == 200
+
+
+def test_group_chat_page_not_member():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "GP", "NoMember", "gp-nomember@example.com", "Password123", DEFAULT_AVATAR
+    )
+    owner = create_user(
+        db, "GP", "Owner", "gp-owner@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Private", owner)
+    create_group_member(db, group.id, owner)
+    local_client = authed_client(user)
+    response = local_client.get(f"/group_chat/{group.id}")
+    assert response.status_code == 403
+
+
+def test_group_chat_page_creator_with_friends():
+    db = TestingSessionLocal()
+    creator = create_user(
+        db, "GP", "Creator", "gp-creator@example.com", "Password123", DEFAULT_AVATAR
+    )
+    friend = create_user(
+        db, "GP", "Friend", "gp-friend@example.com", "Password123", DEFAULT_AVATAR
+    )
+    other = create_user(
+        db, "GP", "Other", "gp-other@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "With Friends", creator)
+    create_group_member(db, group.id, creator)
+    create_group_member(db, group.id, other)
+    create_friendship(db, creator, friend, FriendStatus.ACCEPTED)
+    local_client = authed_client(creator)
+    response = local_client.get(f"/group_chat/{group.id}")
+    assert response.status_code == 200
+    assert friend.name in response.text
+
+
+def test_add_group_member():
+    db = TestingSessionLocal()
+    creator = create_user(
+        db, "AG", "Creator", "ag-creator@example.com", "Password123", DEFAULT_AVATAR
+    )
+    friend = create_user(
+        db, "AG", "Friend", "ag-friend@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Add Member", creator)
+    create_group_member(db, group.id, creator)
+    local_client = authed_client(creator)
+    csrf = generate_csrf_token(creator.id)
+    response = local_client.post(
+        f"/add_group_member/{group.id}",
+        data={
+            "user_id": friend.id,
+            "csrf_token": csrf,
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    db_check = TestingSessionLocal()
+    member = (
+        db_check.query(GroupMember)
+        .filter(GroupMember.group_id == group.id, GroupMember.user_id == friend.id)
+        .first()
+    )
+    assert member is not None
+
+
+def test_add_group_member_not_creator():
+    db = TestingSessionLocal()
+    creator = create_user(
+        db, "AG", "Creator2", "ag-creator2@example.com", "Password123", DEFAULT_AVATAR
+    )
+    other = create_user(
+        db, "AG", "Other", "ag-other@example.com", "Password123", DEFAULT_AVATAR
+    )
+    friend = create_user(
+        db, "AG", "Friend2", "ag-friend2@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Add Member 2", creator)
+    create_group_member(db, group.id, creator)
+    create_group_member(db, group.id, other)
+    local_client = authed_client(other)
+    csrf = generate_csrf_token(other.id)
+    response = local_client.post(
+        f"/add_group_member/{group.id}",
+        data={
+            "user_id": friend.id,
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 403
+
+
+def test_add_group_member_already_member():
+    db = TestingSessionLocal()
+    creator = create_user(
+        db, "AG", "Creator3", "ag-creator3@example.com", "Password123", DEFAULT_AVATAR
+    )
+    member = create_user(
+        db, "AG", "Member", "ag-member@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Add Member 3", creator)
+    create_group_member(db, group.id, creator)
+    create_group_member(db, group.id, member)
+    local_client = authed_client(creator)
+    csrf = generate_csrf_token(creator.id)
+    response = local_client.post(
+        f"/add_group_member/{group.id}",
+        data={
+            "user_id": member.id,
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_add_group_member_nonexistent_user():
+    db = TestingSessionLocal()
+    creator = create_user(
+        db, "AG", "Creator4", "ag-creator4@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Bad Add", creator)
+    create_group_member(db, group.id, creator)
+    local_client = authed_client(creator)
+    csrf = generate_csrf_token(creator.id)
+    response = local_client.post(
+        f"/add_group_member/{group.id}",
+        data={
+            "user_id": "99999",
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 404
+
+
+def test_remove_group_member():
+    db = TestingSessionLocal()
+    creator = create_user(
+        db, "RG", "Creator", "rg-creator@example.com", "Password123", DEFAULT_AVATAR
+    )
+    member = create_user(
+        db, "RG", "Member", "rg-member@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Remove Member", creator)
+    create_group_member(db, group.id, creator)
+    create_group_member(db, group.id, member)
+    local_client = authed_client(creator)
+    csrf = generate_csrf_token(creator.id)
+    response = local_client.post(
+        f"/remove_group_member/{group.id}",
+        data={
+            "user_id": member.id,
+            "csrf_token": csrf,
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    db_check = TestingSessionLocal()
+    remaining = (
+        db_check.query(GroupMember).filter(GroupMember.group_id == group.id).all()
+    )
+    assert len(remaining) == 1
+    assert remaining[0].user_id == creator.id
+
+
+def test_remove_group_member_creator():
+    db = TestingSessionLocal()
+    creator = create_user(
+        db, "RG", "Creator2", "rg-creator2@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Remove Creator", creator)
+    create_group_member(db, group.id, creator)
+    local_client = authed_client(creator)
+    csrf = generate_csrf_token(creator.id)
+    response = local_client.post(
+        f"/remove_group_member/{group.id}",
+        data={
+            "user_id": creator.id,
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_remove_group_member_not_creator():
+    db = TestingSessionLocal()
+    creator = create_user(
+        db, "RG", "Creator3", "rg-creator3@example.com", "Password123", DEFAULT_AVATAR
+    )
+    other = create_user(
+        db, "RG", "Other", "rg-other@example.com", "Password123", DEFAULT_AVATAR
+    )
+    member = create_user(
+        db, "RG", "Member3", "rg-member3@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Remove Not Creator", creator)
+    create_group_member(db, group.id, creator)
+    create_group_member(db, group.id, other)
+    create_group_member(db, group.id, member)
+    local_client = authed_client(other)
+    csrf = generate_csrf_token(other.id)
+    response = local_client.post(
+        f"/remove_group_member/{group.id}",
+        data={
+            "user_id": member.id,
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 403
+
+
+def test_remove_group_member_nonexistent():
+    db = TestingSessionLocal()
+    creator = create_user(
+        db, "RG", "Creator4", "rg-creator4@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Remove Missing", creator)
+    create_group_member(db, group.id, creator)
+    local_client = authed_client(creator)
+    csrf = generate_csrf_token(creator.id)
+    response = local_client.post(
+        f"/remove_group_member/{group.id}",
+        data={
+            "user_id": "99999",
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 404
+
+
+def test_edit_group_message():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "EG", "Edit", "eg-edit@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Edit Msg", user)
+    create_group_member(db, group.id, user)
+    msg = create_group_message(db, group.id, user, "original content")
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        f"/edit_group_message/{msg.id}",
+        data={
+            "content": "updated content",
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 200
+    db_check = TestingSessionLocal()
+    updated = db_check.query(GroupMessage).filter(GroupMessage.id == msg.id).first()
+    assert updated.content == "updated content"
+    assert updated.edited_at is not None
+
+
+def test_edit_group_message_not_owner():
+    db = TestingSessionLocal()
+    owner = create_user(
+        db, "EG", "Owner", "eg-owner@example.com", "Password123", DEFAULT_AVATAR
+    )
+    other = create_user(
+        db, "EG", "Other", "eg-other2@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Edit Other", owner)
+    create_group_member(db, group.id, owner)
+    create_group_member(db, group.id, other)
+    msg = create_group_message(db, group.id, owner, "owner msg")
+    local_client = authed_client(other)
+    csrf = generate_csrf_token(other.id)
+    response = local_client.post(
+        f"/edit_group_message/{msg.id}",
+        data={
+            "content": "hacked",
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 403
+
+
+def test_edit_group_message_empty_content():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "EG", "Empty", "eg-empty2@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Edit Empty", user)
+    create_group_member(db, group.id, user)
+    msg = create_group_message(db, group.id, user, "some content")
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        f"/edit_group_message/{msg.id}",
+        data={
+            "content": "",
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_edit_group_message_whitespace_content():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "EG", "WS", "eg-ws@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Edit WS", user)
+    create_group_member(db, group.id, user)
+    msg = create_group_message(db, group.id, user, "original")
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        f"/edit_group_message/{msg.id}",
+        data={
+            "content": "   ",
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_delete_group_message():
+    db = TestingSessionLocal()
+    user = create_user(
+        db, "DG", "Delete", "dg-delete@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Delete Msg", user)
+    create_group_member(db, group.id, user)
+    msg = create_group_message(db, group.id, user, "to delete")
+    local_client = authed_client(user)
+    csrf = generate_csrf_token(user.id)
+    response = local_client.post(
+        f"/delete_group_message/{msg.id}",
+        data={
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 200
+    db_check = TestingSessionLocal()
+    deleted = db_check.query(GroupMessage).filter(GroupMessage.id == msg.id).first()
+    assert deleted is None
+
+
+def test_delete_group_message_not_owner():
+    db = TestingSessionLocal()
+    owner = create_user(
+        db, "DG", "Owner", "dg-owner@example.com", "Password123", DEFAULT_AVATAR
+    )
+    other = create_user(
+        db, "DG", "Other", "dg-other@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Delete Other", owner)
+    create_group_member(db, group.id, owner)
+    create_group_member(db, group.id, other)
+    msg = create_group_message(db, group.id, owner, "owner msg")
+    local_client = authed_client(other)
+    csrf = generate_csrf_token(other.id)
+    response = local_client.post(
+        f"/delete_group_message/{msg.id}",
+        data={
+            "csrf_token": csrf,
+        },
+    )
+    assert response.status_code == 403
+
+
+def test_group_members_json():
+    db = TestingSessionLocal()
+    creator = create_user(
+        db, "Alice", "Creator", "gm-creator@example.com", "Password123", DEFAULT_AVATAR
+    )
+    member = create_user(
+        db, "Bob", "Member", "gm-member@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Members JSON", creator)
+    create_group_member(db, group.id, creator)
+    create_group_member(db, group.id, member)
+    local_client = authed_client(creator)
+    response = local_client.get(f"/group_members/{group.id}")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) == 2
+    names = {u["name"] for u in data}
+    assert "Alice" in names
+    assert "Bob" in names
+
+
+def test_group_members_json_not_member():
+    db = TestingSessionLocal()
+    creator = create_user(
+        db, "GM", "Creator2", "gm-creator2@example.com", "Password123", DEFAULT_AVATAR
+    )
+    outsider = create_user(
+        db, "GM", "Outsider", "gm-outsider@example.com", "Password123", DEFAULT_AVATAR
+    )
+    group = create_group(db, "Members JSON 2", creator)
+    create_group_member(db, group.id, creator)
+    local_client = authed_client(outsider)
+    response = local_client.get(f"/group_members/{group.id}")
+    assert response.status_code == 403

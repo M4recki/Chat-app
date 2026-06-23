@@ -8,7 +8,15 @@ from sqlalchemy import or_, select
 
 from ..connection_manager import manager
 from ..database import async_session_scope
-from ..models import Channel, Friend, FriendStatus, Message, User
+from ..models import (
+    Channel,
+    Friend,
+    FriendStatus,
+    GroupChat,
+    GroupMember,
+    Message,
+    User,
+)
 from .helpers import (
     create_channel,
     get_channel_id_map,
@@ -74,6 +82,24 @@ async def single_chat(
                     ch = await create_channel(db, user.id, fid)
                     channel_ids[fid] = ch.channel_id
 
+        result_groups = await db.execute(
+            select(GroupMember).filter(GroupMember.user_id == user.id)
+        )
+        memberships = result_groups.scalars().all()
+        group_ids = [m.group_id for m in memberships]
+        groups = []
+        group_member_counts = {}
+        if group_ids:
+            result_groups_data = await db.execute(
+                select(GroupChat).filter(GroupChat.id.in_(group_ids))
+            )
+            groups = result_groups_data.scalars().all()
+            for g in groups:
+                result_count = await db.execute(
+                    select(GroupMember).filter(GroupMember.group_id == g.id)
+                )
+                group_member_counts[g.id] = len(result_count.scalars().all())
+
     return templates.TemplateResponse(
         request,
         "single_chat.html",
@@ -84,6 +110,8 @@ async def single_chat(
             "friend_avatars": friend_avatars,
             "friend_status_map": friend_status_map,
             "channel_ids": channel_ids,
+            "groups": groups,
+            "group_member_counts": group_member_counts,
         },
     )
 
@@ -143,6 +171,11 @@ async def friend_chat_page(
         if not channel:
             raise HTTPException(status_code=404, detail="Channel not found")
 
+        if user.id not in (channel.user1_id, channel.user2_id):
+            raise HTTPException(
+                status_code=403, detail="Not a participant in this channel"
+            )
+
     avatar_b64 = encode_avatar(user)
     friend_avatar_b64 = encode_avatar(friend)
 
@@ -183,12 +216,14 @@ async def edit_message(
         await db.commit()
 
         await manager.broadcast(
-            dumps({
-                "type": "edit_message",
-                "message_id": message_id,
-                "content": content,
-                "edited_at": now.isoformat(),
-            }),
+            dumps(
+                {
+                    "type": "edit_message",
+                    "message_id": message_id,
+                    "content": content,
+                    "edited_at": now.isoformat(),
+                }
+            ),
             message.channel_id,
         )
 
@@ -211,10 +246,12 @@ async def delete_message(
         await db.commit()
 
         await manager.broadcast(
-            dumps({
-                "type": "delete_message",
-                "message_id": message_id,
-            }),
+            dumps(
+                {
+                    "type": "delete_message",
+                    "message_id": message_id,
+                }
+            ),
             channel_id,
         )
 

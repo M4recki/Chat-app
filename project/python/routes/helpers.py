@@ -8,7 +8,16 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy import or_, select
 
 from ..database import async_session_scope, session_scope
-from ..models import Channel, Friend, Message, User
+from ..models import (
+    Channel,
+    Friend,
+    FriendStatus,
+    GroupChat,
+    GroupMember,
+    GroupMessage,
+    Message,
+    User,
+)
 from ..settings import settings
 
 
@@ -321,9 +330,7 @@ async def get_friend_status_map(
     return status_map
 
 
-async def get_channel_id_map(
-    db, user_id: int, friend_ids: list[int]
-) -> dict[int, str]:
+async def get_channel_id_map(db, user_id: int, friend_ids: list[int]) -> dict[int, str]:
     """Get a map of friend_id -> channel_id for a list of friend IDs."""
     result = await db.execute(
         select(Channel).filter(
@@ -353,6 +360,76 @@ async def get_message_or_404(db, message_id: int) -> Message:
     if not message:
         raise HTTPException(status_code=404, detail="Message not found")
     return message
+
+
+async def get_group_message_or_404(db, message_id: int) -> GroupMessage:
+    """Get a group message by ID or raise 404."""
+    result = await db.execute(
+        select(GroupMessage).filter(GroupMessage.id == message_id)
+    )
+    message = result.scalar()
+    if not message:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return message
+
+
+async def get_group_or_404(db, group_id: int) -> GroupChat:
+    result = await db.execute(select(GroupChat).filter(GroupChat.id == group_id))
+    group = result.scalar()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    return group
+
+
+async def require_group_member(db, group_id: int, user_id: int):
+    result = await db.execute(
+        select(GroupMember).filter(
+            GroupMember.group_id == group_id,
+            GroupMember.user_id == user_id,
+        )
+    )
+    if not result.scalar():
+        raise HTTPException(status_code=403, detail="Not a member of this group")
+
+
+async def get_group_member(db, group_id: int, user_id: int) -> GroupMember | None:
+    result = await db.execute(
+        select(GroupMember).filter(
+            GroupMember.group_id == group_id,
+            GroupMember.user_id == user_id,
+        )
+    )
+    return result.scalar()
+
+
+async def get_group_members(db, group_id: int) -> list[GroupMember]:
+    result = await db.execute(
+        select(GroupMember).filter(GroupMember.group_id == group_id)
+    )
+    return result.scalars().all()
+
+
+async def get_users_by_ids(db, user_ids: list[int]) -> list[User]:
+    if not user_ids:
+        return []
+    result = await db.execute(select(User).filter(User.id.in_(user_ids)))
+    return result.scalars().all()
+
+
+async def get_accepted_friends(db, user_id: int) -> list[User]:
+    result = await db.execute(
+        select(User)
+        .distinct()
+        .join(Friend, or_(Friend.user1_id == User.id, Friend.user2_id == User.id))
+        .filter(
+            Friend.status == FriendStatus.ACCEPTED.value,
+            or_(
+                (Friend.user1_id == user_id) & (User.id == Friend.user2_id),
+                (Friend.user2_id == user_id) & (User.id == Friend.user1_id),
+            ),
+        )
+    )
+    return result.scalars().all()
 
 
 async def get_friendship_by_direction(db, user1_id: int, user2_id: int):

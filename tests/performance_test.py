@@ -9,7 +9,7 @@ from project.python.rate_limit import clear_rate_limiter
 from project.python.routes import generate_csrf_token
 from project.python.settings import settings
 from tests.model_test import TestingSessionLocal
-from project.python.models import User
+from project.python.models import Channel, User
 from io import BytesIO
 from PIL import Image
 
@@ -120,11 +120,29 @@ def test_websocket_multiple_broadcast():
         avatar=img_binary.getvalue(),
         created_at=datetime.now(),
     )
+    friend = User(
+        name="WS",
+        surname="Friend",
+        email="ws-friend@example.com",
+        password="x",
+        avatar=img_binary.getvalue(),
+        created_at=datetime.now(),
+    )
     db.add(user)
+    db.add(friend)
     db.commit()
     uid = user.id
 
-    channels = [f"perf-ch-{i}" for i in range(3)]
+    channels = []
+    for i in range(3):
+        ch = Channel(
+            channel_id=f"perf-ch-{i}",
+            user1_id=user.id,
+            user2_id=friend.id,
+        )
+        db.add(ch)
+        channels.append(ch.channel_id)
+    db.commit()
 
     token = Serializer(settings.chat_secret_key).dumps({"user_id": uid})
     with TestClient(app) as local:

@@ -18,6 +18,10 @@ filterwarnings("ignore", message="unclosed database", category=ResourceWarning)
 project_root = Path(__file__).parent.parent
 path.insert(0, str(project_root))
 
+db_file = project_root / "test.db"
+if db_file.exists():
+    db_file.unlink()
+
 from tests.model_test import (
     async_engine as test_async_engine,
     sync_engine as test_engine,
@@ -124,6 +128,43 @@ def create_message(db, content: str, channel_id: str, user):
         channel_id=channel_id,
         created_at=datetime.now(),
         user_id=user.id,
+    )
+    db.add(msg)
+    db.commit()
+    return msg
+
+
+def create_group(db, name: str, created_by):
+    """Create a group chat."""
+    group = models.GroupChat(
+        name=name,
+        created_at=datetime.now(),
+        created_by=created_by.id,
+    )
+    db.add(group)
+    db.commit()
+    return group
+
+
+def create_group_member(db, group_id: int, user):
+    """Add a user as member of a group."""
+    gm = models.GroupMember(
+        group_id=group_id,
+        user_id=user.id,
+        joined_at=datetime.now(),
+    )
+    db.add(gm)
+    db.commit()
+    return gm
+
+
+def create_group_message(db, group_id: int, user, content: str):
+    """Create a message in a group chat."""
+    msg = models.GroupMessage(
+        content=content,
+        group_id=group_id,
+        user_id=user.id,
+        created_at=datetime.now(),
     )
     db.add(msg)
     db.commit()

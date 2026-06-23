@@ -97,5 +97,46 @@ class ChatbotMessage(Base):
     user = relationship("User", back_populates="chatbot_messages")
 
 
+# Group chat tables
+
+
+class GroupChat(Base):
+    """Group chat room."""
+
+    __tablename__ = "group_chats"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(200), nullable=False)
+    created_at = Column(DateTime, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    creator = relationship("User", foreign_keys="GroupChat.created_by")
+    members = relationship("GroupMember", back_populates="group", lazy="selectin")
+
+
+class GroupMember(Base):
+    """Membership in a group chat."""
+
+    __tablename__ = "group_members"
+    id = Column(Integer, primary_key=True)
+    group_id = Column(Integer, ForeignKey("group_chats.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    joined_at = Column(DateTime, nullable=False)
+    group = relationship("GroupChat", back_populates="members")
+    user = relationship("User", foreign_keys="GroupMember.user_id")
+
+
+class GroupMessage(Base):
+    """Message in a group chat."""
+
+    __tablename__ = "group_messages"
+    id = Column(Integer, primary_key=True)
+    content = Column(Text, nullable=False)
+    group_id = Column(Integer, ForeignKey("group_chats.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_at = Column(DateTime, nullable=False)
+    edited_at = Column(DateTime, nullable=True)
+    group = relationship("GroupChat", foreign_keys="GroupMessage.group_id")
+    user = relationship("User", foreign_keys="GroupMessage.user_id")
+
+
 # Do not call `Base.metadata.create_all()` on import.
 # Use Alembic for schema migrations and explicit startup migration steps.

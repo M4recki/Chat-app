@@ -147,11 +147,8 @@ async def login_data(
 
         errors = {}
 
-        if not user:
-            errors["email"] = "User with this email does not exist"
-
-        elif not check_password_hash(user.password, password):
-            errors["password"] = "Incorrect password. Please try again"
+        if not user or not check_password_hash(user.password, password):
+            errors["login"] = "Invalid email or password"
 
         if errors:
             return render_template("login.html", request, errors=errors)

@@ -109,6 +109,39 @@
               </p>
             </div>
             {% endif %}
+
+            {% if groups %}
+            <hr class="my-5">
+            <div class="text-center w-100">
+              <h2 class="sidebar-page-title">Group Chats</h2>
+              <p class="lead text-muted sidebar-page-subtitle">
+                Your active group conversations.
+              </p>
+            </div>
+            <div class="row justify-content-center g-4 search-users-grid w-100">
+              {% for group in groups %}
+              <div class="col-12 col-sm-6 col-xl-4 d-flex justify-content-center">
+                <div class="card sidebar-list-card search-user-card">
+                  <a
+                    href="{{ url_for('group_chat_page', group_id=group.id) }}"
+                    class="text-decoration-none text-body">
+                    <div class="card-body text-center search-user-card-body">
+                      <i class="bi bi-people icon-size mt-2"></i>
+                      <div class="card-body px-2 pb-2">
+                        <p class="card-title lead text-primary mb-2">
+                          {{ group.name }}
+                        </p>
+                        <p class="text-muted mb-0">
+                          {{ group_member_counts[group.id] }} member{% if group_member_counts[group.id] != 1 %}s{% endif %}
+                        </p>
+                      </div>
+                    </div>
+                  </a>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            {% endif %}
           </section>
         </div>
       </div>

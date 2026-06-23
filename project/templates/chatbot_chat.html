@@ -69,11 +69,18 @@
               </div>
               {% endfor %}
             </div>
-            {% if errors %}
+            {% else %}
+            <h1 id="chatbot-empty-state" class="mt-5 mb-5 text-center">
+              <strong class="me-3 text-primary"
+                ><i class="bi bi-robot"></i> Chatbot:</strong
+              >How can I help you today?
+            </h1>
+            {% endif %}
             <div
               id="chatbot-status"
-              class="alert alert-danger mt-3"
+              class="alert mt-3{% if not errors %} d-none{% endif %}{% if errors %} alert-danger{% endif %}"
               role="alert">
+              {% if errors %}
               <strong>
                 {{ errors.message if errors.message else "Chatbot error" }}
               </strong>
@@ -84,13 +91,8 @@
 {{ errors.details | tojson(indent=2) }}
               </pre>
               {% endif %}
+              {% endif %}
             </div>
-            {% else %}
-            <div
-              id="chatbot-status"
-              class="alert d-none mt-3"
-              role="alert"></div>
-            {% endif %}
             <div class="card mt-3">
               <div class="card-body">
                 <form
@@ -121,66 +123,7 @@
               </div>
             </div>
 
-            <!-- No previous conversation with chatbot -->
-            {% else %}
-            <h1 id="chatbot-empty-state" class="mt-5 mb-5 text-center">
-              <strong class="me-3 text-primary"
-                ><i class="bi bi-robot"></i> Chatbot:</strong
-              >How can I help you today?
-            </h1>
-            {% if errors %}
-            <div
-              id="chatbot-status"
-              class="alert alert-danger mt-3"
-              role="alert">
-              <strong>
-                {{ errors.message if errors.message else "Chatbot error" }}
-              </strong>
-              {% if errors.error_type %}
-              <div class="small mt-2 text-muted">{{ errors.error_type }}</div>
-              {% endif %} {% if errors.details %}
-              <pre class="mb-0 mt-2 small text-wrap">
-{{ errors.details | tojson(indent=2) }}
-              </pre>
-              {% endif %}
-            </div>
-            {% else %}
-            <div
-              id="chatbot-status"
-              class="alert d-none mt-3"
-              role="alert"></div>
-            {% endif %}
-            <div class="card mt-3">
-              <div class="card-body">
-                <form
-                  action="/chatbot"
-                  method="POST"
-                  class="d-flex flex-column chatbot-form"
-                  data-chatbot-form>
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
-                  <label for="message" class="form-label mb-2 ms-3 text-muted">
-                    Your message:
-                  </label>
-                  <textarea
-                    cols="0"
-                    id="message"
-                    class="form-control chat_textarea mx-3"
-                    name="message"
-                    rows="1"
-                    required></textarea>
-                  <div class="d-flex justify-content-center">
-                    <button
-                      class="btn btn-primary btn-lg text-decoration-none text-dark bold my-3"
-                      type="submit">
-                      Send
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-
             <!-- Delete conversation -->
-            {% endif %}
             <button
               type="button"
               class="btn btn-danger btn btn-primary btn-lg text-decoration-none text-dark bold mt-5 mx-3 mb-3 float-end"

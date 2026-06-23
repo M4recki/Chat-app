@@ -18,7 +18,13 @@
           {% include "sidebar.html" %}
 
           <section
-            class="col-md-9 ml-sm-auto col-lg-10 px-md-4 py-4 sidebar-page-shell">
+            class="col-md-9 ml-sm-auto col-lg-10 px-md-4 py-4 sidebar-page-shell"
+            data-user-name="{{ user.name }}"
+            data-avatar-b64="{{ avatar_b64 }}"
+            data-friend-avatar-b64="{{ friend_avatar_b64 }}"
+            data-channel-id="{{ channel_id }}"
+            data-friend-id="{{ friend.id }}"
+            data-user-id="{{ user.id }}">
             <!-- Users messages and unblocked user -->
             {% if friend_status == "accepted" %}
             <div class="d-flex align-items-center gap-2 mb-2">
@@ -67,8 +73,14 @@
               </div>
             </div>
             {% endfor %}
+
+            <!-- No previous conversation with other user -->
+            {% else %}
+            <h1 id="start-new-conversation" class="mt-5 mb-5 text-center">Start a new conversation</h1>
+            {% endif %}
             <div id="messages"></div>
             <div id="typing-indicator" class="text-muted small fst-italic d-none py-1"></div>
+            {% if messages %}
             <div class="card mt-3">
               <div class="card-body">
                 <form
@@ -94,12 +106,7 @@
                 </form>
               </div>
             </div>
-
-            <!-- No previous conversation with other user -->
             {% else %}
-            <h1 id="start-new-conversation" class="mt-5 mb-5 text-center">Start a new conversation</h1>
-            <div id="messages"></div>
-            <div id="typing-indicator" class="text-muted small fst-italic d-none py-1"></div>
             <div class="card mt-3">
               <div class="card-body">
                 <form
@@ -252,6 +259,24 @@
               </div>
             </dialog>
             {% endif %}
+
+          <dialog id="delete-confirmation">
+            Are you sure you want to delete this message?
+            <div class="button-container my-5 d-flex justify-content-center">
+              <button
+                type="button"
+                class="btn btn-success me-3 text-dark"
+                onclick="cancelDeleteMessage()">
+                Cancel
+              </button>
+              <button
+                type="button"
+                class="btn btn-danger text-dark"
+                onclick="confirmDeleteMessage()">
+                Confirm
+              </button>
+            </div>
+          </dialog>
           </section>
         </div>
       </div>
@@ -262,12 +287,13 @@
 
     <!-- WebSocket handling for real-time chat -->
     <script>
-      const user_name = {{ user.name|tojson }};
-      const client_avatar = {{ avatar_b64|tojson }};
-      const friend_avatar = {{ friend_avatar_b64|tojson }};
-      const channel_id = {{ channel_id|tojson }};
-      const friend_id = parseInt("{{ friend.id }}", 10);
-      const user_id = parseInt("{{ user.id }}", 10);
+      const section = document.querySelector('.sidebar-page-shell');
+      const user_name = section.dataset.userName;
+      const client_avatar = section.dataset.avatarB64;
+      const friend_avatar = section.dataset.friendAvatarB64;
+      const channel_id = section.dataset.channelId;
+      const friend_id = parseInt(section.dataset.friendId, 10);
+      const user_id = parseInt(section.dataset.userId, 10);
 
       const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const wsUrl = `${wsProtocol}//${window.location.host}/ws/${channel_id}`;
@@ -373,7 +399,7 @@
           deleteBtn.classList.add("btn", "btn-sm", "btn-outline-danger", "delete-btn");
           deleteBtn.dataset.messageId = messageId;
           deleteBtn.textContent = "Delete";
-          deleteBtn.addEventListener("click", function () { deleteMessage(messageId); });
+          deleteBtn.addEventListener("click", function () { showDeleteConfirmation(messageId); });
           btnDiv.appendChild(deleteBtn);
 
           body.appendChild(btnDiv);
@@ -578,8 +604,17 @@
         });
       }
 
-      function deleteMessage(messageId) {
-        if (!confirm("Are you sure you want to delete this message?")) return;
+      let pendingDeleteId = null;
+
+      function showDeleteConfirmation(messageId) {
+        pendingDeleteId = messageId;
+        document.getElementById("delete-confirmation").showModal();
+      }
+
+      function confirmDeleteMessage() {
+        if (!pendingDeleteId) return;
+        const messageId = pendingDeleteId;
+        pendingDeleteId = null;
 
         const formData = new FormData();
         formData.append("csrf_token", getCsrfToken());
@@ -596,6 +631,11 @@
         });
       }
 
+      function cancelDeleteMessage() {
+        pendingDeleteId = null;
+        document.getElementById("delete-confirmation").close();
+      }
+
       document.addEventListener("DOMContentLoaded", function () {
         document.querySelectorAll("form.chat-form").forEach(function (form) {
           form.addEventListener("submit", sendMessage);
@@ -609,7 +649,7 @@
 
         document.querySelectorAll(".delete-btn").forEach(function (btn) {
           btn.addEventListener("click", function () {
-            deleteMessage(parseInt(this.dataset.messageId));
+            showDeleteConfirmation(parseInt(this.dataset.messageId));
           });
         });
 

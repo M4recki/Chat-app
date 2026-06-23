@@ -59,6 +59,11 @@
               </div>
               {% endif %}
             </div>
+            {% if errors is defined and errors.login %}
+            <div class="alert alert-danger mt-3" role="alert">
+              {{ errors.login }}
+            </div>
+            {% endif %}
             <button
               type="submit"
               class="btn btn-lg btn-primary mt-3 bold float-start">

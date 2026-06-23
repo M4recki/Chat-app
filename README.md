@@ -1,12 +1,13 @@
 # Chat App
 
-A real-time chat application built with FastAPI, WebSockets, and PostgreSQL. This project demonstrates a professional Python web application with user authentication, peer-to-peer messaging, AI chatbot integration, and friend management features.
+A real-time chat application built with FastAPI, WebSockets, and PostgreSQL. This project demonstrates a professional Python web application with user authentication, peer-to-peer messaging, group chat, AI chatbot integration, and friend management features.
 
 ## Features
 
 - 👤 **User Authentication**: Secure signup and login with password hashing
 - 💬 **Real-time Chat**: WebSocket-based messaging between users
-- 👥 **Friend Management**: Add friends, send friend requests, block users
+- 👥 **Group Chat**: Create groups, invite members, real-time group messaging
+- 👫 **Friend Management**: Add friends, send friend requests, block users
 - 🤖 **AI Chatbot**: Integrated AI chatbot for conversations
 - 📁 **Contact Form**: Email-based contact functionality
 - 🎨 **Responsive UI**: Modern template-based interface
@@ -179,6 +180,7 @@ project/
 │       ├── contact.py         # Contact form
 │       ├── email.py           # Email sending helper
 │       ├── friends.py         # Friend management
+│       ├── group_chat.py      # Group chat management
 │       ├── helpers.py         # Auth helpers, CSRF validation
 │       ├── main_page.py       # Homepage
 │       ├── online.py          # Online users endpoint

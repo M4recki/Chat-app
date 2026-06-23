@@ -10,6 +10,7 @@ import httpx
 import openai as openai_mod
 import pytest
 from conftest import async_session_scope, client, create_user
+from fastapi import HTTPException, WebSocketDisconnect
 from fastapi.testclient import TestClient
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from PIL import Image
@@ -29,7 +30,7 @@ from project.python.connection_manager import ConnectionManager
 from project.python.database import get_db
 from project.python.main import app
 from project.python.main import app as ws_app
-from project.python.models import Message, User
+from project.python.models import Channel, Message, User
 from project.python.rate_limit import MemoryBackend, RateLimiter, get_client_identifier
 from project.python.routes import (
     authentication_in_header,
@@ -38,9 +39,11 @@ from project.python.routes import (
     generate_channel_id,
     get_user,
     get_user_from_request,
+    is_authenticated,
     user_image,
     user_name,
 )
+from project.python.routes.email import send_email
 from project.python.settings import settings as app_settings
 from tests.model_test import TestingSessionLocal
 
@@ -434,7 +437,7 @@ class _MockClient:
     class Chat:
         class Completions:
             @staticmethod
-            def create(*a, **kw):
+            def create(*_a, **_kw):
                 return _MockCompletion()
 
         completions = Completions()
@@ -451,7 +454,7 @@ def _mock_openai(monkeypatch, content=None, create_fn=None):
 
         class CustomCompletions:
             @staticmethod
-            def create(*a, **kw):
+            def create(*_a, **_kw):
                 return create_fn()
 
         client = _MockClient()
@@ -459,12 +462,12 @@ def _mock_openai(monkeypatch, content=None, create_fn=None):
         client.Chat.completions = CustomCompletions()
         monkeypatch.setattr(
             "project.python.chatbot_utils.OpenAI",
-            lambda *a, **kw: client,
+            lambda *_a, **_kw: client,
         )
     else:
         monkeypatch.setattr(
             "project.python.chatbot_utils.OpenAI",
-            lambda *a, **kw: _MockClient(),
+            lambda *_a, **_kw: _MockClient(),
         )
 
 
@@ -482,7 +485,7 @@ def test_routes_chatbot_response_retry_failure(monkeypatch):
         class Chat:
             class Completions:
                 @staticmethod
-                def create(*a, **kw):
+                def create(*_a, **_kw):
                     raise openai_mod.APITimeoutError(
                         httpx.Request("GET", "http://test"),
                     )
@@ -493,7 +496,7 @@ def test_routes_chatbot_response_retry_failure(monkeypatch):
 
     monkeypatch.setattr(
         "project.python.chatbot_utils.OpenAI",
-        lambda *a, **kw: MockClient(),
+        lambda *_a, **_kw: MockClient(),
     )
     with pytest.raises(ChatbotServiceError):
         chatbot_response("hello")
@@ -516,7 +519,7 @@ def test_routes_chatbot_response_retry_on_timeout(monkeypatch):
         class Chat:
             class Completions:
                 @staticmethod
-                def create(*a, **kw):
+                def create(*_a, **_kw):
                     call_count[0] += 1
                     if call_count[0] == 1:
                         raise openai_mod.APITimeoutError(
@@ -530,7 +533,7 @@ def test_routes_chatbot_response_retry_on_timeout(monkeypatch):
 
     monkeypatch.setattr(
         "project.python.chatbot_utils.OpenAI",
-        lambda *a, **kw: MockClient(),
+        lambda *_a, **_kw: MockClient(),
     )
     result = chatbot_response("hello")
     assert result == "Retry succeeded"
@@ -545,7 +548,7 @@ def test_routes_chatbot_response_api_error(monkeypatch):
         class Chat:
             class Completions:
                 @staticmethod
-                def create(*a, **kw):
+                def create(*_a, **_kw):
                     raise Exception("API error")
 
             completions = Completions()
@@ -554,7 +557,7 @@ def test_routes_chatbot_response_api_error(monkeypatch):
 
     monkeypatch.setattr(
         "project.python.chatbot_utils.OpenAI",
-        lambda *a, **kw: MockClient(),
+        lambda *_a, **_kw: MockClient(),
     )
     with pytest.raises(ChatbotServiceError):
         chatbot_response("hello")
@@ -576,7 +579,7 @@ def test_routes_chatbot_response_openai_empty(monkeypatch):
         class Chat:
             class Completions:
                 @staticmethod
-                def create(*a, **kw):
+                def create(*_a, **_kw):
                     return MockCompletion()
 
             completions = Completions()
@@ -585,7 +588,7 @@ def test_routes_chatbot_response_openai_empty(monkeypatch):
 
     monkeypatch.setattr(
         "project.python.chatbot_utils.OpenAI",
-        lambda *a, **kw: MockClient(),
+        lambda *_a, **_kw: MockClient(),
     )
     with pytest.raises(ChatbotServiceError):
         chatbot_response("hello")
@@ -603,7 +606,7 @@ def test_chatbot_utils_debug_logging(monkeypatch):
         class Chat:
             class Completions:
                 @staticmethod
-                def create(*a, **kw):
+                def create(*_a, **_kw):
                     raise Exception("API error")
 
             completions = Completions()
@@ -612,7 +615,7 @@ def test_chatbot_utils_debug_logging(monkeypatch):
 
     monkeypatch.setattr(
         "project.python.chatbot_utils.OpenAI",
-        lambda *a, **kw: MockClient(),
+        lambda *_a, **_kw: MockClient(),
     )
     with pytest.raises(ChatbotServiceError):
         chatbot_utils_response("hello")
@@ -634,7 +637,7 @@ def test_chatbot_response_with_openai_mock(monkeypatch):
         class Chat:
             class Completions:
                 @staticmethod
-                def create(*a, **kw):
+                def create(*_a, **_kw):
                     return MockCompletion()
 
             completions = Completions()
@@ -643,7 +646,7 @@ def test_chatbot_response_with_openai_mock(monkeypatch):
 
     monkeypatch.setattr(
         "project.python.chatbot_utils.OpenAI",
-        lambda *a, **kw: MockClient(),
+        lambda *_a, **_kw: MockClient(),
     )
     result = chatbot_utils_response("hello")
     assert result == "Hello world"
@@ -669,7 +672,7 @@ def test_chatbot_response_empty_openai_response(monkeypatch):
         class Chat:
             class Completions:
                 @staticmethod
-                def create(*a, **kw):
+                def create(*_a, **_kw):
                     return MockCompletion()
 
             completions = Completions()
@@ -678,7 +681,7 @@ def test_chatbot_response_empty_openai_response(monkeypatch):
 
     monkeypatch.setattr(
         "project.python.chatbot_utils.OpenAI",
-        lambda *a, **kw: MockClient(),
+        lambda *_a, **_kw: MockClient(),
     )
     with pytest.raises(ChatbotServiceError):
         chatbot_utils_response("hello")
@@ -792,6 +795,53 @@ def test_connection_manager_get_online_users(mgr):
     assert result is not mgr.online_users
 
 
+@pytest.mark.asyncio
+async def test_disconnect_value_error_ws_not_in_channel(mgr, mock_ws):
+    mgr.active_connections["ch"] = []
+    mgr.user_connections[1] = [mock_ws]
+    mgr.online_users.add(1)
+    mgr.disconnect(mock_ws, "ch", 1)
+    assert "ch" in mgr.active_connections
+    assert 1 not in mgr.user_connections
+    assert 1 not in mgr.online_users
+
+
+@pytest.mark.asyncio
+async def test_disconnect_value_error_ws_not_in_user_connections(mgr, mock_ws):
+    mgr.active_connections["ch"] = [mock_ws]
+    mgr.user_connections[1] = []
+    mgr.online_users.add(1)
+    mgr.disconnect(mock_ws, "ch", 1)
+    assert mock_ws not in mgr.active_connections["ch"]
+    assert 1 not in mgr.user_connections
+    assert 1 not in mgr.online_users
+
+
+@pytest.mark.asyncio
+async def test_broadcast_websocket_disconnect(mgr):
+    mock_ok = AsyncMock()
+    mock_fail = AsyncMock()
+    mock_fail.send_text.side_effect = WebSocketDisconnect()
+    mgr.active_connections["ch"] = [mock_ok, mock_fail]
+    await mgr.broadcast("hello", "ch")
+    mock_ok.send_text.assert_awaited_once_with("hello")
+    mock_fail.send_text.assert_awaited_once_with("hello")
+    assert mock_fail not in mgr.active_connections["ch"]
+    assert mock_ok in mgr.active_connections["ch"]
+
+
+@pytest.mark.asyncio
+async def test_broadcast_except_websocket_disconnect(mgr):
+    mock_exclude = AsyncMock()
+    mock_fail = AsyncMock()
+    mock_fail.send_text.side_effect = WebSocketDisconnect()
+    mgr.active_connections["ch"] = [mock_exclude, mock_fail]
+    await mgr.broadcast_to_channel_except("hello", "ch", mock_exclude)
+    mock_exclude.send_text.assert_not_awaited()
+    mock_fail.send_text.assert_awaited_once_with("hello")
+    assert mock_fail not in mgr.active_connections["ch"]
+
+
 #  WebSocket
 
 
@@ -812,6 +862,10 @@ def _create_test_user(db, name="TestUser", email_suffix=""):
 def test_websocket_send_and_receive():
     db = TestingSessionLocal()
     user = _create_test_user(db)
+    friend = _create_test_user(db, name="Friend", email_suffix="-friend")
+    ch = Channel(channel_id="test-ch", user1_id=user.id, user2_id=friend.id)
+    db.add(ch)
+    db.commit()
     db.close()
     token = Serializer(
         app_settings.chat_secret_key,
@@ -822,7 +876,6 @@ def test_websocket_send_and_receive():
         ws.send_json(
             {
                 "type": "message",
-                "channel_id": "test-ch",
                 "message": "Hello!",
             }
         )
@@ -834,6 +887,10 @@ def test_websocket_send_and_receive():
 def test_websocket_message_has_type_field():
     db = TestingSessionLocal()
     user = _create_test_user(db, email_suffix="-2")
+    friend = _create_test_user(db, name="Friend", email_suffix="-friend2")
+    ch = Channel(channel_id="type-ch", user1_id=user.id, user2_id=friend.id)
+    db.add(ch)
+    db.commit()
     db.close()
     token = Serializer(
         app_settings.chat_secret_key,
@@ -844,7 +901,6 @@ def test_websocket_message_has_type_field():
         ws.send_json(
             {
                 "type": "message",
-                "channel_id": "type-ch",
                 "message": "Hi",
             }
         )
@@ -890,6 +946,27 @@ def test_online_users_endpoint():
 #  database
 
 
+def test_async_url_postgres():
+    from project.python.database import _async_url
+
+    result = _async_url("postgresql://user:pass@localhost/db")
+    assert result == "postgresql+asyncpg://user:pass@localhost/db"
+
+
+def test_async_url_sqlite():
+    from project.python.database import _async_url
+
+    result = _async_url("sqlite:///./test.db")
+    assert result == "sqlite+aiosqlite:///./test.db"
+
+
+def test_async_url_unknown():
+    from project.python.database import _async_url
+
+    result = _async_url("mysql://user:pass@localhost/db")
+    assert result == "mysql://user:pass@localhost/db"
+
+
 def test_get_db():
     gen = get_db()
     db = next(gen)
@@ -907,7 +984,11 @@ def test_get_db():
 async def test_get_user_by_id_found():
     db_sync = TestingSessionLocal()
     user = create_user(
-        db_sync, "Helper", "One", "helper1@example.com", "Password123",
+        db_sync,
+        "Helper",
+        "One",
+        "helper1@example.com",
+        "Password123",
         "project/static/img/default avatar.png",
     )
     db_sync.close()
@@ -933,10 +1014,16 @@ async def test_get_user_by_id_not_found():
 async def test_get_message_or_404_found():
     db_sync = TestingSessionLocal()
     user = create_user(
-        db_sync, "Msg", "User", "msg-user@example.com", "Password123",
+        db_sync,
+        "Msg",
+        "User",
+        "msg-user@example.com",
+        "Password123",
         "project/static/img/default avatar.png",
     )
-    msg = Message(content="test", channel_id="ch", created_at=datetime.now(), user_id=user.id)
+    msg = Message(
+        content="test", channel_id="ch", created_at=datetime.now(), user_id=user.id
+    )
     db_sync.add(msg)
     db_sync.commit()
     msg_id = msg.id
@@ -963,17 +1050,28 @@ async def test_get_message_or_404_not_found():
 async def test_get_friend_status_map():
     db_sync = TestingSessionLocal()
     u1 = create_user(
-        db_sync, "FSM", "One", "fsm1@example.com", "Password123",
+        db_sync,
+        "FSM",
+        "One",
+        "fsm1@example.com",
+        "Password123",
         "project/static/img/default avatar.png",
     )
     u2 = create_user(
-        db_sync, "FSM", "Two", "fsm2@example.com", "Password123",
+        db_sync,
+        "FSM",
+        "Two",
+        "fsm2@example.com",
+        "Password123",
         "project/static/img/default avatar.png",
     )
     from project.python.models import Friend as FriendModel, FriendStatus
 
     rel = FriendModel(
-        user1_id=u1.id, user2_id=u2.id, status=FriendStatus.ACCEPTED.value, last_sent=datetime.now(),
+        user1_id=u1.id,
+        user2_id=u2.id,
+        status=FriendStatus.ACCEPTED.value,
+        last_sent=datetime.now(),
     )
     db_sync.add(rel)
     db_sync.commit()
@@ -989,11 +1087,19 @@ async def test_get_friend_status_map():
 async def test_get_channel_id_map():
     db_sync = TestingSessionLocal()
     u1 = create_user(
-        db_sync, "CIM", "One", "cim1@example.com", "Password123",
+        db_sync,
+        "CIM",
+        "One",
+        "cim1@example.com",
+        "Password123",
         "project/static/img/default avatar.png",
     )
     u2 = create_user(
-        db_sync, "CIM", "Two", "cim2@example.com", "Password123",
+        db_sync,
+        "CIM",
+        "Two",
+        "cim2@example.com",
+        "Password123",
         "project/static/img/default avatar.png",
     )
     from project.python.models import Channel
@@ -1007,3 +1113,43 @@ async def test_get_channel_id_map():
     async with async_session_scope() as db:
         cmap = await get_channel_id_map(db, u1.id, [u2.id])
     assert cmap[u2.id] == "test-ch"
+
+
+def test_send_email_config_incomplete(monkeypatch):
+    monkeypatch.setattr(app_settings, "testing", False)
+    monkeypatch.setattr(app_settings, "email_receiver", "")
+    monkeypatch.setattr(app_settings, "email_password", "")
+    result = send_email("test@example.com", "Subject", "Body")
+    assert result == "Email configuration is incomplete"
+
+
+@pytest.mark.asyncio
+async def test_is_authenticated_expired_token(monkeypatch):
+    s = Serializer(app_settings.chat_secret_key)
+    token = s.dumps({"user_id": 99999})
+    monkeypatch.setattr(app_settings, "token_max_age", -1)
+    request = _make_request_with_cookie(token)
+    with pytest.raises(HTTPException) as exc_info:
+        await is_authenticated(request)
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Session expired"
+
+
+@pytest.mark.asyncio
+async def test_is_authenticated_bad_signature():
+    request = _make_request_with_cookie("not-a-valid-token")
+    with pytest.raises(HTTPException) as exc_info:
+        await is_authenticated(request)
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Invalid session token"
+
+
+@pytest.mark.asyncio
+async def test_is_authenticated_user_not_found():
+    s = Serializer(app_settings.chat_secret_key)
+    token = s.dumps({"user_id": 99999})
+    request = _make_request_with_cookie(token)
+    with pytest.raises(HTTPException) as exc_info:
+        await is_authenticated(request)
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "User not found"
