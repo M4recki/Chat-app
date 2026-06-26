@@ -1,0 +1,122 @@
+> from pathlib import Path
+  
+> from fastapi import FastAPI, HTTPException, Request
+> from fastapi.staticfiles import StaticFiles
+> from fastapi.exceptions import RequestValidationError
+> from fastapi.templating import Jinja2Templates
+> from itsdangerous import URLSafeTimedSerializer as Serializer
+> from itsdangerous.exc import BadSignature, SignatureExpired
+> from starlette.exceptions import HTTPException as StarletteHTTPException
+> from uvicorn import run
+  
+> from .handlers import (
+>     http_exception_handler,
+>     unhandled_exception_handler,
+>     validation_exception_handler,
+> )
+> from .rate_limit import RateLimitRule, enforce_rate_limit
+> from .routes import router
+> from .settings import settings
+> from .ws import ws_router
+  
+> app = FastAPI()
+  
+> templates = Jinja2Templates(
+>     directory=Path(__file__).parent.parent / "templates",
+> )
+  
+> app.mount(
+>     "/static",
+>     StaticFiles(directory=Path(__file__).parent.parent / "static"),
+>     name="static",
+> )
+  
+> RATE_LIMIT_RULES: list[RateLimitRule] = [
+>     {
+>         "path": "/login",
+>         "methods": {"POST"},
+>         "scope": "login",
+>         "max_requests": settings.rate_limit_login_max_requests,
+>         "window_seconds": settings.rate_limit_login_window_seconds,
+>     },
+>     {
+>         "path": "/chatbot",
+>         "methods": {"POST"},
+>         "scope": "chatbot",
+>         "max_requests": settings.rate_limit_chatbot_max_requests,
+>         "window_seconds": settings.rate_limit_chatbot_window_seconds,
+>     },
+>     {
+>         "path": "/search_user",
+>         "methods": {"GET"},
+>         "scope": "search_user",
+>         "max_requests": settings.rate_limit_search_max_requests,
+>         "window_seconds": settings.rate_limit_search_window_seconds,
+>     },
+> ]
+  
+  
+> def get_rate_limit_identifier(request: Request) -> str | None:
+>     token = request.cookies.get("access_token")
+>     if not token:
+>         return None
+  
+>     s = Serializer(settings.chat_secret_key)
+>     try:
+>         user_id = s.loads(token, max_age=settings.token_max_age).get("user_id")
+>     except (SignatureExpired, BadSignature):
+>         return None
+  
+>     if user_id is None:
+>         return None
+  
+>     return f"user:{user_id}"
+  
+  
+> @app.middleware("http")
+> async def rate_limit_middleware(request: Request, call_next):
+>     path = request.url.path
+>     method = request.method.upper()
+>     identifier = get_rate_limit_identifier(request)
+>     rate_limit_meta = None
+  
+>     try:
+>         for rule in RATE_LIMIT_RULES:
+>             if path == rule["path"] and method in rule["methods"]:
+>                 rate_limit_meta = await enforce_rate_limit(
+>                     request,
+>                     rule["scope"],
+>                     rule["max_requests"],
+>                     rule["window_seconds"],
+>                     identifier=identifier,
+>                 )
+>                 break
+>     except HTTPException as exc:
+>         return await http_exception_handler(
+>             request,
+>             StarletteHTTPException(
+>                 status_code=exc.status_code,
+>                 detail=exc.detail,
+>                 headers=exc.headers,
+>             ),
+>         )
+  
+>     response = await call_next(request)
+  
+>     if rate_limit_meta:
+>         response.headers["X-RateLimit-Limit"] = str(rate_limit_meta["limit"])
+>         response.headers["X-RateLimit-Remaining"] = str(rate_limit_meta["remaining"])
+>         response.headers["X-RateLimit-Reset"] = str(rate_limit_meta["reset"])
+  
+>     return response
+  
+  
+> app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+> app.add_exception_handler(RequestValidationError, validation_exception_handler)
+> app.add_exception_handler(Exception, unhandled_exception_handler)
+  
+> app.include_router(router)
+> app.include_router(ws_router)
+  
+> if __name__ == "__main__":
+!     run("python.main:app", reload=True)

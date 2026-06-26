@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    {% include "head.html" %}
+    <title>Chat app - {{ group.name }}</title>
+  </head>
+  <body>
+    {% include "navbar.html" %}
+    <main>
+      <div class="container-fluid">
+        <div class="row">
+          {% include "sidebar.html" %}
+          <section class="col-md-9 ml-sm-auto col-lg-10 px-md-4 py-4 sidebar-page-shell"
+            data-user-name="{{ user.name }}"
+            data-group-id="{{ group.id }}"
+            data-user-id="{{ user.id }}">
+            <div class="d-flex align-items-center gap-2 mb-3">
+              <i class="bi bi-people fs-4"></i>
+              <span class="h5 mb-0">{{ group.name }}</span>
+              <button class="btn btn-sm btn-outline-secondary ms-2" type="button" data-bs-toggle="collapse" data-bs-target="#memberListPanel" aria-expanded="false">
+                <i class="bi bi-person-lines-fill"></i> Members ({{ members|length }})
+              </button>
+            </div>
+
+            <div class="collapse mb-3" id="memberListPanel">
+              <div class="card card-body">
+                <h6 class="card-title">Members</h6>
+                <ul class="list-group list-group-flush">
+                  {% for member in members %}
+                  {% set m = member_users[member.user_id] %}
+                  <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span>
+                      {{ m.name }} {{ m.surname }}
+                      {% if member.user_id == group.created_by %}
+                      <span class="badge bg-primary ms-1">Creator</span>
+                      {% endif %}
+                    </span>
+                    {% if user.id == group.created_by and member.user_id != user.id %}
+                    <button type="button" class="btn btn-sm btn-outline-danger" data-user-id="{{ member.user_id }}" data-user-name="{{ m.name }} {{ m.surname }}" onclick="showRemoveMemberDialog(this)">Remove</button>
+                    {% endif %}
+                  </li>
+                  {% endfor %}
+                </ul>
+                {% if user.id == group.created_by and friend_candidates %}
+                <button class="btn btn-sm btn-outline-primary mt-2" data-bs-toggle="modal" data-bs-target="#inviteModal">
+                  <i class="bi bi-person-plus"></i> Invite friend
+                </button>
+                {% endif %}
+              </div>
+            </div>
+
+            {% if user.id == group.created_by and friend_candidates %}
+            <div class="modal fade" id="inviteModal" tabindex="-1">
+              <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title">Invite a friend</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="row g-3">
+                      {% for friend in friend_candidates %}
+                      <div class="col-6 col-md-4">
+                        <form action="{{ url_for('add_group_member', group_id=group.id) }}" method="POST">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                          <input type="hidden" name="user_id" value="{{ friend.id }}">
+                          <button type="submit" class="btn btn-outline-primary w-100 h-100 p-3 text-center" style="border-radius: 12px;">
+                            <img src="data:image/jpeg;base64,{{ friend_candidate_avatars[friend.id] }}" alt="{{ friend.name }}'s avatar" class="rounded-circle mb-2" style="width: 48px; height: 48px; object-fit: cover;">
+                            <div class="small" style="word-break: break-word;">{{ friend.name }} {{ friend.surname }}</div>
+                          </button>
+                        </form>
+                      </div>
+                      {% endfor %}
+                    </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
+            {% if messages %}
+            {% for message in messages %}
+            <div class="card my-3" data-message-id="{{ message.id }}">
+              <div class="card-body">
+                <p class="card-title">
+                  {{ message.created_at.strftime(' %H:%M, %Y-%m-%d') }}
+                </p>
+                <p class="pt-2 text-start">
+                  {% set sender = users[message.user_id] %}
+                  <strong class="text-primary">{{ sender.name }}:</strong>
+                  <span class="message-content">{{ message.content }}</span>
+                  {% if message.edited_at %}
+                  <small class="text-muted fst-italic">(edited)</small>
+                  {% endif %}
+                </p>
+                {% if sender.id == user.id %}
+                <div class="d-flex gap-2 justify-content-end">
+                  <button class="btn btn-sm btn-outline-secondary edit-btn" data-message-id="{{ message.id }}">Edit</button>
+                  <button class="btn btn-sm btn-outline-danger delete-btn" data-message-id="{{ message.id }}">Delete</button>
+                </div>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <h1 id="start-new-conversation" class="mt-5 mb-5 text-center">Start a new conversation</h1>
+            {% endif %}
+            <div id="messages"></div>
+            <div id="typing-indicator" class="text-muted small fst-italic d-none py-1"></div>
+            {% if messages %}
+            <div class="card mt-3">
+              <div class="card-body">
+                <form action="" class="d-flex flex-column chat-form">
+                  <label for="message" class="form-label mb-2 ms-3 text-muted">Your message:</label>
+                  <textarea cols="0" id="message" class="form-control chat_textarea mx-3" name="message" rows="1" required></textarea>
+                  <div class="d-flex justify-content-center">
+                    <button class="btn btn-primary btn-lg text-decoration-none text-dark bold my-3" type="submit">Send</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+            {% else %}
+            <div class="card mt-3">
+              <div class="card-body">
+                <form action="" class="d-flex flex-column chat-form">
+                  <div class="form-floating">
+                    <textarea cols="0" id="messageText" class="form-control chat_textarea mt-5" name="message" autocomplete="off" required></textarea>
+                    <label class="z-0 position-absolute" for="messageText">Your message:</label>
+                  </div>
+                  <div class="d-flex justify-content-center">
+                    <button class="btn btn-primary btn-lg text-decoration-none text-dark bold my-3" type="submit">Send</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+            {% endif %}
+          <dialog id="delete-confirmation">
+            Are you sure you want to delete this message?
+            <div class="button-container my-5 d-flex justify-content-center">
+              <button
+                type="button"
+                class="btn btn-success me-3 text-dark"
+                onclick="cancelDeleteMessage()">
+                Cancel
+              </button>
+              <button
+                type="button"
+                class="btn btn-danger text-dark"
+                onclick="confirmDeleteMessage()">
+                Confirm
+              </button>
+            </div>
+          </dialog>
+          <dialog id="remove-member-confirmation">
+            <span id="remove-member-name"></span>
+            <div class="button-container my-5 d-flex justify-content-center">
+              <button
+                type="button"
+                class="btn btn-success me-3 text-dark"
+                onclick="cancelRemoveMember()">
+                Cancel
+              </button>
+              <button
+                type="button"
+                class="btn btn-danger text-dark"
+                onclick="confirmRemoveMember()">
+                Remove
+              </button>
+            </div>
+          </dialog>
+          </section>
+        </div>
+      </div>
+    </main>
+    {% include "footer.html" %}
+    <script>
+      const section = document.querySelector('.sidebar-page-shell');
+      const user_name = section.dataset.userName;
+      const group_id = parseInt(section.dataset.groupId, 10);
+      const user_id = parseInt(section.dataset.userId, 10);
+      const channel_id = "group_" + group_id;
+
+      const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${wsProtocol}//${window.location.host}/ws/group/${group_id}`;
+      const ws = new WebSocket(wsUrl);
+
+      let typingTimeout = null;
+      const TYPING_DELAY = 1000;
+
+      function getCurrentDateTime() {
+        const date = new Date();
+        const hours = date.getHours().toString().padStart(2, "0");
+        const minutes = date.getMinutes().toString().padStart(2, "0");
+        const dateString =
+          date.getFullYear() + "-" +
+          (date.getMonth() + 1).toString().padStart(2, "0") + "-" +
+          date.getDate().toString().padStart(2, "0");
+        return `${hours}:${minutes}, ${dateString}`;
+      }
+
+      function showTyping(userName, isTyping) {
+        const indicator = document.getElementById("typing-indicator");
+        if (!indicator) return;
+        if (isTyping) {
+          indicator.textContent = `${userName} is typing...`;
+          indicator.classList.remove("d-none");
+        } else {
+          indicator.classList.add("d-none");
+          indicator.textContent = "";
+        }
+      }
+
+      function appendChatMessage(senderName, messageContent, senderId, messageId) {
+        const heading = document.getElementById("start-new-conversation");
+        if (heading) heading.parentNode.removeChild(heading);
+        const messages = document.getElementById("messages");
+        const container = document.createElement("div");
+        container.classList.add("card", "my-3");
+        container.dataset.messageId = messageId;
+        const body = document.createElement("div");
+        body.classList.add("card-body");
+        const title = document.createElement("p");
+        title.classList.add("card-title", "mt-3", "ms-3");
+        title.textContent = getCurrentDateTime();
+        container.appendChild(title);
+        const content = document.createElement("p");
+        content.classList.add("pt-2", "text-start");
+        const name = document.createElement("strong");
+        name.classList.add("text-primary");
+        name.textContent = `${senderName}: `;
+        content.appendChild(name);
+        const text = document.createElement("span");
+        text.classList.add("message-content");
+        text.textContent = messageContent;
+        content.appendChild(text);
+        body.appendChild(content);
+        if (senderId === user_id) {
+          const btnDiv = document.createElement("div");
+          btnDiv.classList.add("d-flex", "gap-2", "justify-content-end");
+          const editBtn = document.createElement("button");
+          editBtn.classList.add("btn", "btn-sm", "btn-outline-secondary", "edit-btn");
+          editBtn.dataset.messageId = messageId;
+          editBtn.textContent = "Edit";
+          editBtn.addEventListener("click", function () { editMessage(messageId); });
+          btnDiv.appendChild(editBtn);
+          const deleteBtn = document.createElement("button");
+          deleteBtn.classList.add("btn", "btn-sm", "btn-outline-danger", "delete-btn");
+          deleteBtn.dataset.messageId = messageId;
+          deleteBtn.textContent = "Delete";
+          deleteBtn.addEventListener("click", function () { showDeleteConfirmation(messageId); });
+          btnDiv.appendChild(deleteBtn);
+          body.appendChild(btnDiv);
+        }
+        container.appendChild(body);
+        messages.appendChild(container);
+      }
+
+      function appendSystemMessage(senderName, text) {
+        const messages = document.getElementById("messages");
+        const container = document.createElement("div");
+        container.classList.add("card", "my-3");
+        const body = document.createElement("div");
+        body.classList.add("card-body");
+        const name = document.createElement("strong");
+        name.classList.add("text-primary");
+        name.textContent = senderName;
+        body.appendChild(name);
+        const msg = document.createElement("p");
+        msg.classList.add("pt-2", "text-start", "text-primary");
+        msg.textContent = text;
+        body.appendChild(msg);
+        container.appendChild(body);
+        messages.appendChild(container);
+      }
+
+      ws.onmessage = function (event) {
+        const data = JSON.parse(event.data);
+        if (data.type === "typing") {
+          if (data.user_id !== user_id) showTyping(data.user_name, data.typing);
+        } else if (data.type === "user_online") {
+          // presence handled silently
+        } else if (data.type === "user_offline") {
+          // presence handled silently
+        } else if (data.type === "system") {
+          appendSystemMessage(data.user_name, data.content);
+        } else if (data.type === "message") {
+          showTyping(null, false);
+          appendChatMessage(data.senderName, data.content, data.userId, data.message_id);
+        } else if (data.type === "edit_message") {
+          const card = document.querySelector('[data-message-id="' + data.message_id + '"]');
+          if (card) {
+            const contentSpan = card.querySelector(".message-content");
+            if (contentSpan) contentSpan.textContent = data.content;
+            let editedTag = card.querySelector(".edited-tag");
+            if (!editedTag) {
+              editedTag = document.createElement("small");
+              editedTag.className = "text-muted fst-italic edited-tag";
+              editedTag.textContent = " (edited)";
+              contentSpan?.parentNode?.insertBefore(editedTag, contentSpan.nextSibling);
+            }
+          }
+        } else if (data.type === "delete_message") {
+          const card = document.querySelector('[data-message-id="' + data.message_id + '"]');
+          if (card) card.remove();
+        }
+      };
+
+      ws.onerror = function () { console.error("WebSocket connection error"); };
+      ws.onclose = function () { console.warn("WebSocket connection closed"); };
+
+      function sendTypingEvent(typing) {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ type: "typing", channel_id: channel_id, typing: typing }));
+      }
+
+      function handleTypingInput() {
+        if (typingTimeout) clearTimeout(typingTimeout);
+        else sendTypingEvent(true);
+        typingTimeout = setTimeout(() => { typingTimeout = null; sendTypingEvent(false); }, TYPING_DELAY);
+      }
+
+      function sendMessage(event) {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const input = form.querySelector('textarea[name="message"]') || document.getElementById("messageText") || document.getElementById("message");
+        if (!input || !input.value.trim()) return;
+        if (typingTimeout) { clearTimeout(typingTimeout); typingTimeout = null; sendTypingEvent(false); }
+        if (ws.readyState !== WebSocket.OPEN) { alert("Connection lost. Please reload the page."); return; }
+        ws.send(JSON.stringify({ type: "message", channel_id: channel_id, message: input.value }));
+        input.value = "";
+      }
+
+      function getCsrfToken() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.getAttribute("content") : "";
+      }
+
+      function editMessage(messageId) {
+        const card = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (!card) return;
+        const contentSpan = card.querySelector(".message-content");
+        const currentText = contentSpan.textContent;
+        contentSpan.innerHTML =
+          '<textarea class="form-control edit-textarea" rows="2">' +
+          currentText.replace(/</g, "&lt;").replace(/>/g, "&gt;") +
+          '</textarea>' +
+          '<div class="mt-2 d-flex gap-2">' +
+          '<button class="btn btn-sm btn-success save-edit" data-message-id="' + messageId + '">Save</button>' +
+          '<button class="btn btn-sm btn-danger cancel-edit">Cancel</button>' +
+          '</div>';
+        const editBtn = card.querySelector(".edit-btn");
+        const deleteBtn = card.querySelector(".delete-btn");
+        if (editBtn) editBtn.classList.add("d-none");
+        if (deleteBtn) deleteBtn.classList.add("d-none");
+        const saveBtn = contentSpan.querySelector(".save-edit");
+        const cancelBtn = contentSpan.querySelector(".cancel-edit");
+        saveBtn.addEventListener("click", async function () {
+          const textarea = contentSpan.querySelector(".edit-textarea");
+          const newContent = textarea.value.trim();
+          if (!newContent) return;
+          try {
+            const formData = new FormData();
+            formData.append("content", newContent);
+            formData.append("csrf_token", getCsrfToken());
+            const response = await fetch("/edit_group_message/" + messageId, { method: "POST", body: formData });
+            if (!response.ok) { const errText = await response.text(); alert("Edit failed: " + (errText || response.statusText)); }
+          } catch (err) { alert("Edit failed: " + err.message); }
+        });
+        cancelBtn.addEventListener("click", function () {
+          contentSpan.textContent = currentText;
+          const editBtn = card.querySelector(".edit-btn");
+          const deleteBtn = card.querySelector(".delete-btn");
+          if (editBtn) editBtn.classList.remove("d-none");
+          if (deleteBtn) deleteBtn.classList.remove("d-none");
+        });
+      }
+
+      let pendingDeleteId = null;
+
+      function showDeleteConfirmation(messageId) {
+        pendingDeleteId = messageId;
+        document.getElementById("delete-confirmation").showModal();
+      }
+
+      function confirmDeleteMessage() {
+        if (!pendingDeleteId) return;
+        const messageId = pendingDeleteId;
+        pendingDeleteId = null;
+        const formData = new FormData();
+        formData.append("csrf_token", getCsrfToken());
+        fetch("/delete_group_message/" + messageId, { method: "POST", body: formData })
+          .then(function (response) { if (!response.ok) alert("Delete failed: " + response.statusText); })
+          .catch(function (err) { alert("Delete failed: " + err.message); });
+      }
+
+      function cancelDeleteMessage() {
+        pendingDeleteId = null;
+        document.getElementById("delete-confirmation").close();
+      }
+
+      let pendingRemoveUserId = null;
+
+      function showRemoveMemberDialog(btn) {
+        pendingRemoveUserId = btn.dataset.userId;
+        document.getElementById("remove-member-name").textContent = "Remove " + btn.dataset.userName + " from the group?";
+        document.getElementById("remove-member-confirmation").showModal();
+      }
+
+      function confirmRemoveMember() {
+        if (!pendingRemoveUserId) return;
+        const userId = pendingRemoveUserId;
+        pendingRemoveUserId = null;
+        const form = document.createElement("form");
+        form.method = "POST";
+        form.action = "{{ url_for('remove_group_member', group_id=group.id) }}";
+        const csrfInput = document.createElement("input");
+        csrfInput.type = "hidden";
+        csrfInput.name = "csrf_token";
+        csrfInput.value = getCsrfToken();
+        form.appendChild(csrfInput);
+        const userIdInput = document.createElement("input");
+        userIdInput.type = "hidden";
+        userIdInput.name = "user_id";
+        userIdInput.value = userId;
+        form.appendChild(userIdInput);
+        document.body.appendChild(form);
+        form.submit();
+      }
+
+      function cancelRemoveMember() {
+        pendingRemoveUserId = null;
+        document.getElementById("remove-member-confirmation").close();
+      }
+
+      document.addEventListener("DOMContentLoaded", function () {
+        document.querySelectorAll("form.chat-form").forEach(function (form) { form.addEventListener("submit", sendMessage); });
+        document.querySelectorAll(".edit-btn").forEach(function (btn) { btn.addEventListener("click", function () { editMessage(parseInt(this.dataset.messageId)); }); });
+        document.querySelectorAll(".delete-btn").forEach(function (btn) { btn.addEventListener("click", function () { showDeleteConfirmation(parseInt(this.dataset.messageId)); }); });
+        const textarea = document.querySelector('textarea[name="message"]') || document.getElementById("messageText") || document.getElementById("message");
+        if (textarea) textarea.addEventListener("input", handleTypingInput);
+      });
+    </script>
+  </body>
+</html>

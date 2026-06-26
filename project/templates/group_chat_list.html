@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    {% include "head.html" %}
+    <title>Chat app - Group chats</title>
+  </head>
+  <body>
+    {% include "navbar.html" %}
+    <main>
+      <div class="container-fluid justify-content-center">
+        <div class="row">
+          {% include "sidebar.html" %}
+          <section class="ml-sm-auto col-lg-10 px-md-4 py-4 sidebar-page-shell search-users-shell px-3 d-flex flex-column align-items-center">
+            <div class="search-users-header text-center">
+              <h1 class="sidebar-page-title">Group chats</h1>
+              <p class="lead text-muted sidebar-page-subtitle">Your group conversations.</p>
+            </div>
+            <div class="row justify-content-center g-4 search-users-grid w-100">
+              <div class="col-12 col-sm-6 col-xl-4 d-flex justify-content-center">
+                <div class="card sidebar-list-card search-user-card">
+                  <a href="{{ url_for('create_group_form') }}" class="text-decoration-none text-body">
+                    <div class="card-body text-center search-user-card-body">
+                      <i class="bi bi-plus-circle icon-size mt-2"></i>
+                      <p class="card-title lead mt-4 mb-2">Create new group</p>
+                      <p class="text-muted mb-0">Start a new group conversation.</p>
+                    </div>
+                  </a>
+                </div>
+              </div>
+              {% if groups %}
+              {% for group in groups %}
+              <div class="col-12 col-sm-6 col-xl-4 d-flex justify-content-center">
+                <div class="card sidebar-list-card search-user-card">
+                  <a href="{{ url_for('group_chat_page', group_id=group.id) }}" class="text-decoration-none text-body">
+                    <div class="card-body text-center search-user-card-body">
+                      <i class="bi bi-people icon-size mt-2"></i>
+                      <div class="card-body px-2 pb-2">
+                        <p class="card-title lead text-primary mb-2">{{ group.name }}</p>
+                        <p class="text-muted mb-0">{{ group_member_counts[group.id] }} member{% if group_member_counts[group.id] != 1 %}s{% endif %}</p>
+                      </div>
+                    </div>
+                  </a>
+                </div>
+              </div>
+              {% endfor %}
+              {% else %}
+              <div class="col-12 col-sm-6 col-xl-4 d-flex justify-content-center">
+                <div class="card sidebar-list-card search-user-card">
+                  <div class="card-body text-center search-user-card-body">
+                    <i class="bi bi-chat-dots sidebar-empty-icon"></i>
+                    <h2 class="h4 mb-2 mt-2">No groups yet</h2>
+                    <p class="lead mb-0 text-muted">Create a group to start chatting with multiple people.</p>
+                  </div>
+                </div>
+              </div>
+              {% endif %}
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+    {% include "footer.html" %}
+  </body>
+</html>
