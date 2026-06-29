@@ -29,11 +29,12 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"
     chat_secret_key: str = "change-me-in-production"
     token_max_age: int = 3600  # 1 hour in seconds
+    password_reset_token_max_age: int = 1800  # 30 minutes in seconds
 
     # Email
     email_receiver: str = "admin@example.com"
     email_password: str = ""
-    email_sender: str = "noreply@chatapp.example.com"
+    email_sender: str = ""
 
     # AI
     ai_key: str = ""

@@ -1,6 +1,5 @@
 instance/
 __pycache__/
-.vscode/
 .pytest_cache/
 .main.egg-info/
 Chat_app.session.sql

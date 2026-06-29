@@ -116,7 +116,7 @@ def test_chatbot_api_failure_returns_structured_error(monkeypatch):
 #  Pydantic edge cases
 
 
-_csrf = generate_csrf_token(0)
+csrf_token = generate_csrf_token(0)
 
 
 def test_very_long_strings_in_signup():
@@ -131,7 +131,7 @@ def test_very_long_strings_in_signup():
             "password": "Pass123",
             "confirm_password": "Pass123",
             "terms_conditions": "on",
-            "csrf_token": _csrf,
+            "csrf_token": csrf_token,
         },
     )
     assert response.status_code in (200, 303, 422)
@@ -148,7 +148,7 @@ def test_unicode_in_signup():
             "password": "Pass123",
             "confirm_password": "Pass123",
             "terms_conditions": "on",
-            "csrf_token": _csrf,
+            "csrf_token": csrf_token,
         },
     )
     assert response.status_code in (200, 303, 422)
@@ -165,7 +165,7 @@ def test_special_characters_in_name():
             "password": "Pass123",
             "confirm_password": "Pass123",
             "terms_conditions": "on",
-            "csrf_token": _csrf,
+            "csrf_token": csrf_token,
         },
     )
     assert response.status_code in (200, 303, 422)
@@ -183,7 +183,7 @@ def test_very_long_email():
             "password": "Pass123",
             "confirm_password": "Pass123",
             "terms_conditions": "on",
-            "csrf_token": _csrf,
+            "csrf_token": csrf_token,
         },
     )
     assert response.status_code in (200, 303, 422)
@@ -247,7 +247,7 @@ def test_contact_with_long_message():
             "email": "long-msg@example.com",
             "subject": "Test",
             "message": "A" * 10000,
-            "csrf_token": _csrf,
+            "csrf_token": csrf_token,
         },
     )
     assert response.status_code == 200

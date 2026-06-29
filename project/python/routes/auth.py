@@ -11,6 +11,11 @@ from werkzeug.security import generate_password_hash
 from ..database import async_session_scope
 from ..models import User
 from ..settings import settings
+from .email import (
+    generate_password_reset_token,
+    send_reset_email,
+    verify_password_reset_token,
+)
 from .helpers import is_authenticated, validate_csrf_optional, validate_email
 from .template import DEFAULT_AVATAR_PATH, render_template
 
@@ -185,3 +190,135 @@ def logout(request: Request) -> Response:
         return response
     else:
         return render_template("login.html", request)
+
+
+@router.get("/forgot_password", name="forgot_password")
+def forgot_password_page(request: Request) -> Response:
+    """Render the forgot password page.
+
+    Args:
+        request: The request object
+
+    Returns:
+        Response: Forgot password page template response
+    """
+    return render_template("forgot_password.html", request, errors={})
+
+
+@router.post("/forgot_password", dependencies=[Depends(validate_csrf_optional)])
+async def forgot_password_data(request: Request, email: str = Form(...)) -> Response:
+    """Handle forgot password form submission.
+
+    Always returns the same success message regardless of whether
+    the email exists, to avoid revealing registered addresses.
+
+    Args:
+        request: The request object
+        email: The email form field
+
+    Returns:
+        Response: Forgot password template response with success message
+    """
+    errors = {}
+
+    if not validate_email(email):
+        errors["email"] = "Invalid email format"
+        return render_template("forgot_password.html", request, errors=errors)
+
+    async with async_session_scope() as db:
+        result = await db.execute(select(User).filter(User.email == email))
+        user = result.scalar()
+
+    if user:
+        token = generate_password_reset_token(email)
+        reset_link = str(request.url_for("reset_password", token=token))
+        send_reset_email(email, reset_link)
+
+    return render_template(
+        "forgot_password.html",
+        request,
+        success="If an account with that email exists, we have sent a password reset link.",
+    )
+
+
+@router.get("/reset_password/{token}", name="reset_password")
+def reset_password_page(request: Request, token: str) -> Response:
+    """Render the reset password page.
+
+    Validates the token and shows the password form if valid.
+
+    Args:
+        request: The request object
+        token: The signed password reset token
+
+    Returns:
+        Response: Reset password template response
+    """
+    email = verify_password_reset_token(token)
+    errors = {}
+    if email is None:
+        errors["token"] = (
+            "This reset link is invalid or has expired. " "Please request a new one."
+        )
+    return render_template("reset_password.html", request, token=token, errors=errors)
+
+
+@router.post(
+    "/reset_password/{token}",
+    dependencies=[Depends(validate_csrf_optional)],
+)
+async def reset_password_data(
+    request: Request,
+    token: str,
+    password: str = Form(...),
+    confirm_password: str = Form(...),
+) -> Response:
+    """Handle reset password form submission.
+
+    Validates the token and updates the user's password.
+
+    Args:
+        request: The request object
+        token: The signed password reset token
+        password: The new password form field
+        confirm_password: The confirm password form field
+
+    Returns:
+        Response: Reset password template response
+    """
+    email = verify_password_reset_token(token)
+    errors = {}
+
+    if email is None:
+        errors["token"] = (
+            "This reset link is invalid or has expired. " "Please request a new one."
+        )
+        return render_template(
+            "reset_password.html", request, token=token, errors=errors
+        )
+
+    if len(password) < 8:
+        errors["password"] = "Password must be at least 8 characters long"
+
+    if password != confirm_password:
+        errors["confirm_password"] = "Passwords do not match"
+
+    if errors:
+        return render_template(
+            "reset_password.html", request, token=token, errors=errors
+        )
+
+    async with async_session_scope() as db:
+        result = await db.execute(select(User).filter(User.email == email))
+        user = result.scalar()
+        if user:
+            user.password = generate_password_hash(password)
+            await db.commit()
+
+    return render_template(
+        "reset_password.html",
+        request,
+        token=token,
+        errors={},
+        success="Your password has been reset successfully. You can now log in.",
+    )

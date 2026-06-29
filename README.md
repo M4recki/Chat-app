@@ -1,283 +1,197 @@
 # Chat App
 
-A real-time chat application built with FastAPI, WebSockets, and PostgreSQL. This project demonstrates a professional Python web application with user authentication, peer-to-peer messaging, group chat, AI chatbot integration, and friend management features.
+A real-time chat application built with FastAPI, WebSockets, and PostgreSQL. Features user authentication, peer-to-peer messaging, group chat, AI chatbot integration, friend management, and password reset.
 
 ## Features
 
-- 👤 **User Authentication**: Secure signup and login with password hashing
-- 💬 **Real-time Chat**: WebSocket-based messaging between users
+- 👤 **User Authentication**: Secure signup/login with password hashing (werkzeug)
+- 🔐 **Password Reset**: Forgot password flow with time-limited email links (30 min)
+- 💬 **Real-time Chat**: WebSocket-based messaging between friends
 - 👥 **Group Chat**: Create groups, invite members, real-time group messaging
-- 👫 **Friend Management**: Add friends, send friend requests, block users
-- 🤖 **AI Chatbot**: Integrated AI chatbot for conversations
-- 📁 **Contact Form**: Email-based contact functionality
-- 🎨 **Responsive UI**: Modern template-based interface
+- 👫 **Friend Management**: Send/accept/deny friend requests, block/unblock users
+- 🤖 **AI Chatbot**: Integrated AI chatbot conversation (NVIDIA API via OpenAI SDK)
+- 📁 **Contact Form**: Email-based contact form with SMTP
+- 🎨 **Responsive UI**: Bootstrap 5 + Jinja2 templates
+- ⚡ **Rate Limiting**: In-memory + Redis sliding window rate limiter
 
 ## Tech Stack
 
-- **Backend**: FastAPI, Uvicorn
-- **Database**: PostgreSQL with SQLAlchemy ORM
-- **Real-time**: WebSockets for live messaging
-- **Frontend**: Jinja2 templates, HTML/CSS/JavaScript
-- **Security**: Password hashing (werkzeug), JWT-like tokens (itsdangerous)
-- **AI**: OpenAI client (NVIDIA Integrate API)
-- **Testing**: pytest with SQLite in-memory database
+- **Backend**: FastAPI, Uvicorn / Gunicorn
+- **Database**: PostgreSQL (production), SQLite (tests)
+- **ORM**: SQLAlchemy 2.0 (async) + Alembic migrations
+- **Real-time**: WebSockets with connection manager
+- **Frontend**: Jinja2 templates, Bootstrap 5, vanilla JS
+- **Security**: PBKDF2 hashing, itsdangerous signed tokens, CSRF protection
+- **AI**: OpenAI Python client (NVIDIA Integrate API)
+- **Testing**: pytest, pytest-cov, httpx, SQLite
+- **Infra**: Docker, docker-compose, GitHub Actions CI
 
 ## Requirements
 
 - Python 3.10+
-- PostgreSQL 12+ (for production)
-- pip or poetry
+- PostgreSQL 12+ (for production/development)
+- Docker (optional, for containerized setup)
 
-## Installation
+## Quick Start
 
-### 1. Clone the repository
+### 1. Clone and setup
 
 ```bash
 git clone https://github.com/M4recki/Chat-app.git
 cd Chat-app
-```
-
-### 2. Create and activate virtual environment
-
-```bash
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-```
-
-### 3. Install dependencies
-
-```bash
+source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-For development and testing:
-
-```bash
 pip install -r requirements-dev.txt
 ```
 
-### Alembic (database migrations)
-
-This project uses Alembic for schema migrations. To initialize and generate migrations locally:
-
-```bash
-pip install -r requirements-dev.txt
-# initialize alembic (only once)
-alembic init alembic
-# edit alembic.ini or set DATABASE_URL env var to point to your DB
-alembic revision --autogenerate -m "Initial migration"
-alembic upgrade head
-```
-
-### Docker (development)
-
-Run Postgres + app via docker-compose:
-
-```bash
-docker-compose up --build
-# app will be available at http://localhost:8000
-```
-
-### 4. Configure environment variables
-
-Copy `.env.example` to `.env` and update values:
+### 2. Configure environment
 
 ```bash
 cp .env.example .env
+# Edit .env with your PostgreSQL credentials and secrets
 ```
 
-Edit `.env` with your PostgreSQL credentials and other secrets:
-
-```
-DATABASE_URL=postgresql://user:password@localhost:5432/chatapp
-SECRET_KEY=your-secret-key-here
-EMAIL_RECEIVER=admin@example.com
-EMAIL_PASSWORD=your-app-password
-```
-
-### 5. Create and migrate database
-
-```bash
-python project/python/models.py
-```
-
-Or using alembic (recommended for production):
+### 3. Run migrations
 
 ```bash
 alembic upgrade head
 ```
 
-### 6. Run the application
+### 4. Start the app
 
 ```bash
-cd project && python -m uvicorn python.main:app --reload
+uvicorn project.python.main:app --reload
 ```
 
-The application will be available at `http://localhost:8000`
+Open `http://localhost:8000`
 
-## Development
-
-### Running Tests
+### Docker (alternative)
 
 ```bash
-pytest -q
-```
-
-With coverage report:
-
-```bash
-pytest --cov=project --cov-report=html
-```
-
-### Code Quality
-
-Format code with black (auto-format entire project):
-
-```bash
-black project/ tests/
-```
-
-Sort imports:
-
-```bash
-isort project/ tests/ --profile black
-```
-
-Type checking:
-
-```bash
-mypy project/python/
-```
-
-### Pre-commit Hooks
-
-Install pre-commit hooks (auto-format and lint on git commit):
-
-```bash
-pre-commit install
+docker-compose up --build
+# App at http://localhost:8001, DB on port 5433
 ```
 
 ## Project Structure
 
 ```
-project/
-├── python/
-│   ├── __init__.py
-│   ├── main.py                # FastAPI app entry point
-│   ├── models.py              # SQLAlchemy ORM models
-│   ├── database.py            # Database configuration
-│   ├── handlers.py            # Exception handlers
-│   ├── connection_manager.py  # WebSocket connection management
-│   ├── chatbot_utils.py       # AI chatbot helper functions
-│   ├── rate_limit.py          # In-memory rate limiter
-│   ├── settings.py            # Pydantic settings & env config
-│   ├── ws.py                  # WebSocket endpoint logic
-│   └── routes/
-│       ├── __init__.py
-│       ├── auth.py            # Login / sign-up
-│       ├── chat.py            # Chat channels & messaging
-│       ├── chatbot.py         # Chatbot conversation
-│       ├── contact.py         # Contact form
-│       ├── email.py           # Email sending helper
-│       ├── friends.py         # Friend management
-│       ├── group_chat.py      # Group chat management
-│       ├── helpers.py         # Auth helpers, CSRF validation
-│       ├── main_page.py       # Homepage
-│       ├── online.py          # Online users endpoint
-│       ├── profile.py         # User profile & settings
-│       ├── search.py          # User search
-│       └── template.py        # Jinja2 template config
-├── static/
-│   ├── css/
-│   │   └── style.css
-│   ├── js/
-│   │   └── script.js
-│   └── img/
-└── templates/                 # Jinja2 templates
+├── project/
+│   ├── python/
+│   │   ├── main.py                 # FastAPI app factory, routes, startup
+│   │   ├── settings.py             # Pydantic settings (env config)
+│   │   ├── database.py             # SQLAlchemy async engine/sessions
+│   │   ├── models.py               # ORM models: User, Message, Channel,
+│   │   │                           #   Friend, GroupChat, GroupMember,
+│   │   │                           #   GroupMessage, ChatbotMessage
+│   │   ├── handlers.py             # Exception handlers (HTTP, validation)
+│   │   ├── connection_manager.py   # WebSocket ConnectionManager
+│   │   ├── ws.py                   # WebSocket endpoint (messaging, typing)
+│   │   ├── chatbot_utils.py        # AI chatbot API integration
+│   │   ├── rate_limit.py           # In-memory + Redis rate limiter
+│   │   └── routes/
+│   │       ├── __init__.py         # Router aggregation
+│   │       ├── auth.py             # Signup, login, logout, password reset
+│   │       ├── main_page.py        # Landing page
+│   │       ├── profile.py          # Profile update
+│   │       ├── chat.py             # 1-on-1 chat messages (HTTP)
+│   │       ├── friends.py          # Friend requests, block/unblock
+│   │       ├── group_chat.py       # Group chat CRUD + messaging
+│   │       ├── chatbot.py          # Chatbot conversation page
+│   │       ├── search.py           # User search
+│   │       ├── contact.py          # Contact form
+│   │       ├── online.py           # Online user status
+│   │       ├── email.py            # SMTP sender, password reset token helpers
+│   │       ├── helpers.py          # Auth, CSRF, channel, friendship helpers
+│   │       └── template.py         # Jinja2 config, context processors
+│   ├── static/
+│   │   ├── css/style.css
+│   │   ├── js/script.js
+│   │   └── img/                    # Images (avatars, icons, decorations)
+│   └── templates/                  # 20 Jinja2 HTML templates
+│       ├── head.html, navbar.html, sidebar.html, footer.html
+│       ├── main_page.html, login.html, sign_up.html
+│       ├── forgot_password.html, reset_password.html
+│       ├── friend_chat.html, single_chat.html
+│       ├── group_chat.html, group_chat_list.html, create_group.html
+│       ├── chatbot_chat.html, search_user.html
+│       ├── friend_requests.html, update_profile.html
+│       ├── contact.html, error.html
+├── alembic/
+│   ├── env.py, script.py.mako
+│   └── versions/                   # 6 migrations
+│       ├── 593b...create_initial_schema.py
+│       ├── 347c...change_message_content_to_text.py
+│       ├── 3736...increase_password_length.py
+│       ├── fe4e...add_edited_at_to_messages.py
+│       ├── b5a7...add_index_on_messages_created_at.py
+│       └── ef3b...add_group_chat_tables.py
+├── tests/
+│   ├── conftest.py                 # Fixtures and test helpers
+│   ├── model_test.py               # SQLite engine/test session config
+│   ├── unit_test.py                # Unit tests
+│   ├── integration_test.py         # Integration tests
+│   ├── functional_test.py          # End-to-end functional tests
+│   ├── routes_test.py              # Route-level HTTP tests
+│   ├── security_test.py            # Security tests (CSRF, XSS, auth)
+│   ├── contract_test.py            # API contract tests
+│   └── performance_test.py         # Load and rate limit tests
+├── Dockerfile
+├── docker-compose.yml
+├── docker-entrypoint.sh
+├── requirements.txt                # Runtime dependencies
+├── requirements-dev.txt            # Dev/test dependencies
+├── alembic.ini
+├── pytest.ini
+├── .env.example
+└── README.md
+```
 
-tests/
-├── conftest.py                # pytest configuration & fixtures
-├── unit_test.py               # Unit tests
-├── routes_test.py             # Route-specific integration tests
-├── integration_test.py        # Integration tests
-├── functional_test.py         # Functional tests
-├── model_test.py              # Model tests
-├── security_test.py           # Security tests
-├── contract_test.py           # Contract tests
-└── performance_test.py        # Performance tests
+## Testing
+
+```bash
+pytest -q                    # 189 tests
+pytest --cov=project         # With coverage
+pytest -k "test_login"       # Filter by name
 ```
 
 ## Configuration
 
-### Environment Variables
+### Environment Variables (`.env`)
 
-- `DATABASE_URL`: PostgreSQL connection string
-- `SECRET_KEY`: Secret key for token signing (itsdangerous)
-- `CHAT_SECRET_KEY`: Alternative secret for chat tokens
-- `EMAIL_RECEIVER`: Email address to receive contact form submissions
-- `EMAIL_PASSWORD`: App password for Gmail SMTP
-- `AI_KEY`: NVIDIA Integrate API key for chatbot access
-- `CHATBOT_HISTORY_LIMIT`: Number of previous chatbot exchanges included as memory context
-- `TESTING`: Set to "1" during test runs (auto-set by conftest.py)
-
-### Chatbot Configuration
-
-Chatbot uses the NVIDIA Integrate API via the OpenAI Python client.
-
-- Set `AI_KEY` in `.env` to your NVIDIA API key.
-- Set `CHATBOT_HISTORY_LIMIT` (e.g. `8`) to control memory window size.
-- The model and base URL are configured in [project/python/chatbot_utils.py](project/python/chatbot_utils.py).
-
-## CI/CD
-
-This project includes GitHub Actions workflows for:
-
-- **Tests**: Automated pytest run on Python 3.10, 3.11
-- **Formatting**: black formatting checks
-- **Coverage**: Test coverage reporting
-
-Workflows run on every push and pull request to `main` branch.
-
-See `.github/workflows/python-ci.yml` for details.
-
-## Database
-
-### Production Setup
-
-For production, use PostgreSQL:
-
-```bash
-pip install psycopg2-binary
-```
-
-Update `DATABASE_URL` in `.env`:
-
-```
-DATABASE_URL=postgresql://user:password@localhost:5432/chatapp
-```
-
-### Testing Setup
-
-Tests use SQLite in-memory database by default (configured in `tests/conftest.py`).
+| Variable | Description | Default |
+|---|---|---|
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://postgres:postgres@localhost:5432/chat_app` |
+| `SECRET_KEY` | Token signing key (itsdangerous) | `change-me-in-production` |
+| `CHAT_SECRET_KEY` | Separate key for chat/CSRF tokens | `change-me-in-production` |
+| `EMAIL_SENDER` | SMTP sender address (Gmail) | falls back to `EMAIL_RECEIVER` |
+| `EMAIL_RECEIVER` | Contact form recipient | `admin@example.com` |
+| `EMAIL_PASSWORD` | Gmail app password | — |
+| `AI_KEY` | NVIDIA Integrate API key | — |
+| `REDIS_URL` | Redis connection (for distributed rate limiting) | `""` (in-memory) |
 
 ## Security
 
-- ✅ Passwords are hashed with werkzeug PBKDF2
-- ✅ Tokens are signed with itsdangerous (time-bound)
-- ✅ SMTP credentials should be in `.env` (never commit)
-- ✅ CORS and input validation to be added
-- ⚠️ Email sending is skipped in test mode (TESTING=1)
+- ✅ Passwords hashed with PBKDF2 (werkzeug)
+- ✅ Auth tokens signed + timestamped (itsdangerous)
+- ✅ CSRF protection on all mutation endpoints
+- ✅ XSS prevention (Jinja2 auto-escape, DOM Purify)
+- ✅ Rate limiting on login, search, and chatbot
+- ✅ Email skipped in test mode (`TESTING=1`)
+- ❗ `.env` contains secrets — never commit
 
-## Contributing
+## Database Migrations
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+```bash
+alembic upgrade head         # Apply all pending
+alembic downgrade -1         # Rollback one step
+alembic revision --autogenerate -m "description"  # Create new
+```
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE).
 
 ## Author
 
 [M4recki](https://github.com/M4recki)
-
-**Note**: This project is a portfolio/demonstration project. For production use, additional hardening, security audits, and database migrations (alembic) are recommended.

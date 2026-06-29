@@ -1,5 +1,7 @@
 import json
+import smtplib
 import time
+from collections import deque
 from datetime import datetime
 from hashlib import sha256
 from io import BytesIO
@@ -27,10 +29,16 @@ from project.python.chatbot_utils import (
     normalize_chatbot_response,
 )
 from project.python.connection_manager import ConnectionManager
-from project.python.database import get_db
+from project.python.database import async_url, get_db
 from project.python.main import app
 from project.python.main import app as ws_app
-from project.python.models import Channel, Message, User
+from project.python.models import (
+    Channel,
+    Friend as FriendModel,
+    FriendStatus,
+    Message,
+    User,
+)
 from project.python.rate_limit import MemoryBackend, RateLimiter, get_client_identifier
 from project.python.routes import (
     authentication_in_header,
@@ -43,7 +51,20 @@ from project.python.routes import (
     user_image,
     user_name,
 )
-from project.python.routes.email import send_email
+from project.python.routes.email import (
+    generate_password_reset_token,
+    get_sender,
+    send_email_raw,
+    send_email,
+    send_reset_email,
+    verify_password_reset_token,
+)
+from project.python.routes.helpers import (
+    get_channel_id_map,
+    get_friend_status_map,
+    get_message_or_404,
+    get_user_by_id,
+)
 from project.python.settings import settings as app_settings
 from tests.model_test import TestingSessionLocal
 
@@ -56,7 +77,7 @@ class FakeMessage:
         self.response = response
 
 
-def _make_request(headers: list | None = None, host: str | None = "127.0.0.1"):
+def make_request(headers: list | None = None, host: str | None = "127.0.0.1"):
     scope = {
         "type": "http",
         "method": "GET",
@@ -67,11 +88,11 @@ def _make_request(headers: list | None = None, host: str | None = "127.0.0.1"):
     return Request(scope)
 
 
-def _make_request_with_cookie(token: str) -> Request:
-    return _make_request([(b"cookie", f"access_token={token}".encode())])
+def make_request_with_cookie(token: str) -> Request:
+    return make_request([(b"cookie", f"access_token={token}".encode())])
 
 
-def _enable_openai(monkeypatch):
+def enable_openai(monkeypatch):
     monkeypatch.setenv("TESTING", "0")
     monkeypatch.setattr(
         "project.python.chatbot_utils.settings.ai_key",
@@ -93,17 +114,17 @@ def test_invalid_route():
 
 
 def test_rate_limiter_get_client_identifier_x_forwarded_for():
-    request = _make_request([(b"x-forwarded-for", b"203.0.113.42, 10.0.0.1")])
+    request = make_request([(b"x-forwarded-for", b"203.0.113.42, 10.0.0.1")])
     assert get_client_identifier(request) == "203.0.113.42"
 
 
 def test_rate_limiter_get_client_identifier_fallback_host():
-    request = _make_request(host="10.0.0.55")
+    request = make_request(host="10.0.0.55")
     assert get_client_identifier(request) == "10.0.0.55"
 
 
 def test_rate_limiter_get_client_identifier_no_client():
-    request = _make_request(host=None)
+    request = make_request(host=None)
     assert get_client_identifier(request) == "unknown"
 
 
@@ -113,33 +134,34 @@ def test_rate_limiter_get_client_identifier_no_client():
 @pytest.mark.asyncio
 async def test_rate_limiter_enforce_zero_max_requests():
     limiter = RateLimiter()
-    request = _make_request()
+    request = make_request()
     result = await limiter.enforce(request, "test", 0, 60)
+
     assert result is None
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_enforce_negative_window():
     limiter = RateLimiter()
-    request = _make_request()
+    request = make_request()
     result = await limiter.enforce(request, "test", 5, -1)
+
     assert result is None
 
 
 @pytest.mark.asyncio
 async def test_rate_limiter_enforce_bucket_cleanup():
-    from collections import deque as _deque
-
     limiter = RateLimiter()
     backend = limiter.backend
+
     assert isinstance(backend, MemoryBackend)
-    backend.buckets["cleanup:127.0.0.1"] = _deque(
+    backend.buckets["cleanup:127.0.0.1"] = deque(
         [
             time.monotonic() - 120,
             time.monotonic() - 100,
         ]
     )
-    request = _make_request()
+    request = make_request()
     result = await limiter.enforce(request, "cleanup", 5, 30)
     assert result is not None
     assert result["remaining"] >= 4
@@ -151,17 +173,17 @@ async def test_rate_limiter_enforce_bucket_cleanup():
 def test_authentication_in_header_valid():
     serializer = Serializer(app_settings.chat_secret_key)
     token = serializer.dumps({"user_id": 1})
-    result = authentication_in_header(_make_request_with_cookie(token))
+    result = authentication_in_header(make_request_with_cookie(token))
     assert result == {"is_authenticated": True}
 
 
 def test_authentication_in_header_no_token():
-    result = authentication_in_header(_make_request())
+    result = authentication_in_header(make_request())
     assert result == {"is_authenticated": False}
 
 
 def test_authentication_in_header_invalid_token():
-    result = authentication_in_header(_make_request_with_cookie("forged"))
+    result = authentication_in_header(make_request_with_cookie("forged"))
     assert result == {"is_authenticated": False}
 
 
@@ -182,7 +204,7 @@ def test_not_request(func, expected):
 
 @pytest.mark.asyncio
 async def test_get_user_from_request_no_token():
-    request = _make_request()
+    request = make_request()
     user, user_id = await get_user_from_request(request)
     assert user is None
     assert user_id is None
@@ -190,7 +212,7 @@ async def test_get_user_from_request_no_token():
 
 @pytest.mark.asyncio
 async def test_get_user_from_request_invalid_token():
-    user, user_id = await get_user_from_request(_make_request_with_cookie("bad"))
+    user, user_id = await get_user_from_request(make_request_with_cookie("bad"))
     assert user is None
     assert user_id is None
 
@@ -226,22 +248,22 @@ def test_encode_avatar_no_user():
 
 
 def test_user_image_no_token():
-    assert user_image(_make_request()) == {"user_image": ""}
+    assert user_image(make_request()) == {"user_image": ""}
 
 
 def test_user_image_invalid_token():
-    assert user_image(_make_request_with_cookie("bad")) == {"user_image": ""}
+    assert user_image(make_request_with_cookie("bad")) == {"user_image": ""}
 
 
 #  user_name
 
 
 def test_user_name_no_token():
-    assert user_name(_make_request()) == {"user_name": None}
+    assert user_name(make_request()) == {"user_name": None}
 
 
 def test_user_name_invalid_token():
-    assert user_name(_make_request_with_cookie("bad")) == {"user_name": None}
+    assert user_name(make_request_with_cookie("bad")) == {"user_name": None}
 
 
 #  settings properties
@@ -250,6 +272,7 @@ def test_user_name_invalid_token():
 def test_settings_is_production():
     original = app_settings.environment
     app_settings.environment = "production"
+
     assert app_settings.is_production is True
     app_settings.environment = "development"
     assert app_settings.is_production is False
@@ -259,6 +282,7 @@ def test_settings_is_production():
 def test_settings_is_testing():
     original = app_settings.environment
     app_settings.environment = "testing"
+
     assert app_settings.is_testing is True
     app_settings.testing = False
     app_settings.environment = "development"
@@ -292,6 +316,7 @@ def test_build_chatbot_messages_with_history():
         FakeMessage("how are you", "good"),
     ]
     messages = build_chatbot_messages("bye", history)
+
     assert len(messages) == 6
     assert messages[1] == {"role": "user", "content": "hi"}
     assert messages[2] == {"role": "assistant", "content": "hello back"}
@@ -325,6 +350,7 @@ def test_chatbot_context_basic():
         "headers": [],
         "client": None,
     }
+
     request = Request(scope)
     ctx = chatbot_context(
         cast(User, cast(object, "fake-user")),
@@ -333,6 +359,7 @@ def test_chatbot_context_basic():
         message="hi",
         response="hello",
     )
+
     assert ctx["user"] == "fake-user"
     assert ctx["message"] == "hi"
     assert ctx["response"] == "hello"
@@ -418,37 +445,37 @@ def test_chatbot_context_with_extra():
 
 #  OpenAI mock helpers
 
-_MOCK_CONTENT = "Hello world"
+MOCK_CONTENT = "Hello world"
 
 
-class _MockMsg:
-    content = _MOCK_CONTENT
+class MockMsg:
+    content = MOCK_CONTENT
 
 
-class _MockChoice:
-    message = _MockMsg()
+class MockChoice:
+    message = MockMsg()
 
 
-class _MockCompletion:
-    choices = [_MockChoice()]
+class MockCompletion:
+    choices = [MockChoice()]
 
 
-class _MockClient:
+class MockClient:
     class Chat:
         class Completions:
             @staticmethod
             def create(*_a, **_kw):
-                return _MockCompletion()
+                return MockCompletion()
 
         completions = Completions()
 
     chat = Chat()
 
 
-def _mock_openai(monkeypatch, content=None, create_fn=None):
+def mock_openai(monkeypatch, content=None, create_fn=None):
     if content is not None:
-        _MockMsg.content = content
-    _MockMsg.content = content if content is not None else _MOCK_CONTENT
+        MockMsg.content = content
+    MockMsg.content = content if content is not None else MOCK_CONTENT
 
     if create_fn is not None:
 
@@ -457,7 +484,7 @@ def _mock_openai(monkeypatch, content=None, create_fn=None):
             def create(*_a, **_kw):
                 return create_fn()
 
-        client = _MockClient()
+        client = MockClient()
         client.Chat.Completions = CustomCompletions()
         client.Chat.completions = CustomCompletions()
         monkeypatch.setattr(
@@ -467,21 +494,21 @@ def _mock_openai(monkeypatch, content=None, create_fn=None):
     else:
         monkeypatch.setattr(
             "project.python.chatbot_utils.OpenAI",
-            lambda *_a, **_kw: _MockClient(),
+            lambda *_a, **_kw: MockClient(),
         )
 
 
 def test_routes_chatbot_response_openai_success(monkeypatch):
-    _enable_openai(monkeypatch)
-    _mock_openai(monkeypatch, content="Hello world")
+    enable_openai(monkeypatch)
+    mock_openai(monkeypatch, content="Hello world")
     result = chatbot_response("hello")
     assert result == "Hello world"
 
 
 def test_routes_chatbot_response_retry_failure(monkeypatch):
-    _enable_openai(monkeypatch)
+    enable_openai(monkeypatch)
 
-    class MockClient:
+    class _MockClient:
         class Chat:
             class Completions:
                 @staticmethod
@@ -496,26 +523,26 @@ def test_routes_chatbot_response_retry_failure(monkeypatch):
 
     monkeypatch.setattr(
         "project.python.chatbot_utils.OpenAI",
-        lambda *_a, **_kw: MockClient(),
+        lambda *_a, **_kw: _MockClient(),
     )
     with pytest.raises(ChatbotServiceError):
         chatbot_response("hello")
 
 
 def test_routes_chatbot_response_retry_on_timeout(monkeypatch):
-    _enable_openai(monkeypatch)
+    enable_openai(monkeypatch)
     call_count = [0]
 
-    class MockMsg:
+    class _MockMsg:
         content = "Retry succeeded"
 
-    class MockChoice:
-        message = MockMsg()
+    class _MockChoice:
+        message = _MockMsg()
 
-    class MockCompletion:
-        choices = [MockChoice()]
+    class _MockCompletion:
+        choices = [_MockChoice()]
 
-    class MockClient:
+    class _MockClient:
         class Chat:
             class Completions:
                 @staticmethod
@@ -525,7 +552,7 @@ def test_routes_chatbot_response_retry_on_timeout(monkeypatch):
                         raise openai_mod.APITimeoutError(
                             httpx.Request("GET", "http://test"),
                         )
-                    return MockCompletion()
+                    return _MockCompletion()
 
             completions = Completions()
 
@@ -533,7 +560,7 @@ def test_routes_chatbot_response_retry_on_timeout(monkeypatch):
 
     monkeypatch.setattr(
         "project.python.chatbot_utils.OpenAI",
-        lambda *_a, **_kw: MockClient(),
+        lambda *_a, **_kw: _MockClient(),
     )
     result = chatbot_response("hello")
     assert result == "Retry succeeded"
@@ -541,10 +568,10 @@ def test_routes_chatbot_response_retry_on_timeout(monkeypatch):
 
 
 def test_routes_chatbot_response_api_error(monkeypatch):
-    _enable_openai(monkeypatch)
+    enable_openai(monkeypatch)
     monkeypatch.setattr("project.python.chatbot_utils.settings.debug", True)
 
-    class MockClient:
+    class _MockClient:
         class Chat:
             class Completions:
                 @staticmethod
@@ -557,30 +584,30 @@ def test_routes_chatbot_response_api_error(monkeypatch):
 
     monkeypatch.setattr(
         "project.python.chatbot_utils.OpenAI",
-        lambda *_a, **_kw: MockClient(),
+        lambda *_a, **_kw: _MockClient(),
     )
     with pytest.raises(ChatbotServiceError):
         chatbot_response("hello")
 
 
 def test_routes_chatbot_response_openai_empty(monkeypatch):
-    _enable_openai(monkeypatch)
+    enable_openai(monkeypatch)
 
-    class MockMsg:
+    class _MockMsg:
         content = None
 
-    class MockChoice:
-        message = MockMsg()
+    class _MockChoice:
+        message = _MockMsg()
 
-    class MockCompletion:
-        choices = [MockChoice()]
+    class _MockCompletion:
+        choices = [_MockChoice()]
 
-    class MockClient:
+    class _MockClient:
         class Chat:
             class Completions:
                 @staticmethod
                 def create(*_a, **_kw):
-                    return MockCompletion()
+                    return _MockCompletion()
 
             completions = Completions()
 
@@ -588,7 +615,7 @@ def test_routes_chatbot_response_openai_empty(monkeypatch):
 
     monkeypatch.setattr(
         "project.python.chatbot_utils.OpenAI",
-        lambda *_a, **_kw: MockClient(),
+        lambda *_a, **_kw: _MockClient(),
     )
     with pytest.raises(ChatbotServiceError):
         chatbot_response("hello")
@@ -602,7 +629,7 @@ def test_chatbot_utils_debug_logging(monkeypatch):
     )
     monkeypatch.setattr("project.python.chatbot_utils.settings.debug", True)
 
-    class MockClient:
+    class _MockClient:
         class Chat:
             class Completions:
                 @staticmethod
@@ -615,30 +642,30 @@ def test_chatbot_utils_debug_logging(monkeypatch):
 
     monkeypatch.setattr(
         "project.python.chatbot_utils.OpenAI",
-        lambda *_a, **_kw: MockClient(),
+        lambda *_a, **_kw: _MockClient(),
     )
     with pytest.raises(ChatbotServiceError):
         chatbot_utils_response("hello")
 
 
 def test_chatbot_response_with_openai_mock(monkeypatch):
-    _enable_openai(monkeypatch)
+    enable_openai(monkeypatch)
 
-    class MockMsg:
+    class _MockMsg:
         content = "Hello world"
 
-    class MockChoice:
-        message = MockMsg()
+    class _MockChoice:
+        message = _MockMsg()
 
-    class MockCompletion:
-        choices = [MockChoice()]
+    class _MockCompletion:
+        choices = [_MockChoice()]
 
-    class MockClient:
+    class _MockClient:
         class Chat:
             class Completions:
                 @staticmethod
                 def create(*_a, **_kw):
-                    return MockCompletion()
+                    return _MockCompletion()
 
             completions = Completions()
 
@@ -646,7 +673,7 @@ def test_chatbot_response_with_openai_mock(monkeypatch):
 
     monkeypatch.setattr(
         "project.python.chatbot_utils.OpenAI",
-        lambda *_a, **_kw: MockClient(),
+        lambda *_a, **_kw: _MockClient(),
     )
     result = chatbot_utils_response("hello")
     assert result == "Hello world"
@@ -659,21 +686,21 @@ def test_chatbot_response_empty_openai_response(monkeypatch):
         "sk-real-key",
     )
 
-    class MockMsg:
+    class _MockMsg:
         content = None
 
-    class MockChoice:
-        message = MockMsg()
+    class _MockChoice:
+        message = _MockMsg()
 
-    class MockCompletion:
-        choices = [MockChoice()]
+    class _MockCompletion:
+        choices = [_MockChoice()]
 
-    class MockClient:
+    class _MockClient:
         class Chat:
             class Completions:
                 @staticmethod
                 def create(*_a, **_kw):
-                    return MockCompletion()
+                    return _MockCompletion()
 
             completions = Completions()
 
@@ -681,7 +708,7 @@ def test_chatbot_response_empty_openai_response(monkeypatch):
 
     monkeypatch.setattr(
         "project.python.chatbot_utils.OpenAI",
-        lambda *_a, **_kw: MockClient(),
+        lambda *_a, **_kw: _MockClient(),
     )
     with pytest.raises(ChatbotServiceError):
         chatbot_utils_response("hello")
@@ -727,6 +754,7 @@ async def test_connection_manager_disconnect(mgr, mock_ws):
     mgr.user_connections[1] = [mock_ws]
     mgr.online_users.add(1)
     mgr.disconnect(mock_ws, "ch", 1)
+
     assert mock_ws not in mgr.active_connections["ch"]
     assert 1 not in mgr.user_connections
     assert 1 not in mgr.online_users
@@ -737,6 +765,7 @@ async def test_connection_manager_broadcast(mgr):
     mock_a = AsyncMock()
     mock_b = AsyncMock()
     mgr.active_connections["ch"] = [mock_a, mock_b]
+
     await mgr.broadcast("hello", "ch")
     mock_a.send_text.assert_awaited_once_with("hello")
     mock_b.send_text.assert_awaited_once_with("hello")
@@ -801,6 +830,7 @@ async def test_disconnect_value_error_ws_not_in_channel(mgr, mock_ws):
     mgr.user_connections[1] = [mock_ws]
     mgr.online_users.add(1)
     mgr.disconnect(mock_ws, "ch", 1)
+
     assert "ch" in mgr.active_connections
     assert 1 not in mgr.user_connections
     assert 1 not in mgr.online_users
@@ -812,6 +842,7 @@ async def test_disconnect_value_error_ws_not_in_user_connections(mgr, mock_ws):
     mgr.user_connections[1] = []
     mgr.online_users.add(1)
     mgr.disconnect(mock_ws, "ch", 1)
+
     assert mock_ws not in mgr.active_connections["ch"]
     assert 1 not in mgr.user_connections
     assert 1 not in mgr.online_users
@@ -823,6 +854,7 @@ async def test_broadcast_websocket_disconnect(mgr):
     mock_fail = AsyncMock()
     mock_fail.send_text.side_effect = WebSocketDisconnect()
     mgr.active_connections["ch"] = [mock_ok, mock_fail]
+
     await mgr.broadcast("hello", "ch")
     mock_ok.send_text.assert_awaited_once_with("hello")
     mock_fail.send_text.assert_awaited_once_with("hello")
@@ -836,6 +868,7 @@ async def test_broadcast_except_websocket_disconnect(mgr):
     mock_fail = AsyncMock()
     mock_fail.send_text.side_effect = WebSocketDisconnect()
     mgr.active_connections["ch"] = [mock_exclude, mock_fail]
+
     await mgr.broadcast_to_channel_except("hello", "ch", mock_exclude)
     mock_exclude.send_text.assert_not_awaited()
     mock_fail.send_text.assert_awaited_once_with("hello")
@@ -845,7 +878,7 @@ async def test_broadcast_except_websocket_disconnect(mgr):
 #  WebSocket
 
 
-def _create_test_user(db, name="TestUser", email_suffix=""):
+def create_test_user(db, name="TestUser", email_suffix=""):
     user = User(
         name=name,
         surname="User",
@@ -861,17 +894,19 @@ def _create_test_user(db, name="TestUser", email_suffix=""):
 
 def test_websocket_send_and_receive():
     db = TestingSessionLocal()
-    user = _create_test_user(db)
-    friend = _create_test_user(db, name="Friend", email_suffix="-friend")
+    user = create_test_user(db)
+    friend = create_test_user(db, name="Friend", email_suffix="-friend")
     ch = Channel(channel_id="test-ch", user1_id=user.id, user2_id=friend.id)
     db.add(ch)
     db.commit()
     db.close()
+
     token = Serializer(
         app_settings.chat_secret_key,
     ).dumps({"user_id": user.id})
     ws_client = WSClient(ws_app)
     ws_client.cookies.set("access_token", token)
+
     with ws_client.websocket_connect("/ws/test-ch") as ws:
         ws.send_json(
             {
@@ -880,23 +915,27 @@ def test_websocket_send_and_receive():
             }
         )
         data = ws.receive_text()
+
         assert '"Hello!"' in data
         assert '"TestUser"' in data
 
 
 def test_websocket_message_has_type_field():
     db = TestingSessionLocal()
-    user = _create_test_user(db, email_suffix="-2")
-    friend = _create_test_user(db, name="Friend", email_suffix="-friend2")
+    user = create_test_user(db, email_suffix="-2")
+    friend = create_test_user(db, name="Friend", email_suffix="-friend2")
     ch = Channel(channel_id="type-ch", user1_id=user.id, user2_id=friend.id)
+
     db.add(ch)
     db.commit()
     db.close()
+
     token = Serializer(
         app_settings.chat_secret_key,
     ).dumps({"user_id": user.id})
     ws_client = WSClient(ws_app)
     ws_client.cookies.set("access_token", token)
+
     with ws_client.websocket_connect("/ws/type-ch") as ws:
         ws.send_json(
             {
@@ -904,6 +943,7 @@ def test_websocket_message_has_type_field():
                 "message": "Hi",
             }
         )
+
         data = json.loads(ws.receive_text())
         assert data["type"] == "message"
         assert data["content"] == "Hi"
@@ -911,7 +951,7 @@ def test_websocket_message_has_type_field():
 
 
 def test_online_users_endpoint():
-    client = TestClient(app)
+    TestClient(app)
     db = TestingSessionLocal()
     img_binary = BytesIO()
 
@@ -947,23 +987,17 @@ def test_online_users_endpoint():
 
 
 def test_async_url_postgres():
-    from project.python.database import _async_url
-
-    result = _async_url("postgresql://user:pass@localhost/db")
+    result = async_url("postgresql://user:pass@localhost/db")
     assert result == "postgresql+asyncpg://user:pass@localhost/db"
 
 
 def test_async_url_sqlite():
-    from project.python.database import _async_url
-
-    result = _async_url("sqlite:///./test.db")
+    result = async_url("sqlite:///./test.db")
     assert result == "sqlite+aiosqlite:///./test.db"
 
 
 def test_async_url_unknown():
-    from project.python.database import _async_url
-
-    result = _async_url("mysql://user:pass@localhost/db")
+    result = async_url("mysql://user:pass@localhost/db")
     assert result == "mysql://user:pass@localhost/db"
 
 
@@ -992,7 +1026,6 @@ async def test_get_user_by_id_found():
         "project/static/img/default avatar.png",
     )
     db_sync.close()
-    from project.python.routes.helpers import get_user_by_id
 
     async with async_session_scope() as db:
         result = await get_user_by_id(db, user.id)
@@ -1003,7 +1036,6 @@ async def test_get_user_by_id_found():
 
 @pytest.mark.asyncio
 async def test_get_user_by_id_not_found():
-    from project.python.routes.helpers import get_user_by_id
 
     async with async_session_scope() as db:
         result = await get_user_by_id(db, 99999)
@@ -1028,7 +1060,6 @@ async def test_get_message_or_404_found():
     db_sync.commit()
     msg_id = msg.id
     db_sync.close()
-    from project.python.routes.helpers import get_message_or_404
 
     async with async_session_scope() as db:
         result = await get_message_or_404(db, msg_id)
@@ -1037,9 +1068,6 @@ async def test_get_message_or_404_found():
 
 @pytest.mark.asyncio
 async def test_get_message_or_404_not_found():
-    from project.python.routes.helpers import get_message_or_404
-    from fastapi import HTTPException
-
     async with async_session_scope() as db:
         with pytest.raises(HTTPException) as exc:
             await get_message_or_404(db, 99999)
@@ -1065,8 +1093,6 @@ async def test_get_friend_status_map():
         "Password123",
         "project/static/img/default avatar.png",
     )
-    from project.python.models import Friend as FriendModel, FriendStatus
-
     rel = FriendModel(
         user1_id=u1.id,
         user2_id=u2.id,
@@ -1076,11 +1102,10 @@ async def test_get_friend_status_map():
     db_sync.add(rel)
     db_sync.commit()
     db_sync.close()
-    from project.python.routes.helpers import get_friend_status_map
 
     async with async_session_scope() as db:
-        smap = await get_friend_status_map(db, u1.id, [u2.id])
-    assert smap[u2.id] == FriendStatus.ACCEPTED.value
+        smap = await get_friend_status_map(db, u1.id, [cast(int, u2.id)])
+    assert smap[cast(int, u2.id)] == FriendStatus.ACCEPTED.value
 
 
 @pytest.mark.asyncio
@@ -1102,17 +1127,15 @@ async def test_get_channel_id_map():
         "Password123",
         "project/static/img/default avatar.png",
     )
-    from project.python.models import Channel
 
     ch = Channel(channel_id="test-ch", user1_id=u1.id, user2_id=u2.id)
     db_sync.add(ch)
     db_sync.commit()
     db_sync.close()
-    from project.python.routes.helpers import get_channel_id_map
 
     async with async_session_scope() as db:
-        cmap = await get_channel_id_map(db, u1.id, [u2.id])
-    assert cmap[u2.id] == "test-ch"
+        cmap = await get_channel_id_map(db, u1.id, [cast(int, u2.id)])
+    assert cmap[cast(int, u2.id)] == "test-ch"
 
 
 def test_send_email_config_incomplete(monkeypatch):
@@ -1120,6 +1143,7 @@ def test_send_email_config_incomplete(monkeypatch):
     monkeypatch.setattr(app_settings, "email_receiver", "")
     monkeypatch.setattr(app_settings, "email_password", "")
     result = send_email("test@example.com", "Subject", "Body")
+
     assert result == "Email configuration is incomplete"
 
 
@@ -1128,7 +1152,8 @@ async def test_is_authenticated_expired_token(monkeypatch):
     s = Serializer(app_settings.chat_secret_key)
     token = s.dumps({"user_id": 99999})
     monkeypatch.setattr(app_settings, "token_max_age", -1)
-    request = _make_request_with_cookie(token)
+    request = make_request_with_cookie(token)
+
     with pytest.raises(HTTPException) as exc_info:
         await is_authenticated(request)
     assert exc_info.value.status_code == 401
@@ -1137,7 +1162,7 @@ async def test_is_authenticated_expired_token(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_is_authenticated_bad_signature():
-    request = _make_request_with_cookie("not-a-valid-token")
+    request = make_request_with_cookie("not-a-valid-token")
     with pytest.raises(HTTPException) as exc_info:
         await is_authenticated(request)
     assert exc_info.value.status_code == 401
@@ -1148,8 +1173,183 @@ async def test_is_authenticated_bad_signature():
 async def test_is_authenticated_user_not_found():
     s = Serializer(app_settings.chat_secret_key)
     token = s.dumps({"user_id": 99999})
-    request = _make_request_with_cookie(token)
+    request = make_request_with_cookie(token)
     with pytest.raises(HTTPException) as exc_info:
         await is_authenticated(request)
     assert exc_info.value.status_code == 401
     assert exc_info.value.detail == "User not found"
+
+
+#  email helpers
+
+
+def test_get_sender_uses_email_sender():
+    original = app_settings.email_sender
+    app_settings.email_sender = "sender@example.com"
+    app_settings.email_receiver = "receiver@example.com"
+
+    try:
+        assert get_sender() == "sender@example.com"
+    finally:
+        app_settings.email_sender = original
+
+
+def test_get_sender_falls_back_to_receiver():
+    original_sender = app_settings.email_sender
+    original_receiver = app_settings.email_receiver
+    app_settings.email_sender = ""
+    app_settings.email_receiver = "fallback@example.com"
+
+    try:
+        assert get_sender() == "fallback@example.com"
+    finally:
+        app_settings.email_sender = original_sender
+        app_settings.email_receiver = original_receiver
+
+
+def test_send_testing_mode_returns_none():
+    original = app_settings.testing
+    app_settings.testing = True
+
+    try:
+        result = send_email_raw("test@example.com", "Subject", "Body")
+        assert result is None
+    finally:
+        app_settings.testing = original
+
+
+def test_send_config_incomplete_returns_error():
+    original_testing = app_settings.testing
+    original_sender = app_settings.email_sender
+    original_password = app_settings.email_password
+    app_settings.testing = False
+    app_settings.email_sender = ""
+    app_settings.email_password = ""
+    app_settings.email_receiver = ""
+
+    try:
+        result = send_email_raw("test@example.com", "Subject", "Body")
+        assert result == "Email configuration is incomplete"
+    finally:
+        app_settings.testing = original_testing
+        app_settings.email_sender = original_sender
+        app_settings.email_password = original_password
+
+
+def test_send_smtp_failure_returns_error(monkeypatch):
+    def fake_smtp():
+        raise smtplib.SMTPException("Connection refused")
+
+    monkeypatch.setattr(smtplib, "SMTP_SSL", fake_smtp)
+
+    original_testing = app_settings.testing
+    original_sender = app_settings.email_sender
+    original_password = app_settings.email_password
+    app_settings.testing = False
+    app_settings.email_sender = "sender@example.com"
+    app_settings.email_password = "secret"
+    app_settings.email_receiver = "receiver@example.com"
+
+    try:
+        result = send_email_raw("test@example.com", "Subject", "Body")
+        assert result == "Failed to send email. Please try again later."
+    finally:
+        app_settings.testing = original_testing
+        app_settings.email_sender = original_sender
+        app_settings.email_password = original_password
+
+
+def test_send_smtp_success_returns_none(monkeypatch):
+    class FakeSMTP:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def login(self, sender, password):
+            pass
+
+        def sendmail(self, sender, to_email, msg):
+            pass
+
+    monkeypatch.setattr(
+        "project.python.routes.email.SMTP_SSL", lambda *a, **kw: FakeSMTP()
+    )
+
+    original_testing = app_settings.testing
+    original_sender = app_settings.email_sender
+    original_password = app_settings.email_password
+    app_settings.testing = False
+    app_settings.email_sender = "sender@example.com"
+    app_settings.email_password = "secret"
+    app_settings.email_receiver = "receiver@example.com"
+
+    try:
+        result = send_email_raw("test@example.com", "Subject", "Body")
+        assert result is None
+    finally:
+        app_settings.testing = original_testing
+        app_settings.email_sender = original_sender
+        app_settings.email_password = original_password
+
+
+def test_generate_and_verify_password_reset_token():
+    token = generate_password_reset_token("user@example.com")
+    assert isinstance(token, str)
+    assert len(token) > 10
+
+    email = verify_password_reset_token(token)
+    assert email == "user@example.com"
+
+
+def test_verify_password_reset_token_invalid():
+    result = verify_password_reset_token("not-a-real-token")
+    assert result is None
+
+
+def test_verify_password_reset_token_expired(monkeypatch):
+    original = app_settings.password_reset_token_max_age
+    app_settings.password_reset_token_max_age = -1
+    try:
+        token = generate_password_reset_token("user@example.com")
+        result = verify_password_reset_token(token)
+        assert result is None
+    finally:
+        app_settings.password_reset_token_max_age = original
+
+
+def test_send_reset_email_calls_send(monkeypatch):
+    sent_args: tuple[str, str, str] | None = None
+
+    def fake_send(to_email: str, subject: str, body: str) -> None:
+        nonlocal sent_args
+        sent_args = (to_email, subject, body)
+
+    monkeypatch.setattr("project.python.routes.email.send_email_raw", fake_send)
+
+    result = send_reset_email("user@example.com", "https://example.com/reset/token123")
+    assert result is None
+    assert sent_args is not None
+    assert sent_args[0] == "user@example.com"
+    assert sent_args[1] == "Password Reset Request"
+    assert "https://example.com/reset/token123" in sent_args[2]
+
+
+def test_send_email_contact_form_calls_send(monkeypatch):
+    sent_args: tuple[str, str, str] | None = None
+
+    def fake_send(to_email: str, subject: str, body: str) -> None:
+        nonlocal sent_args
+        sent_args = (to_email, subject, body)
+
+    monkeypatch.setattr("project.python.routes.email.send_email_raw", fake_send)
+
+    result = send_email("sender@example.com", "Contact", "Hello there")
+    assert result is None
+    assert sent_args is not None
+    assert sent_args[0] == app_settings.email_receiver
+    assert "From: sender@example.com" in sent_args[2]

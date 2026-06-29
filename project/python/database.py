@@ -73,7 +73,7 @@ def get_db():
 # ---------------------------------------------------------------------------
 
 
-def _async_url(url: str | URL) -> str | URL:
+def async_url(url: str | URL) -> str | URL:
     """Replace the database driver with its async counterpart."""
     if isinstance(url, URL):
         url_str = url.render_as_string(hide_password=False)
@@ -87,7 +87,7 @@ def _async_url(url: str | URL) -> str | URL:
 
 
 async_engine = create_async_engine(
-    _async_url(database_url),
+    async_url(database_url),
     pool_size=20,
     max_overflow=50,
 )
