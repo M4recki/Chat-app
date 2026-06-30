@@ -84,13 +84,84 @@ def build_chatbot_messages(
     return messages
 
 
-def chatbot_response(user_input: str, previous_messages: list | None = None) -> str:
+def resolve_api_key() -> str:
+    """Resolve and validate the API key from settings.
+
+    Returns:
+        str: The cleaned API key
+
+    Raises:
+        ChatbotServiceError: If the key is missing or a placeholder
     """
-    Get a response from the chatbot for the given user input.
+    api_key = settings.ai_key.strip().strip('"').strip("'")
+    if api_key.lower().startswith("bearer "):
+        api_key = api_key.split(" ", 1)[1].strip()
+    if not api_key or api_key.lower() in {"your-nvidia-api-key", "changeme"}:
+        raise ChatbotServiceError(
+            "Chatbot service is not configured",
+            {"reason": "Missing or placeholder AI_KEY"},
+        )
+    return api_key
+
+
+def call_model(client: OpenAI, model_name: str, messages: list) -> str:
+    """Call a single model and return the response text.
 
     Args:
-        user_input (str): The user's message
-        previous_messages (list, optional): Prior chatbot messages for context
+        client: The OpenAI client instance
+        model_name: The model to use
+        messages: The chat messages
+
+    Returns:
+        str: The model response, or empty string if no content
+
+    Raises:
+        Exception: Propagates any API error
+    """
+    try:
+        try:
+            completion = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=0.6,
+                top_p=0.9,
+                max_tokens=settings.chatbot_max_tokens,
+                stream=False,
+            )
+        except openai.APITimeoutError:
+            logging.warning(
+                "Chatbot model %s timed out; retrying with longer timeout", model_name
+            )
+            retry_max_tokens = max(256, int(settings.chatbot_max_tokens / 2))
+            completion = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=0.6,
+                top_p=0.9,
+                max_tokens=retry_max_tokens,
+                stream=False,
+                timeout=min(settings.chatbot_timeout_seconds * 2, 300),
+            )
+
+        message = completion.choices[0].message
+        content = message.content if message else None
+        if content:
+            return normalize_chatbot_response(content)
+        return ""
+    except Exception as exc:
+        if getattr(settings, "debug", False):
+            logging.getLogger("chatbot").exception(
+                "Chatbot model %s failed", model_name
+            )
+        raise
+
+
+def chatbot_response(user_input: str, previous_messages: list | None = None) -> str:
+    """Get a response from the chatbot for the given user input.
+
+    Args:
+        user_input: The user's message
+        previous_messages: Prior chatbot messages for context
 
     Returns:
         str: The chatbot's response
@@ -100,15 +171,7 @@ def chatbot_response(user_input: str, previous_messages: list | None = None) -> 
             return user_input.split(":", 1)[1].strip()
         return "test-response"
 
-    api_key = settings.ai_key.strip().strip('"').strip("'")
-    if api_key.lower().startswith("bearer "):
-        api_key = api_key.split(" ", 1)[1].strip()
-    if not api_key or api_key.lower() in {"your-nvidia-api-key", "changeme"}:
-        raise ChatbotServiceError(
-            "Chatbot service is not configured",
-            {"reason": "Missing or placeholder AI_KEY"},
-        )
-
+    api_key = resolve_api_key()
     client = OpenAI(
         base_url="https://integrate.api.nvidia.com/v1",
         api_key=api_key,
@@ -120,48 +183,12 @@ def chatbot_response(user_input: str, previous_messages: list | None = None) -> 
     model_errors = []
     for model_name in settings.chatbot_models:
         try:
-            try:
-                completion = client.chat.completions.create(
-                    model=model_name,
-                    messages=messages,
-                    temperature=0.6,
-                    top_p=0.9,
-                    max_tokens=settings.chatbot_max_tokens,
-                    stream=False,
-                )
-
-            except openai.APITimeoutError:
-                logging.warning(
-                    "Chatbot model %s timed out; "
-                    "retrying with longer timeout and fewer tokens",
-                    model_name,
-                )
-                retry_max_tokens = max(256, int(settings.chatbot_max_tokens / 2))
-                completion = client.chat.completions.create(
-                    model=model_name,
-                    messages=messages,
-                    temperature=0.6,
-                    top_p=0.9,
-                    max_tokens=retry_max_tokens,
-                    stream=False,
-                    timeout=min(
-                        getattr(settings, "chatbot_timeout_seconds", 30) * 2,
-                        300,
-                    ),
-                )
-
-            message = completion.choices[0].message
-            content = message.content if message else None
-            if content:
-                return normalize_chatbot_response(content)
+            result = call_model(client, model_name, messages)
+            if result:
+                return result
             model_errors.append(f"Model {model_name} returned an empty response")
-
         except Exception as exc:
             model_errors.append(f"Model {model_name} failed: {exc}")
-            if getattr(settings, "debug", False):
-                logging.getLogger("chatbot").exception(
-                    "Chatbot model %s failed", model_name
-                )
 
     raise ChatbotServiceError(
         "Chatbot service is temporarily unavailable",
@@ -170,23 +197,31 @@ def chatbot_response(user_input: str, previous_messages: list | None = None) -> 
 
 
 def chatbot_context(
-    user: User, chatbot_messages: list, **extra: object
+    user: User,
+    chatbot_messages: list,
+    request: object = None,
+    message: str = "",
+    response: str = "",
+    **extra: object,
 ) -> dict[str, object]:
-    """
-    Build the context for rendering chatbot templates.
+    """Build the context for rendering chatbot templates.
 
     Args:
-        user (User): The current user
-        chatbot_messages (list): List of previous chatbot messages
+        user: The current user
+        chatbot_messages: List of previous chatbot messages
+        request: The request object
+        message: The current user message
+        response: The chatbot response
         extra: Additional context variables
 
     Returns:
-        dict: The context for template rendering"""
+        dict: The context for template rendering
+    """
     context = {
-        "request": extra.pop("request"),
+        "request": request,
         "user": user,
-        "message": extra.pop("message", ""),
-        "response": extra.pop("response", ""),
+        "message": message,
+        "response": response,
         "chatbot_messages": chatbot_messages,
     }
     context.update(extra)

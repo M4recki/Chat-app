@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = "change-me-in-production"
     chat_secret_key: str = "change-me-in-production"
+    access_token_cookie: str = "access_token"
     token_max_age: int = 3600  # 1 hour in seconds
     password_reset_token_max_age: int = 1800  # 30 minutes in seconds
 

@@ -1,30 +1,28 @@
 from base64 import b64encode
-from datetime import datetime
-from json import dumps
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy import or_, select
 
-from ..connection_manager import manager
 from ..database import async_session_scope
 from ..models import (
     Channel,
     Friend,
     FriendStatus,
-    GroupChat,
-    GroupMember,
     Message,
     User,
 )
 from .helpers import (
     create_channel,
+    delete_message_broadcast,
+    edit_message_broadcast,
     get_channel_id_map,
     get_current_user,
     get_friend_status_map,
     get_friendship,
     get_message_or_404,
     get_user_by_id,
+    load_user_groups,
     validate_csrf,
 )
 from .template import encode_avatar, templates
@@ -55,9 +53,7 @@ async def single_chat(
                 or_(Friend.user1_id == User.id, Friend.user2_id == User.id),
             )
             .filter(
-                Friend.status.in_(
-                    [FriendStatus.ACCEPTED.value, FriendStatus.BLOCKED.value]
-                ),
+                Friend.status.in_([FriendStatus.ACCEPTED, FriendStatus.BLOCKED]),
                 or_(
                     (Friend.user1_id == user.id) & (User.id == Friend.user2_id),
                     (Friend.user2_id == user.id) & (User.id == Friend.user1_id),
@@ -82,23 +78,7 @@ async def single_chat(
                     ch = await create_channel(db, user.id, fid)
                     channel_ids[fid] = ch.channel_id
 
-        result_groups = await db.execute(
-            select(GroupMember).filter(GroupMember.user_id == user.id)
-        )
-        memberships = result_groups.scalars().all()
-        group_ids = [m.group_id for m in memberships]
-        groups = []
-        group_member_counts = {}
-        if group_ids:
-            result_groups_data = await db.execute(
-                select(GroupChat).filter(GroupChat.id.in_(group_ids))
-            )
-            groups = result_groups_data.scalars().all()
-            for g in groups:
-                result_count = await db.execute(
-                    select(GroupMember).filter(GroupMember.group_id == g.id)
-                )
-                group_member_counts[g.id] = len(result_count.scalars().all())
+        groups, group_member_counts = await load_user_groups(db, user.id)
 
     return templates.TemplateResponse(
         request,
@@ -205,27 +185,8 @@ async def edit_message(
 ) -> Response:
     async with async_session_scope() as db:
         message = await get_message_or_404(db, message_id)
-        if message.user_id != user.id:
-            raise HTTPException(status_code=403, detail="Not your message")
-        if not content.strip():
-            raise HTTPException(status_code=400, detail="Content cannot be empty")
-
-        now = datetime.now()
-        message.content = content
-        message.edited_at = now
+        await edit_message_broadcast(message, user.id, content, message.channel_id)
         await db.commit()
-
-        await manager.broadcast(
-            dumps(
-                {
-                    "type": "edit_message",
-                    "message_id": message_id,
-                    "content": content,
-                    "edited_at": now.isoformat(),
-                }
-            ),
-            message.channel_id,
-        )
 
     return Response(status_code=200)
 
@@ -238,21 +199,9 @@ async def delete_message(
 ) -> Response:
     async with async_session_scope() as db:
         message = await get_message_or_404(db, message_id)
-        if message.user_id != user.id:
-            raise HTTPException(status_code=403, detail="Not your message")
-
         channel_id = message.channel_id
+        await delete_message_broadcast(message, user.id, channel_id)
         await db.delete(message)
         await db.commit()
-
-        await manager.broadcast(
-            dumps(
-                {
-                    "type": "delete_message",
-                    "message_id": message_id,
-                }
-            ),
-            channel_id,
-        )
 
     return Response(status_code=200)

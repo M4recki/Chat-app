@@ -70,13 +70,6 @@ async def update_profile_data(
     if password != confirm_password:
         errors["confirm_password"] = "Passwords do not match"
 
-    if errors:
-        return templates.TemplateResponse(
-            request,
-            "update_profile.html",
-            {"request": request, "user": user, "errors": errors},
-        )
-
     if avatar and avatar.content_type:
         if avatar.content_type not in ["image/jpeg", "image/png"]:
             errors["avatar"] = "Avatar must be a JPEG or PNG file"

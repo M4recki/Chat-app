@@ -1,11 +1,10 @@
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from fastapi.testclient import TestClient
-from conftest import client
+from conftest import client, create_user
 from project.python.main import app
 from project.python.settings import settings
 from project.python.routes import generate_csrf_token
 from project.python.rate_limit import clear_rate_limiter
-from conftest import create_user
 from tests.model_test import TestingSessionLocal
 from project.python.models import Friend
 from sqlalchemy import or_
@@ -18,8 +17,6 @@ def _auth_client():
         "Sec",
         "Test",
         "sec@example.com",
-        "Password123",
-        "project/static/img/default avatar.png",
     )
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": user.id})
@@ -123,8 +120,6 @@ def test_expired_token_returns_401(monkeypatch):
         "Expired",
         "Token",
         "expired-token@example.com",
-        "Password123",
-        "project/static/img/default avatar.png",
     )
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": user.id})
@@ -141,16 +136,12 @@ def test_token_for_other_user():
         "Token",
         "A",
         "token-a@example.com",
-        "Password123",
-        "project/static/img/default avatar.png",
     )
     user_b = create_user(
         db,
         "Token",
         "B",
         "token-b@example.com",
-        "Password123",
-        "project/static/img/default avatar.png",
     )
     serializer = Serializer(settings.chat_secret_key)
     token_a = serializer.dumps({"user_id": user_a.id})
@@ -205,8 +196,6 @@ def test_logout_clears_cookie_with_flags():
         "Cookie",
         "Flags",
         "cookie-flags@example.com",
-        "Password123",
-        "project/static/img/default avatar.png",
     )
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": user.id})

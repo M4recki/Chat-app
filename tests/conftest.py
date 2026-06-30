@@ -42,6 +42,10 @@ models.Base.metadata.create_all(bind=test_engine)
 environ["TESTING"] = "1"
 environ["CHAT_SECRET_KEY"] = "test-secret"
 
+TEST_PASSWORD = "Password123"
+NONEXISTENT_ID = 99999
+DEFAULT_AVATAR = "project/static/img/default avatar.png"
+
 from project.python.main import app
 
 client = TestClient(app)
@@ -52,8 +56,8 @@ def create_user(
     name: str,
     surname: str,
     email: str,
-    password: str,
-    avatar_path: str,
+    password: str = TEST_PASSWORD,
+    avatar_path: str = DEFAULT_AVATAR,
 ):
     """Create a new user and save to the database.
 

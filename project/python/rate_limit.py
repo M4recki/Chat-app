@@ -18,6 +18,30 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def raise_rate_exceeded(max_requests: int, retry_after: int, reset_epoch: int):
+    raise HTTPException(
+        status_code=429,
+        detail="Too many requests. Please try again later.",
+        headers={
+            "Retry-After": str(retry_after),
+            "X-RateLimit-Limit": str(max_requests),
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": str(reset_epoch),
+        },
+    )
+
+
+def rate_limit_result(
+    max_requests: int, count: int, reset_epoch: int
+) -> dict[str, int]:
+    remaining = max_requests - (count + 1)
+    return {
+        "limit": max_requests,
+        "remaining": max(0, remaining),
+        "reset": reset_epoch,
+    }
+
+
 class RateLimitRule(TypedDict):
     path: str
     methods: set[str]
@@ -70,25 +94,9 @@ class RedisBackend:
             retry_after = 0
             if oldest:
                 retry_after = max(0, int(oldest[0][1] + window_seconds - now))
-            reset_epoch = int(now + retry_after)
-            raise HTTPException(
-                status_code=429,
-                detail="Too many requests. Please try again later.",
-                headers={
-                    "Retry-After": str(retry_after),
-                    "X-RateLimit-Limit": str(max_requests),
-                    "X-RateLimit-Remaining": "0",
-                    "X-RateLimit-Reset": str(reset_epoch),
-                },
-            )
+            raise_rate_exceeded(max_requests, retry_after, int(now + retry_after))
 
-        remaining = max_requests - (count + 1)
-        reset_epoch = int(now + window_seconds)
-        return {
-            "limit": max_requests,
-            "remaining": max(0, remaining),
-            "reset": reset_epoch,
-        }
+        return rate_limit_result(max_requests, count, int(now + window_seconds))
 
 
 class MemoryBackend:
@@ -121,27 +129,15 @@ class MemoryBackend:
                 retry_after = 0
                 if bucket:
                     retry_after = max(0, int(bucket[0] + window_seconds - now))
-                reset_epoch = int(now_epoch + retry_after)
-                raise HTTPException(
-                    status_code=429,
-                    detail="Too many requests. Please try again later.",
-                    headers={
-                        "Retry-After": str(retry_after),
-                        "X-RateLimit-Limit": str(max_requests),
-                        "X-RateLimit-Remaining": "0",
-                        "X-RateLimit-Reset": str(reset_epoch),
-                    },
+                raise_rate_exceeded(
+                    max_requests, retry_after, int(now_epoch + retry_after)
                 )
 
-            remaining = max_requests - (len(bucket) + 1)
             bucket.append(now)
 
-        reset_epoch = int(now_epoch + window_seconds)
-        return {
-            "limit": max_requests,
-            "remaining": max(0, remaining),
-            "reset": reset_epoch,
-        }
+        return rate_limit_result(
+            max_requests, len(bucket), int(now_epoch + window_seconds)
+        )
 
 
 class RateLimiter:

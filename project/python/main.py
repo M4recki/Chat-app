@@ -4,8 +4,6 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from fastapi.templating import Jinja2Templates
-from itsdangerous import URLSafeTimedSerializer as Serializer
-from itsdangerous.exc import BadSignature, SignatureExpired
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from uvicorn import run
 
@@ -16,6 +14,7 @@ from .handlers import (
 )
 from .rate_limit import RateLimitRule, enforce_rate_limit
 from .routes import router
+from .routes.helpers import decode_access_token
 from .settings import settings
 from .ws import ws_router
 
@@ -57,19 +56,9 @@ RATE_LIMIT_RULES: list[RateLimitRule] = [
 
 
 def get_rate_limit_identifier(request: Request) -> str | None:
-    token = request.cookies.get("access_token")
-    if not token:
-        return None
-
-    s = Serializer(settings.chat_secret_key)
-    try:
-        user_id = s.loads(token, max_age=settings.token_max_age).get("user_id")
-    except (SignatureExpired, BadSignature):
-        return None
-
+    user_id = decode_access_token(request.cookies)
     if user_id is None:
         return None
-
     return f"user:{user_id}"
 
 

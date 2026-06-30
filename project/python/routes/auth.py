@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse, Response
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from PIL import Image
 from sqlalchemy import select
-from werkzeug.security import generate_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..database import async_session_scope
 from ..models import User
@@ -20,6 +20,24 @@ from .helpers import is_authenticated, validate_csrf_optional, validate_email
 from .template import DEFAULT_AVATAR_PATH, render_template
 
 router = APIRouter()
+
+
+def set_auth_cookie(response: Response, user_id: int) -> None:
+    """Set the authentication cookie on the response.
+
+    Args:
+        response: The HTTP response to attach the cookie to
+        user_id: The user ID to encode in the token
+    """
+    s = Serializer(settings.chat_secret_key)
+    token = s.dumps({"user_id": user_id})
+    response.set_cookie(
+        key=settings.access_token_cookie,
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=settings.is_production,
+    )
 
 
 @router.get("/sign_up", name="sign_up")
@@ -61,56 +79,39 @@ async def sign_up_data(
     """
     async with async_session_scope() as db:
         result = await db.execute(select(User).filter(User.email == email))
-        user = result.scalar()
+        existing = result.scalar()
 
         errors = {}
-
         if not validate_email(email):
             errors["email"] = "Invalid email format"
-
-        if user and "email" not in errors:
+        if existing and "email" not in errors:
             errors["email"] = "User with this email already exists"
-
         if len(password) < 8:
             errors["password"] = "Password must be at least 8 characters long"
-
         if password != confirm_password:
             errors["confirm_password"] = "Passwords do not match"
 
         if errors:
             return render_template("sign_up.html", request, errors=errors)
 
-        hashed_password = generate_password_hash(password)
-
         img_binary = BytesIO()
         with Image.open(DEFAULT_AVATAR_PATH) as img:
             img.save(img_binary, format="PNG")
-        avatar_bytes = img_binary.getvalue()
 
         new_user = User(
             name=name,
             surname=surname,
             email=email,
-            password=hashed_password,
-            avatar=avatar_bytes,
+            password=generate_password_hash(password),
+            avatar=img_binary.getvalue(),
             created_at=datetime.now(),
         )
         db.add(new_user)
         await db.commit()
         await db.refresh(new_user)
 
-    s = Serializer(settings.chat_secret_key)
-    token = s.dumps({"user_id": new_user.id})
-
     response = RedirectResponse(request.url_for("single_chat"), status_code=303)
-    response.set_cookie(
-        key="access_token",
-        value=token,
-        httponly=True,
-        samesite="lax",
-        secure=settings.is_production,
-    )
-
+    set_auth_cookie(response, new_user.id)
     return response
 
 
@@ -144,32 +145,17 @@ async def login_data(
     Returns:
         Response: Redirect or login template on validation errors
     """
-    from werkzeug.security import check_password_hash
-
     async with async_session_scope() as db:
         result = await db.execute(select(User).filter(User.email == email))
         user = result.scalar()
 
-        errors = {}
-
         if not user or not check_password_hash(user.password, password):
-            errors["login"] = "Invalid email or password"
-
-        if errors:
-            return render_template("login.html", request, errors=errors)
-
-        s = Serializer(settings.chat_secret_key)
-        token = s.dumps({"user_id": user.id})
+            return render_template(
+                "login.html", request, errors={"login": "Invalid email or password"}
+            )
 
     response = RedirectResponse(request.url_for("single_chat"), status_code=303)
-    response.set_cookie(
-        key="access_token",
-        value=token,
-        httponly=True,
-        samesite="lax",
-        secure=settings.is_production,
-    )
-
+    set_auth_cookie(response, user.id)
     return response
 
 
@@ -183,10 +169,10 @@ def logout(request: Request) -> Response:
     Returns:
         Response: Redirect to log in or home page
     """
-    token = request.cookies.get("access_token")
+    token = request.cookies.get(settings.access_token_cookie)
     if token:
         response = RedirectResponse(request.url_for("root"), status_code=303)
-        response.delete_cookie(key="access_token")
+        response.delete_cookie(key=settings.access_token_cookie)
         return response
     else:
         return render_template("login.html", request)

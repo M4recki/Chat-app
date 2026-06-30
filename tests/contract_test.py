@@ -1,8 +1,7 @@
 from itsdangerous import URLSafeTimedSerializer as Serializer
-from conftest import client
+from conftest import client, create_user
 from project.python.routes import generate_csrf_token
 from project.python.settings import settings
-from conftest import create_user
 from tests.model_test import TestingSessionLocal
 
 
@@ -13,8 +12,6 @@ def _login_and_token():
         "Contract",
         "Test",
         "contract@example.com",
-        "Password123",
-        "project/static/img/default avatar.png",
     )
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": user.id})
@@ -95,8 +92,6 @@ def test_login_wrong_password_content_type():
         "Login",
         "Wrong",
         "login-wrong-ct@example.com",
-        "Password123",
-        "project/static/img/default avatar.png",
     )
 
     csrf_token = generate_csrf_token(0)

@@ -3,7 +3,7 @@ from datetime import datetime
 import time
 from fastapi.testclient import TestClient
 from itsdangerous import URLSafeTimedSerializer as Serializer
-from conftest import client
+from conftest import client, DEFAULT_AVATAR, TEST_PASSWORD
 from project.python.main import app
 from project.python.rate_limit import clear_rate_limiter
 from project.python.routes import generate_csrf_token
@@ -76,8 +76,8 @@ def test_concurrent_login():
             "name": "Perf",
             "surname": "Login",
             "email": email,
-            "password": "Password123",
-            "confirm_password": "Password123",
+            "password": TEST_PASSWORD,
+            "confirm_password": TEST_PASSWORD,
             "terms_conditions": "on",
             "csrf_token": csrf_token,
         },
@@ -92,7 +92,7 @@ def test_concurrent_login():
             "/login",
             data={
                 "email": email,
-                "password": "Password123",
+                "password": TEST_PASSWORD,
                 "csrf_token": csrf_token,
             },
         )
@@ -109,7 +109,7 @@ def test_concurrent_login():
 def test_websocket_multiple_broadcast():
     db = TestingSessionLocal()
     img_binary = BytesIO()
-    with Image.open("project/static/img/default avatar.png") as img:
+    with Image.open(DEFAULT_AVATAR) as img:
         img.save(img_binary, format="PNG")
 
     user = User(

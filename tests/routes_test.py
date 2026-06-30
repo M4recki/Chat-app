@@ -9,6 +9,9 @@ from conftest import (
     create_group,
     create_group_member,
     create_group_message,
+    DEFAULT_AVATAR,
+    TEST_PASSWORD,
+    NONEXISTENT_ID,
 )
 from project.python.main import app
 from project.python.settings import settings
@@ -31,8 +34,6 @@ from project.python.models import FriendStatus
 from project.python.rate_limit import clear_rate_limiter
 from project.python.routes.email import generate_password_reset_token
 
-DEFAULT_AVATAR = "project/static/img/default avatar.png"
-
 
 def set_access_token(user_id: int, target_client=client) -> None:
     serializer = Serializer(settings.chat_secret_key)
@@ -53,8 +54,6 @@ def test_chatbot_ajax_response():
         "Chat",
         "User",
         "chat-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     set_access_token(user.id)
@@ -80,16 +79,12 @@ def test_search_user_returns_other_users():
         "Search",
         "Owner",
         "search-owner@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     other = create_user(
         db,
         "Search",
         "Target",
         "search-target@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     set_access_token(user.id)
@@ -142,8 +137,6 @@ def test_search_user_rate_limit_429_headers():
         "Rate",
         "Limiter",
         "rate-limit@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     set_access_token(user.id, target_client=local_client)
@@ -201,8 +194,6 @@ def test_chatbot_deleted_user_returns_401_json():
         "Delete",
         "Me",
         "deleted-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     serializer = Serializer(settings.chat_secret_key)
@@ -252,8 +243,6 @@ def test_chatbot_rate_limit_429_json():
         "Chat",
         "Rater",
         "chat-rater@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     serializer = Serializer(settings.chat_secret_key)
@@ -451,8 +440,6 @@ def test_sign_up_duplicate_email():
         "Existing",
         "User",
         "existing@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     csrf_token = generate_csrf_token(0)
     response = client.post(
@@ -479,8 +466,8 @@ def test_sign_up_password_not_alphanumeric():
             "name": "Test",
             "surname": "User",
             "email": "alphanum@example.com",
-            "password": "Password123",
-            "confirm_password": "Password123",
+            "password": TEST_PASSWORD,
+            "confirm_password": TEST_PASSWORD,
             "terms_conditions": "on",
             "csrf_token": csrf_token,
         },
@@ -546,8 +533,6 @@ def test_logout_clears_cookie():
         "Logout",
         "Tester",
         "logout-tester@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     set_access_token(user.id)
     response = client.get("/logout", follow_redirects=False)
@@ -574,8 +559,6 @@ def test_login_wrong_password():
         "Login",
         "Wrong",
         "login-wrong@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     csrf_token = generate_csrf_token(0)
     response = client.post(
@@ -656,18 +639,14 @@ def test_single_chat_returns_200():
         "Single",
         "Chat",
         "single-chat@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
         "Friend",
         "One",
         "friend-one@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
-    create_friendship(db, user, friend, FriendStatus.ACCEPTED.value)
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED)
     create_channel(db, user, friend)
 
     local_client = authed_client(user)
@@ -682,8 +661,6 @@ def test_single_chat_no_friends():
         "Single",
         "Alone",
         "single-alone@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     local_client = authed_client(user)
@@ -698,8 +675,6 @@ def test_friend_requests_returns_200():
         "Friend",
         "Req",
         "friend-req@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     local_client = authed_client(user)
@@ -714,8 +689,6 @@ def test_update_profile_page_returns_200():
         "Update",
         "Profile",
         "update-profile@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     local_client = authed_client(user)
@@ -730,19 +703,15 @@ def test_add_friend_old_pending_renews_last_sent(monkeypatch):
         "Old",
         "Pending",
         "old-pending@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     target = create_user(
         db,
         "Target",
         "Old",
         "target-old@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     old_date = datetime.now() - timedelta(days=20)
-    create_friendship(db, user, target, FriendStatus.PENDING.value, last_sent=old_date)
+    create_friendship(db, user, target, FriendStatus.PENDING, last_sent=old_date)
 
     local_client = authed_client(user)
     response = local_client.post(
@@ -761,8 +730,6 @@ def test_chatbot_missing_message_validation():
         "Chat",
         "Missing",
         "chat-missing@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     local_client = authed_client(user)
@@ -798,16 +765,12 @@ def test_add_friend():
         "Add",
         "Friend",
         "add-friend@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     target = create_user(
         db,
         "Target",
         "User",
         "target-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     local_client = authed_client(user)
     response = local_client.post(
@@ -825,19 +788,15 @@ def test_add_friend_duplicate_pending():
         "Add",
         "Dup",
         "add-dup@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     target = create_user(
         db,
         "Target",
         "Dup",
         "target-dup@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
-    create_friendship(db, user, target, FriendStatus.PENDING.value)
+    create_friendship(db, user, target, FriendStatus.PENDING)
     local_client = authed_client(user)
     response = local_client.post(
         f"/add_friend/{target.id}",
@@ -854,19 +813,15 @@ def test_add_friend_duplicate_denied():
         "Add",
         "Den",
         "add-den@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     target = create_user(
         db,
         "Target",
         "Den",
         "target-den@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     create_friendship(
-        db, user, target, FriendStatus.DENIED.value, last_sent=datetime(2020, 1, 1)
+        db, user, target, FriendStatus.DENIED, last_sent=datetime(2020, 1, 1)
     )
 
     local_client = authed_client(user)
@@ -885,19 +840,15 @@ def test_accept_friend():
         "Accept",
         "User",
         "accept-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     requester = create_user(
         db,
         "Request",
         "er",
         "requester@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
-    create_friendship(db, requester, user, FriendStatus.PENDING.value)
+    create_friendship(db, requester, user, FriendStatus.PENDING)
     local_client = authed_client(user)
     response = local_client.post(
         f"/accept_friend/{requester.id}",
@@ -914,14 +865,12 @@ def test_accept_friend_not_found():
         "AFNF",
         "User",
         "afnf-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     db.close()
     local_client = authed_client(user)
     response = local_client.post(
-        "/accept_friend/99999",
+        f"/accept_friend/{NONEXISTENT_ID}",
         data={"csrf_token": generate_csrf_token(user.id)},
     )
 
@@ -935,19 +884,15 @@ def test_deny_friend():
         "Deny",
         "User",
         "deny-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     requester = create_user(
         db,
         "Request",
         "deny",
         "requester-deny@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
-    create_friendship(db, requester, user, FriendStatus.PENDING.value)
+    create_friendship(db, requester, user, FriendStatus.PENDING)
     local_client = authed_client(user)
     response = local_client.post(
         f"/deny_friend/{requester.id}",
@@ -964,14 +909,12 @@ def test_deny_friend_not_found():
         "DNFNF",
         "User",
         "dnfnf-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     db.close()
     local_client = authed_client(user)
     response = local_client.post(
-        "/deny_friend/99999",
+        f"/deny_friend/{NONEXISTENT_ID}",
         data={"csrf_token": generate_csrf_token(user.id)},
     )
 
@@ -985,19 +928,15 @@ def test_block_friend():
         "Block",
         "User",
         "block-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     target = create_user(
         db,
         "Blocked",
         "Target",
         "blocked-target@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
-    create_friendship(db, user, target, FriendStatus.ACCEPTED.value)
+    create_friendship(db, user, target, FriendStatus.ACCEPTED)
     local_client = authed_client(user)
     response = local_client.post(
         f"/block_friend/{target.id}",
@@ -1014,19 +953,15 @@ def test_unblock_friend():
         "Unblock",
         "User",
         "unblock-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     target = create_user(
         db,
         "Unblocked",
         "Target",
         "unblocked-target@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
-    create_friendship(db, user, target, FriendStatus.BLOCKED.value)
+    create_friendship(db, user, target, FriendStatus.BLOCKED)
     local_client = authed_client(user)
     response = local_client.post(
         f"/unblock_friend/{target.id}",
@@ -1043,8 +978,6 @@ def test_chatbot_error_returns_502(monkeypatch):
         "Chat",
         "Err",
         "chat-err@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
@@ -1073,8 +1006,6 @@ def test_chatbot_chatbot_service_error_html(monkeypatch):
         "Chat",
         "ErrH",
         "chat-err-html@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
@@ -1106,8 +1037,6 @@ def test_chatbot_page_returns_200():
         "Chat",
         "Page",
         "chat-page@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     local_client = authed_client(user)
     response = local_client.get("/chatbot")
@@ -1124,8 +1053,6 @@ def test_chatbot_success_non_ajax():
         "CS",
         "User",
         "cs-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     local_client = authed_client(user)
@@ -1146,8 +1073,6 @@ def test_clear_chatbot_messages():
         "Clear",
         "Chat",
         "clear-chat@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     local_client = authed_client(user)
@@ -1159,9 +1084,7 @@ def test_clear_chatbot_messages():
 
 def test_chatbot_service_error_non_ajax(monkeypatch):
     db = TestingSessionLocal()
-    user = create_user(
-        db, "Chat", "SvcErr", "chat-svcerr@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "Chat", "SvcErr", "chat-svcerr@example.com")
     local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
 
@@ -1192,19 +1115,15 @@ def test_friend_chat_page_not_found():
         "FC",
         "User",
         "fc-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
         "FC",
         "Friend",
         "fc-friend@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
-    create_friendship(db, user, friend, FriendStatus.ACCEPTED.value)
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED)
     local_client = authed_client(user)
     response = local_client.get(f"/friend_chat/nonexistent/{friend.id}")
 
@@ -1218,19 +1137,15 @@ def test_friend_chat_page_found():
         "FC2",
         "User",
         "fc2-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
         "FC2",
         "Friend",
         "fc2-friend@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
-    create_friendship(db, user, friend, FriendStatus.ACCEPTED.value)
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED)
     ch_id = str(uuid4())
     channel = Channel(channel_id=ch_id, user1_id=user.id, user2_id=friend.id)
     db.add(channel)
@@ -1252,16 +1167,12 @@ def test_edit_message_success():
         "Edit",
         "User",
         "edit-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
         "Edit",
         "Friend",
         "edit-friend@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     ch_id = str(uuid4())
     channel = Channel(channel_id=ch_id, user1_id=user.id, user2_id=friend.id)
@@ -1293,16 +1204,12 @@ def test_edit_message_not_owner():
         "Edit2",
         "User",
         "edit2-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     other = create_user(
         db,
         "Edit2",
         "Other",
         "edit2-other@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     ch_id = str(uuid4())
     channel = Channel(channel_id=ch_id, user1_id=user.id, user2_id=other.id)
@@ -1326,15 +1233,13 @@ def test_edit_message_not_found():
         "ENF",
         "User",
         "enf-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     db.close()
     local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
     response = local_client.post(
-        "/edit_message/99999",
+        f"/edit_message/{NONEXISTENT_ID}",
         data={"content": "test", "csrf_token": csrf},
     )
 
@@ -1348,16 +1253,12 @@ def test_delete_message_success():
         "Del",
         "User",
         "del-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
         "Del",
         "Friend",
         "del-friend@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     ch_id = str(uuid4())
@@ -1389,16 +1290,12 @@ def test_delete_message_not_owner():
         "Del2",
         "User",
         "del2-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     other = create_user(
         db,
         "Del2",
         "Other",
         "del2-other@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     ch_id = str(uuid4())
@@ -1423,8 +1320,6 @@ def test_delete_message_not_found():
         "DNF",
         "User",
         "dnf-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     db.close()
@@ -1432,7 +1327,7 @@ def test_delete_message_not_found():
     csrf = generate_csrf_token(user.id)
 
     response = local_client.post(
-        "/delete_message/99999",
+        f"/delete_message/{NONEXISTENT_ID}",
         data={"csrf_token": csrf},
     )
 
@@ -1446,16 +1341,12 @@ def test_edit_message_empty_content():
         "EMC",
         "User",
         "emc-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
         "EMC",
         "Friend",
         "emc-friend@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     ch_id = str(uuid4())
@@ -1479,12 +1370,10 @@ def test_friend_chat_page_friend_not_found():
         "FNF",
         "User",
         "fnf-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     db.close()
     local_client = authed_client(user)
-    response = local_client.get(f"/friend_chat/some-ch/99999")
+    response = local_client.get(f"/friend_chat/some-ch/{NONEXISTENT_ID}")
 
     assert response.status_code == 404
 
@@ -1504,27 +1393,21 @@ def test_search_user_with_friends():
         "Search",
         "User",
         "search-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
         "Search",
         "Friend",
         "search-friend@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     other = create_user(
         db,
         "Other",
         "User",
         "other-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
-    create_friendship(db, user, friend, FriendStatus.ACCEPTED.value)
-    create_friendship(db, other, user, FriendStatus.PENDING.value)
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED)
+    create_friendship(db, other, user, FriendStatus.PENDING)
 
     create_channel(db, user, friend)
 
@@ -1540,19 +1423,15 @@ def test_search_user_with_friend_no_channel():
         "Search2",
         "User",
         "search-user2@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
         "Search2",
         "Friend",
         "search-friend2@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
-    create_friendship(db, user, friend, FriendStatus.ACCEPTED.value)
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED)
     local_client = authed_client(user)
     response = local_client.get("/search_user")
 
@@ -1569,8 +1448,6 @@ def test_update_profile_data_password_mismatch():
         "UP",
         "User",
         "up-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
@@ -1597,8 +1474,6 @@ def test_update_profile_data_non_alphanumeric_password():
         "UP2",
         "User",
         "up2-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     local_client = authed_client(user)
@@ -1609,8 +1484,8 @@ def test_update_profile_data_non_alphanumeric_password():
             "name": "Updated",
             "surname": "User",
             "email": "up2-user@example.com",
-            "password": "Password123",
-            "confirm_password": "Password123",
+            "password": TEST_PASSWORD,
+            "confirm_password": TEST_PASSWORD,
             "csrf_token": csrf,
         },
     )
@@ -1625,8 +1500,6 @@ def test_update_profile_data_success():
         "UP3",
         "User",
         "up3-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     local_client = authed_client(user)
@@ -1656,19 +1529,15 @@ def test_single_chat_creates_channel():
         "SC",
         "Create",
         "sc-create@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
         "SC",
         "Friend",
         "sc-friend@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
-    create_friendship(db, user, friend, FriendStatus.ACCEPTED.value)
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED)
     local_client = authed_client(user)
     response = local_client.get("/single_chat")
 
@@ -1682,20 +1551,16 @@ def test_single_chat_accepts_friend():
         "SCA",
         "User",
         "sca-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     friend = create_user(
         db,
         "SCA",
         "Friend",
         "sca-friend@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
-    create_friendship(db, user, friend, FriendStatus.ACCEPTED.value)
-    create_friendship(db, friend, user, FriendStatus.ACCEPTED.value)
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED)
+    create_friendship(db, friend, user, FriendStatus.ACCEPTED)
     local_client = authed_client(user)
     response = local_client.get("/single_chat")
 
@@ -1712,8 +1577,6 @@ def test_update_profile_avatar_jpeg():
         "Avatar",
         "Test",
         "avatar-test@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     local_client = authed_client(user)
@@ -1743,8 +1606,6 @@ def test_update_profile_avatar_wrong_type():
         "Avatar2",
         "Test",
         "avatar-test2@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
     local_client = authed_client(user)
@@ -1767,9 +1628,7 @@ def test_update_profile_avatar_wrong_type():
 
 def test_update_profile_invalid_email():
     db = TestingSessionLocal()
-    user = create_user(
-        db, "UP", "Email", "up-email@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "UP", "Email", "up-email@example.com")
     local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
 
@@ -1791,9 +1650,7 @@ def test_update_profile_invalid_email():
 
 def test_update_profile_short_password():
     db = TestingSessionLocal()
-    user = create_user(
-        db, "UP", "Pwd", "up-pwd@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "UP", "Pwd", "up-pwd@example.com")
 
     local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
@@ -1816,9 +1673,7 @@ def test_update_profile_short_password():
 
 def test_update_profile_large_avatar():
     db = TestingSessionLocal()
-    user = create_user(
-        db, "UP", "Avatar", "up-avatar-lg@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "UP", "Avatar", "up-avatar-lg@example.com")
 
     local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
@@ -1864,19 +1719,15 @@ def test_friend_requests_with_pending():
         "FR",
         "User",
         "fr-user@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
     requester = create_user(
         db,
         "FR",
         "Requester",
         "fr-requester@example.com",
-        "Password123",
-        DEFAULT_AVATAR,
     )
 
-    create_friendship(db, requester, user, FriendStatus.PENDING.value)
+    create_friendship(db, requester, user, FriendStatus.PENDING)
     local_client = authed_client(user)
     response = local_client.get("/friend_requests")
 
@@ -1888,9 +1739,7 @@ def test_friend_requests_with_pending():
 
 def test_group_chat_list_empty():
     db = TestingSessionLocal()
-    user = create_user(
-        db, "GL", "Empty", "gl-empty@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "GL", "Empty", "gl-empty@example.com")
     local_client = authed_client(user)
     response = local_client.get("/group_chat_list")
     assert response.status_code == 200
@@ -1898,9 +1747,7 @@ def test_group_chat_list_empty():
 
 def test_group_chat_list_with_groups():
     db = TestingSessionLocal()
-    user = create_user(
-        db, "GL", "With", "gl-with@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "GL", "With", "gl-with@example.com")
     group = create_group(db, "Test Group", user)
     create_group_member(db, group.id, user)
     local_client = authed_client(user)
@@ -1910,9 +1757,7 @@ def test_group_chat_list_with_groups():
 
 def test_create_group_form():
     db = TestingSessionLocal()
-    user = create_user(
-        db, "CG", "Form", "cg-form@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "CG", "Form", "cg-form@example.com")
     local_client = authed_client(user)
     response = local_client.get("/create_group")
     assert response.status_code == 200
@@ -1920,12 +1765,8 @@ def test_create_group_form():
 
 def test_create_group_success():
     db = TestingSessionLocal()
-    user = create_user(
-        db, "CG", "Create", "cg-create@example.com", "Password123", DEFAULT_AVATAR
-    )
-    friend = create_user(
-        db, "CG", "Friend", "cg-friend@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "CG", "Create", "cg-create@example.com")
+    friend = create_user(db, "CG", "Friend", "cg-friend@example.com")
 
     local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
@@ -1953,9 +1794,7 @@ def test_create_group_success():
 
 def test_create_group_empty_name():
     db = TestingSessionLocal()
-    user = create_user(
-        db, "CG", "Empty", "cg-empty@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "CG", "Empty", "cg-empty@example.com")
 
     local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
@@ -1973,9 +1812,7 @@ def test_create_group_empty_name():
 
 def test_create_group_whitespace_name():
     db = TestingSessionLocal()
-    user = create_user(
-        db, "CG", "WS", "cg-ws@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "CG", "WS", "cg-ws@example.com")
 
     local_client = authed_client(user)
     csrf = generate_csrf_token(user.id)
@@ -1993,9 +1830,7 @@ def test_create_group_whitespace_name():
 
 def test_group_chat_page():
     db = TestingSessionLocal()
-    user = create_user(
-        db, "GP", "View", "gp-view@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "GP", "View", "gp-view@example.com")
 
     group = create_group(db, "View Group", user)
     create_group_member(db, group.id, user)
@@ -2007,12 +1842,8 @@ def test_group_chat_page():
 
 def test_group_chat_page_not_member():
     db = TestingSessionLocal()
-    user = create_user(
-        db, "GP", "NoMember", "gp-nomember@example.com", "Password123", DEFAULT_AVATAR
-    )
-    owner = create_user(
-        db, "GP", "Owner", "gp-owner@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "GP", "NoMember", "gp-nomember@example.com")
+    owner = create_user(db, "GP", "Owner", "gp-owner@example.com")
 
     group = create_group(db, "Private", owner)
     create_group_member(db, group.id, owner)
@@ -2024,15 +1855,9 @@ def test_group_chat_page_not_member():
 
 def test_group_chat_page_creator_with_friends():
     db = TestingSessionLocal()
-    creator = create_user(
-        db, "GP", "Creator", "gp-creator@example.com", "Password123", DEFAULT_AVATAR
-    )
-    friend = create_user(
-        db, "GP", "Friend", "gp-friend@example.com", "Password123", DEFAULT_AVATAR
-    )
-    other = create_user(
-        db, "GP", "Other", "gp-other@example.com", "Password123", DEFAULT_AVATAR
-    )
+    creator = create_user(db, "GP", "Creator", "gp-creator@example.com")
+    friend = create_user(db, "GP", "Friend", "gp-friend@example.com")
+    other = create_user(db, "GP", "Other", "gp-other@example.com")
 
     group = create_group(db, "With Friends", creator)
     create_group_member(db, group.id, creator)
@@ -2047,12 +1872,8 @@ def test_group_chat_page_creator_with_friends():
 
 def test_add_group_member():
     db = TestingSessionLocal()
-    creator = create_user(
-        db, "AG", "Creator", "ag-creator@example.com", "Password123", DEFAULT_AVATAR
-    )
-    friend = create_user(
-        db, "AG", "Friend", "ag-friend@example.com", "Password123", DEFAULT_AVATAR
-    )
+    creator = create_user(db, "AG", "Creator", "ag-creator@example.com")
+    friend = create_user(db, "AG", "Friend", "ag-friend@example.com")
 
     group = create_group(db, "Add Member", creator)
     create_group_member(db, group.id, creator)
@@ -2081,15 +1902,9 @@ def test_add_group_member():
 
 def test_add_group_member_not_creator():
     db = TestingSessionLocal()
-    creator = create_user(
-        db, "AG", "Creator2", "ag-creator2@example.com", "Password123", DEFAULT_AVATAR
-    )
-    other = create_user(
-        db, "AG", "Other", "ag-other@example.com", "Password123", DEFAULT_AVATAR
-    )
-    friend = create_user(
-        db, "AG", "Friend2", "ag-friend2@example.com", "Password123", DEFAULT_AVATAR
-    )
+    creator = create_user(db, "AG", "Creator2", "ag-creator2@example.com")
+    other = create_user(db, "AG", "Other", "ag-other@example.com")
+    friend = create_user(db, "AG", "Friend2", "ag-friend2@example.com")
 
     group = create_group(db, "Add Member 2", creator)
     create_group_member(db, group.id, creator)
@@ -2110,12 +1925,8 @@ def test_add_group_member_not_creator():
 
 def test_add_group_member_already_member():
     db = TestingSessionLocal()
-    creator = create_user(
-        db, "AG", "Creator3", "ag-creator3@example.com", "Password123", DEFAULT_AVATAR
-    )
-    member = create_user(
-        db, "AG", "Member", "ag-member@example.com", "Password123", DEFAULT_AVATAR
-    )
+    creator = create_user(db, "AG", "Creator3", "ag-creator3@example.com")
+    member = create_user(db, "AG", "Member", "ag-member@example.com")
 
     group = create_group(db, "Add Member 3", creator)
     create_group_member(db, group.id, creator)
@@ -2136,9 +1947,7 @@ def test_add_group_member_already_member():
 
 def test_add_group_member_nonexistent_user():
     db = TestingSessionLocal()
-    creator = create_user(
-        db, "AG", "Creator4", "ag-creator4@example.com", "Password123", DEFAULT_AVATAR
-    )
+    creator = create_user(db, "AG", "Creator4", "ag-creator4@example.com")
 
     group = create_group(db, "Bad Add", creator)
     create_group_member(db, group.id, creator)
@@ -2148,7 +1957,7 @@ def test_add_group_member_nonexistent_user():
     response = local_client.post(
         f"/add_group_member/{group.id}",
         data={
-            "user_id": "99999",
+            "user_id": str(NONEXISTENT_ID),
             "csrf_token": csrf,
         },
     )
@@ -2158,12 +1967,8 @@ def test_add_group_member_nonexistent_user():
 
 def test_remove_group_member():
     db = TestingSessionLocal()
-    creator = create_user(
-        db, "RG", "Creator", "rg-creator@example.com", "Password123", DEFAULT_AVATAR
-    )
-    member = create_user(
-        db, "RG", "Member", "rg-member@example.com", "Password123", DEFAULT_AVATAR
-    )
+    creator = create_user(db, "RG", "Creator", "rg-creator@example.com")
+    member = create_user(db, "RG", "Member", "rg-member@example.com")
 
     group = create_group(db, "Remove Member", creator)
     create_group_member(db, group.id, creator)
@@ -2191,9 +1996,7 @@ def test_remove_group_member():
 
 def test_remove_group_member_creator():
     db = TestingSessionLocal()
-    creator = create_user(
-        db, "RG", "Creator2", "rg-creator2@example.com", "Password123", DEFAULT_AVATAR
-    )
+    creator = create_user(db, "RG", "Creator2", "rg-creator2@example.com")
 
     group = create_group(db, "Remove Creator", creator)
     create_group_member(db, group.id, creator)
@@ -2213,15 +2016,9 @@ def test_remove_group_member_creator():
 
 def test_remove_group_member_not_creator():
     db = TestingSessionLocal()
-    creator = create_user(
-        db, "RG", "Creator3", "rg-creator3@example.com", "Password123", DEFAULT_AVATAR
-    )
-    other = create_user(
-        db, "RG", "Other", "rg-other@example.com", "Password123", DEFAULT_AVATAR
-    )
-    member = create_user(
-        db, "RG", "Member3", "rg-member3@example.com", "Password123", DEFAULT_AVATAR
-    )
+    creator = create_user(db, "RG", "Creator3", "rg-creator3@example.com")
+    other = create_user(db, "RG", "Other", "rg-other@example.com")
+    member = create_user(db, "RG", "Member3", "rg-member3@example.com")
 
     group = create_group(db, "Remove Not Creator", creator)
     create_group_member(db, group.id, creator)
@@ -2243,9 +2040,7 @@ def test_remove_group_member_not_creator():
 
 def test_remove_group_member_nonexistent():
     db = TestingSessionLocal()
-    creator = create_user(
-        db, "RG", "Creator4", "rg-creator4@example.com", "Password123", DEFAULT_AVATAR
-    )
+    creator = create_user(db, "RG", "Creator4", "rg-creator4@example.com")
 
     group = create_group(db, "Remove Missing", creator)
     create_group_member(db, group.id, creator)
@@ -2255,7 +2050,7 @@ def test_remove_group_member_nonexistent():
     response = local_client.post(
         f"/remove_group_member/{group.id}",
         data={
-            "user_id": "99999",
+            "user_id": str(NONEXISTENT_ID),
             "csrf_token": csrf,
         },
     )
@@ -2265,9 +2060,7 @@ def test_remove_group_member_nonexistent():
 
 def test_edit_group_message():
     db = TestingSessionLocal()
-    user = create_user(
-        db, "EG", "Edit", "eg-edit@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "EG", "Edit", "eg-edit@example.com")
 
     group = create_group(db, "Edit Msg", user)
     create_group_member(db, group.id, user)
@@ -2293,12 +2086,8 @@ def test_edit_group_message():
 
 def test_edit_group_message_not_owner():
     db = TestingSessionLocal()
-    owner = create_user(
-        db, "EG", "Owner", "eg-owner@example.com", "Password123", DEFAULT_AVATAR
-    )
-    other = create_user(
-        db, "EG", "Other", "eg-other2@example.com", "Password123", DEFAULT_AVATAR
-    )
+    owner = create_user(db, "EG", "Owner", "eg-owner@example.com")
+    other = create_user(db, "EG", "Other", "eg-other2@example.com")
 
     group = create_group(db, "Edit Other", owner)
     create_group_member(db, group.id, owner)
@@ -2320,9 +2109,7 @@ def test_edit_group_message_not_owner():
 
 def test_edit_group_message_empty_content():
     db = TestingSessionLocal()
-    user = create_user(
-        db, "EG", "Empty", "eg-empty2@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "EG", "Empty", "eg-empty2@example.com")
 
     group = create_group(db, "Edit Empty", user)
     create_group_member(db, group.id, user)
@@ -2343,9 +2130,7 @@ def test_edit_group_message_empty_content():
 
 def test_edit_group_message_whitespace_content():
     db = TestingSessionLocal()
-    user = create_user(
-        db, "EG", "WS", "eg-ws@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "EG", "WS", "eg-ws@example.com")
 
     group = create_group(db, "Edit WS", user)
     create_group_member(db, group.id, user)
@@ -2365,9 +2150,7 @@ def test_edit_group_message_whitespace_content():
 
 def test_delete_group_message():
     db = TestingSessionLocal()
-    user = create_user(
-        db, "DG", "Delete", "dg-delete@example.com", "Password123", DEFAULT_AVATAR
-    )
+    user = create_user(db, "DG", "Delete", "dg-delete@example.com")
 
     group = create_group(db, "Delete Msg", user)
     create_group_member(db, group.id, user)
@@ -2389,12 +2172,8 @@ def test_delete_group_message():
 
 def test_delete_group_message_not_owner():
     db = TestingSessionLocal()
-    owner = create_user(
-        db, "DG", "Owner", "dg-owner@example.com", "Password123", DEFAULT_AVATAR
-    )
-    other = create_user(
-        db, "DG", "Other", "dg-other@example.com", "Password123", DEFAULT_AVATAR
-    )
+    owner = create_user(db, "DG", "Owner", "dg-owner@example.com")
+    other = create_user(db, "DG", "Other", "dg-other@example.com")
 
     group = create_group(db, "Delete Other", owner)
     create_group_member(db, group.id, owner)
@@ -2415,12 +2194,8 @@ def test_delete_group_message_not_owner():
 
 def test_group_members_json():
     db = TestingSessionLocal()
-    creator = create_user(
-        db, "Alice", "Creator", "gm-creator@example.com", "Password123", DEFAULT_AVATAR
-    )
-    member = create_user(
-        db, "Bob", "Member", "gm-member@example.com", "Password123", DEFAULT_AVATAR
-    )
+    creator = create_user(db, "Alice", "Creator", "gm-creator@example.com")
+    member = create_user(db, "Bob", "Member", "gm-member@example.com")
 
     group = create_group(db, "Members JSON", creator)
     create_group_member(db, group.id, creator)
@@ -2439,12 +2214,8 @@ def test_group_members_json():
 
 def test_group_members_json_not_member():
     db = TestingSessionLocal()
-    creator = create_user(
-        db, "GM", "Creator2", "gm-creator2@example.com", "Password123", DEFAULT_AVATAR
-    )
-    outsider = create_user(
-        db, "GM", "Outsider", "gm-outsider@example.com", "Password123", DEFAULT_AVATAR
-    )
+    creator = create_user(db, "GM", "Creator2", "gm-creator2@example.com")
+    outsider = create_user(db, "GM", "Outsider", "gm-outsider@example.com")
 
     group = create_group(db, "Members JSON 2", creator)
     create_group_member(db, group.id, creator)
@@ -2473,9 +2244,7 @@ def test_forgot_password_invalid_email():
 
 def test_forgot_password_valid_email():
     db = TestingSessionLocal()
-    create_user(
-        db, "Reset", "User", "reset-test@example.com", "Password123", DEFAULT_AVATAR
-    )
+    create_user(db, "Reset", "User", "reset-test@example.com")
     csrf_token = generate_csrf_token(0)
     response = client.post(
         "/forgot_password",
@@ -2530,7 +2299,7 @@ def test_reset_password_post_password_mismatch():
     response = client.post(
         f"/reset_password/{token}",
         data={
-            "password": "Password123",
+            "password": TEST_PASSWORD,
             "confirm_password": "Different456",
             "csrf_token": csrf_token,
         },
@@ -2557,8 +2326,8 @@ def test_reset_password_post_invalid_token():
     response = client.post(
         "/reset_password/bad-token-here",
         data={
-            "password": "Password123",
-            "confirm_password": "Password123",
+            "password": TEST_PASSWORD,
+            "confirm_password": TEST_PASSWORD,
             "csrf_token": csrf_token,
         },
     )
@@ -2573,8 +2342,8 @@ def test_sign_up_invalid_email():
             "name": "Bad",
             "surname": "Email",
             "email": "not-an-email",
-            "password": "Password123",
-            "confirm_password": "Password123",
+            "password": TEST_PASSWORD,
+            "confirm_password": TEST_PASSWORD,
             "terms_conditions": "on",
             "csrf_token": csrf_token,
         },

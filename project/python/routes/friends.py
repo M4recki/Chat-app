@@ -2,7 +2,7 @@ from base64 import b64encode
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
@@ -17,6 +17,62 @@ from .helpers import (
 from .template import templates
 
 router = APIRouter()
+
+
+async def respond_to_friend_request(friend_id: int, user_id: int, status: str) -> None:
+    """Respond to a pending friend request.
+
+    Args:
+        friend_id: The ID of the user who sent the request
+        user_id: The ID of the current user responding
+        status: The new status (accepted or denied)
+
+    Raises:
+        HTTPException 404: If no pending request is found
+    """
+    async with async_session_scope() as db:
+        friend = await get_friendship_by_direction(db, friend_id, user_id)
+        if friend is None:
+            raise HTTPException(status_code=404, detail="Friend request not found")
+        friend.status = status
+
+
+async def set_friend_status(
+    user_id: int,
+    friend_id: int,
+    status: str,
+    blocked_by_user: int | None = None,
+) -> None:
+    """Set the friendship status between two users.
+
+    Creates a new friendship record if one does not exist,
+    otherwise updates the existing one.
+
+    Args:
+        user_id: The ID of the current user
+        friend_id: The ID of the other user
+        status: The friendship status to set
+        blocked_by_user: The user ID who initiated the block (for block status)
+    """
+    async with async_session_scope() as db:
+        existing = await get_friendship(db, user_id, friend_id)
+        if existing:
+            existing.status = status
+            existing.last_sent = datetime.now()
+            if blocked_by_user is not None:
+                existing.blocked_by_user = blocked_by_user
+            else:
+                existing.blocked_by_user = None
+        else:
+            kwargs: dict = {
+                "user1_id": user_id,
+                "user2_id": friend_id,
+                "status": status,
+                "last_sent": datetime.now(),
+            }
+            if blocked_by_user is not None:
+                kwargs["blocked_by_user"] = blocked_by_user
+            db.add(Friend(**kwargs))
 
 
 @router.get("/friend_requests")
@@ -37,9 +93,7 @@ async def friend_requests(
         result = await db.execute(
             select(Friend)
             .options(selectinload(Friend.user1))
-            .filter(
-                Friend.user2_id == user.id, Friend.status == FriendStatus.PENDING.value
-            )
+            .filter(Friend.user2_id == user.id, Friend.status == FriendStatus.PENDING)
         )
         friend_requests = result.scalars().all()
         friend_request_avatars = {
@@ -65,34 +119,19 @@ async def block_friend(
     friend_id: int,
     user: User = Depends(get_current_user),
 ) -> Response:
-    """
-    Block a friend from the user's friend list.
+    """Block a friend from the user's friend list.
 
     Args:
-        request (Request): The HTTP request object
-        friend_id (int): The ID of the friend to block
+        request: The request object
+        friend_id: The ID of the friend to block
         user: The authenticated user
 
     Returns:
-        TemplateResponse: Rendered template on success
+        Response: Redirect to the single chat page
     """
-    async with async_session_scope() as db:
-        existing_friendship = await get_friendship(db, user.id, friend_id)
-
-        if existing_friendship:
-            existing_friendship.status = FriendStatus.BLOCKED.value
-            existing_friendship.blocked_by_user = user.id
-            existing_friendship.last_sent = datetime.now()
-        else:
-            new_friendship = Friend(
-                user1_id=user.id,
-                user2_id=friend_id,
-                status=FriendStatus.BLOCKED.value,
-                blocked_by_user=user.id,
-                last_sent=datetime.now(),
-            )
-            db.add(new_friendship)
-
+    await set_friend_status(
+        user.id, friend_id, FriendStatus.BLOCKED, blocked_by_user=user.id
+    )
     return RedirectResponse(request.url_for("single_chat"), status_code=303)
 
 
@@ -102,33 +141,17 @@ async def unblock_friend(
     friend_id: int,
     user: User = Depends(get_current_user),
 ) -> Response:
-    """
-    Unblock a previously blocked friend.
+    """Unblock a previously blocked friend.
 
     Args:
-        request (Request): The HTTP request object
-        friend_id (int): The ID of the friend to unblock
+        request: The request object
+        friend_id: The ID of the friend to unblock
         user: The authenticated user
 
     Returns:
-        TemplateResponse: Rendered template on success
+        Response: Redirect to the single chat page
     """
-    async with async_session_scope() as db:
-        existing_friendship = await get_friendship(db, user.id, friend_id)
-
-        if existing_friendship:
-            existing_friendship.status = FriendStatus.ACCEPTED.value
-            existing_friendship.blocked_by_user = None
-            existing_friendship.last_sent = datetime.now()
-        else:
-            new_friendship = Friend(
-                user1_id=user.id,
-                user2_id=friend_id,
-                status=FriendStatus.ACCEPTED.value,
-                last_sent=datetime.now(),
-            )
-            db.add(new_friendship)
-
+    await set_friend_status(user.id, friend_id, FriendStatus.ACCEPTED)
     return RedirectResponse(request.url_for("single_chat"), status_code=303)
 
 
@@ -159,7 +182,7 @@ async def add_friend(
         existing_request = await get_friendship_by_direction(db, user.id, friend_id)
 
         if existing_request:
-            if existing_request.status == FriendStatus.PENDING.value:
+            if existing_request.status == FriendStatus.PENDING:
                 if datetime.now() - existing_request.last_sent > timedelta(days=14):
                     existing_request.last_sent = datetime.now()
                 else:
@@ -168,16 +191,16 @@ async def add_friend(
                         detail="Friend request already sent recently",
                     )
             elif existing_request.status in (
-                FriendStatus.DENIED.value,
-                FriendStatus.BLOCKED.value,
+                FriendStatus.DENIED,
+                FriendStatus.BLOCKED,
             ):
-                existing_request.status = FriendStatus.PENDING.value
+                existing_request.status = FriendStatus.PENDING
                 existing_request.last_sent = datetime.now()
         else:
             new_friendship = Friend(
                 user1_id=user.id,
                 user2_id=friend_id,
-                status=FriendStatus.PENDING.value,
+                status=FriendStatus.PENDING,
                 last_sent=datetime.now(),
             )
             db.add(new_friendship)
@@ -191,25 +214,17 @@ async def accept_friend(
     friend_id: int,
     user: User = Depends(get_current_user),
 ) -> Response:
-    """
-    Accept a pending friend request.
-
-    Updates the friend request status to accepted.
+    """Accept a pending friend request.
 
     Args:
-        request (Request): The HTTP request
-        friend_id (int): The ID of the friend
+        request: The request object
+        friend_id: The ID of the user who sent the request
         user: The authenticated user
 
     Returns:
-        TemplateResponse: On success
+        Response: Redirect to the single chat page
     """
-    async with async_session_scope() as db:
-        friend = await get_friendship_by_direction(db, friend_id, user.id)
-        if friend is None:
-            return HTMLResponse("Friend request not found", status_code=404)
-        friend.status = FriendStatus.ACCEPTED.value
-
+    await respond_to_friend_request(friend_id, user.id, FriendStatus.ACCEPTED)
     return RedirectResponse(request.url_for("single_chat"), status_code=303)
 
 
@@ -219,23 +234,15 @@ async def deny_friend(
     friend_id: int,
     user: User = Depends(get_current_user),
 ) -> Response:
-    """
-    Deny a pending friend request.
-
-    Updates the friend request status to deny.
+    """Deny a pending friend request.
 
     Args:
-        request (Request): The HTTP request
-        friend_id (int): The ID of the friend
+        request: The request object
+        friend_id: The ID of the user who sent the request
         user: The authenticated user
 
     Returns:
-        TemplateResponse: On success
+        Response: Redirect to the single chat page
     """
-    async with async_session_scope() as db:
-        friend = await get_friendship_by_direction(db, friend_id, user.id)
-        if friend is None:
-            return HTMLResponse("Friend request not found", status_code=404)
-        friend.status = FriendStatus.DENIED.value
-
+    await respond_to_friend_request(friend_id, user.id, FriendStatus.DENIED)
     return RedirectResponse(request.url_for("single_chat"), status_code=303)

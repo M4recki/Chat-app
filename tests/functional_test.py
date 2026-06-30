@@ -10,9 +10,8 @@ from project.python.routes import (
 from project.python.settings import settings
 from project.python.main import app
 from project.python.rate_limit import clear_rate_limiter
-from conftest import create_user
+from conftest import client, create_user
 from tests.model_test import TestingSessionLocal
-from conftest import client
 
 
 def test_send_email():
@@ -73,8 +72,6 @@ def test_chatbot_api_failure_returns_structured_error(monkeypatch):
         "Chat",
         "Tester",
         "chat-tester@example.com",
-        "Password123",
-        "project/static/img/default avatar.png",
     )
 
     serializer = Serializer(settings.chat_secret_key)
@@ -196,8 +193,6 @@ def test_unicode_in_chatbot():
         "Unicode",
         "Chat",
         "unicode-chat@example.com",
-        "Password123",
-        "project/static/img/default avatar.png",
     )
     local = TestClient(app, raise_server_exceptions=False)
     serializer = Serializer(settings.chat_secret_key)
@@ -219,8 +214,6 @@ def test_html_injection_in_chatbot():
         "HTML",
         "Inj",
         "html-inj@example.com",
-        "Password123",
-        "project/static/img/default avatar.png",
     )
     local = TestClient(app, raise_server_exceptions=False)
     serializer = Serializer(settings.chat_secret_key)

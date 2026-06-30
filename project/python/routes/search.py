@@ -47,9 +47,7 @@ async def search_user(
             friend_status_map[friend_id] = friend.status
 
         accepted_ids = [
-            fid
-            for fid, st in friend_status_map.items()
-            if st == FriendStatus.ACCEPTED.value
+            fid for fid, st in friend_status_map.items() if st == FriendStatus.ACCEPTED
         ]
 
         if accepted_ids:

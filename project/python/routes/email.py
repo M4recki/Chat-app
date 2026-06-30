@@ -1,4 +1,5 @@
 import logging
+import secrets
 
 from email.message import EmailMessage
 from smtplib import SMTPException, SMTP_SSL
@@ -79,7 +80,7 @@ def generate_password_reset_token(email: str) -> str:
         str: Signed token valid for password_reset_token_max_age seconds
     """
     s = Serializer(settings.chat_secret_key + "_password_reset")
-    return s.dumps({"email": email})
+    return s.dumps({"email": email, "nonce": secrets.token_hex(16)})
 
 
 def verify_password_reset_token(token: str) -> str | None:

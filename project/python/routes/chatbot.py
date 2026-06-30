@@ -61,35 +61,63 @@ async def chatbot_page(
 # Handle chatbot message submission
 
 
+def handle_chatbot_error(
+    request: Request,
+    user: User,
+    message: str,
+    is_ajax: bool,
+    error_payload: dict,
+) -> Response:
+    """Handle a chatbot error by returning JSON or HTML as appropriate.
+
+    Args:
+        request: The request object
+        user: The authenticated user
+        message: The original user message
+        is_ajax: Whether the request expects JSON
+        error_payload: The error details to include in the response
+
+    Returns:
+        Response: JSON or HTML error response
+    """
+    if is_ajax:
+        return chatbot_json_error(502, error_payload)
+    return templates.TemplateResponse(
+        request,
+        "chatbot_chat.html",
+        chatbot_context(
+            user, [], request=request, message=message, errors=error_payload
+        ),
+    )
+
+
 @router.post("/chatbot", dependencies=[Depends(validate_csrf)])
 async def chatbot(
     request: Request,
     message: str = Form(...),
     user: User = Depends(get_current_user),
 ) -> Response:
-    """
-    Send a new message to the chatbot.
-
-    Saves the user message and chatbot response to the database.
+    """Send a new message to the chatbot.
 
     Args:
-        request (Request): The HTTP request
-        message (str): The user's message
+        request: The request object
+        message: The user's message text
         user: The authenticated user
 
     Returns:
-        TemplateResponse: The chatbot chat page
+        Response: JSON or HTML response with the chatbot reply
     """
-
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
-    errors = {}
     if len(message) <= 0:
-        errors["message"] = "Message cannot be empty"
-
-    if errors:
         if is_ajax:
-            return chatbot_json_error(400, {"error": "validation", "details": errors})
+            return chatbot_json_error(
+                400,
+                {
+                    "error": "validation",
+                    "details": {"message": "Message cannot be empty"},
+                },
+            )
         return templates.TemplateResponse(
             request,
             "chatbot_chat.html",
@@ -98,7 +126,7 @@ async def chatbot(
                 [],
                 request=request,
                 message=message,
-                errors=errors,
+                errors={"message": "Message cannot be empty"},
             ),
         )
 
@@ -117,55 +145,42 @@ async def chatbot(
         response = chatbot_response(message, previous_messages=recent_history)
     except ChatbotServiceError as exc:
         logging.warning("Chatbot request failed: %s", exc)
-        error_payload = {
-            "error": "chatbot",
-            "message": str(exc),
-            "error_type": exc.__class__.__name__,
-            "details": exc.details,
-        }
-        if is_ajax:
-            return chatbot_json_error(502, error_payload)
-        return templates.TemplateResponse(
+        return handle_chatbot_error(
             request,
-            "chatbot_chat.html",
-            chatbot_context(
-                user,
-                [],
-                request=request,
-                message=message,
-                errors=error_payload,
-            ),
+            user,
+            message,
+            is_ajax,
+            {
+                "error": "chatbot",
+                "message": str(exc),
+                "error_type": exc.__class__.__name__,
+                "details": exc.details,
+            },
         )
     except Exception as exc:
         logging.exception("Chatbot request failed")
-        error_payload = {
-            "error": "chatbot",
-            "message": "Chatbot service failed. Check server logs.",
-            "error_type": exc.__class__.__name__,
-        }
-        if is_ajax:
-            return chatbot_json_error(502, error_payload)
-        return templates.TemplateResponse(
+        return handle_chatbot_error(
             request,
-            "chatbot_chat.html",
-            chatbot_context(
-                user,
-                [],
-                request=request,
-                message=message,
-                errors=error_payload,
-            ),
+            user,
+            message,
+            is_ajax,
+            {
+                "error": "chatbot",
+                "message": "Chatbot service failed. Check server logs.",
+                "error_type": exc.__class__.__name__,
+            },
         )
 
     created_at = datetime.now()
-    chatbot_message = ChatbotMessage(
-        user_id=user.id,
-        message=message,
-        response=response,
-        created_at=created_at,
-    )
     async with async_session_scope() as db:
-        db.add(chatbot_message)
+        db.add(
+            ChatbotMessage(
+                user_id=user.id,
+                message=message,
+                response=response,
+                created_at=created_at,
+            )
+        )
 
     if is_ajax:
         return chatbot_json_success(message, response, created_at)
@@ -180,11 +195,7 @@ async def chatbot(
         request,
         "chatbot_chat.html",
         chatbot_context(
-            user,
-            chatbot_messages,
-            request=request,
-            message=message,
-            response=response,
+            user, chatbot_messages, request=request, message=message, response=response
         ),
     )
 

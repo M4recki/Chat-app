@@ -5,13 +5,10 @@ from pathlib import Path
 from fastapi import Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from itsdangerous import URLSafeTimedSerializer as Serializer
-from itsdangerous.exc import BadSignature, SignatureExpired
 
 from ..database import session_scope
 from ..models import User
-from ..settings import settings
-from .helpers import authentication_in_header, csrf_context
+from .helpers import authentication_in_header, csrf_context, decode_access_token
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_AVATAR_PATH = PROJECT_DIR / "static" / "img" / "default avatar.png"
@@ -39,22 +36,17 @@ def user_image(request: Request) -> dict[str, str]:
     """Get user image from database.
 
     Args:
-        request (Request): The request object
+        request: The request object
 
     Returns:
-        dict: A dictionary with the user's image
+        dict: A dict with 'user_image' key containing base64-encoded
+            avatar, or empty string if not found
     """
     if not isinstance(request, Request):
         return {"user_image": ""}
 
-    token = request.cookies.get("access_token")
-    if not token:
-        return {"user_image": ""}
-
-    s = Serializer(settings.chat_secret_key)
-    try:
-        user_id = s.loads(token, max_age=settings.token_max_age).get("user_id")
-    except (SignatureExpired, BadSignature):
+    user_id = decode_access_token(request.cookies)
+    if not user_id:
         return {"user_image": ""}
 
     with session_scope() as db:
@@ -72,22 +64,17 @@ def user_name(request: Request) -> dict[str, str | None]:
     """Get username from database.
 
     Args:
-        request (Request): The request object
+        request: The request object
 
     Returns:
-        dict: A dictionary with the user's name
+        dict: A dict with 'user_name' key containing the user's name,
+            or None if not found
     """
     if not isinstance(request, Request):
         return {"user_name": None}
 
-    token = request.cookies.get("access_token")
-    if not token:
-        return {"user_name": None}
-
-    s = Serializer(settings.chat_secret_key)
-    try:
-        user_id = s.loads(token, max_age=settings.token_max_age).get("user_id")
-    except (SignatureExpired, BadSignature):
+    user_id = decode_access_token(request.cookies)
+    if not user_id:
         return {"user_name": None}
 
     with session_scope() as db:

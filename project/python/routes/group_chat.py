@@ -8,9 +8,10 @@ from sqlalchemy import select
 
 from ..models import GroupChat, GroupMember, GroupMessage, User
 
-from ..connection_manager import manager
 from ..database import async_session_scope
 from .helpers import (
+    delete_message_broadcast,
+    edit_message_broadcast,
     get_accepted_friends,
     get_current_user,
     get_group_member,
@@ -19,6 +20,7 @@ from .helpers import (
     get_group_or_404,
     get_user_by_id,
     get_users_by_ids,
+    load_user_groups,
     require_group_member,
     validate_csrf,
 )
@@ -42,27 +44,7 @@ async def group_chat_list(
         Response: Rendered group chat list page
     """
     async with async_session_scope() as db:
-        result = await db.execute(
-            select(GroupMember).filter(GroupMember.user_id == user.id)
-        )
-        memberships = result.scalars().all()
-
-        group_ids = [m.group_id for m in memberships]
-        groups = []
-        group_member_counts = {}
-        if group_ids:
-            groups = (
-                (
-                    await db.execute(
-                        select(GroupChat).filter(GroupChat.id.in_(group_ids))
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            for g in groups:
-                member_count = len(await get_group_members(db, g.id))
-                group_member_counts[g.id] = member_count
+        groups, group_member_counts = await load_user_groups(db, user.id)
 
     return templates.TemplateResponse(
         request,
@@ -178,7 +160,6 @@ async def create_group_form(
 
 @router.post("/create_group", dependencies=[Depends(validate_csrf)])
 async def create_group(
-    request: Request,
     name: str = Form(...),
     member_ids: str = Form(default=""),
     user: User = Depends(get_current_user),
@@ -186,7 +167,6 @@ async def create_group(
     """Create a new group chat.
 
     Args:
-        request: The incoming HTTP request
         name: The group name
         member_ids: Comma-separated list of user IDs to invite
         user: The authenticated user
@@ -244,7 +224,6 @@ async def create_group(
 
 @router.post("/add_group_member/{group_id}", dependencies=[Depends(validate_csrf)])
 async def add_group_member(
-    request: Request,
     group_id: int,
     user_id: int = Form(...),
     user: User = Depends(get_current_user),
@@ -252,7 +231,6 @@ async def add_group_member(
     """Add a member to a group (creator only).
 
     Args:
-        request: The incoming HTTP request
         group_id: The ID of the group
         user_id: The ID of the user to add
         user: The authenticated user
@@ -294,7 +272,6 @@ async def add_group_member(
 
 @router.post("/remove_group_member/{group_id}", dependencies=[Depends(validate_csrf)])
 async def remove_group_member(
-    request: Request,
     group_id: int,
     user_id: int = Form(...),
     user: User = Depends(get_current_user),
@@ -302,7 +279,6 @@ async def remove_group_member(
     """Remove a member from a group (creator only).
 
     Args:
-        request: The incoming HTTP request
         group_id: The ID of the group
         user_id: The ID of the user to remove
         user: The authenticated user
@@ -340,51 +316,30 @@ async def remove_group_member(
 
 @router.post("/edit_group_message/{message_id}", dependencies=[Depends(validate_csrf)])
 async def edit_group_message(
-    request: Request,
     message_id: int,
     content: str = Form(...),
     user: User = Depends(get_current_user),
 ) -> Response:
     """Edit a group message.
 
-    Broadcasts the edit to all group members via WebSocket.
-
     Args:
-        request: The incoming HTTP request
         message_id: The ID of the message to edit
         content: The new message content
         user: The authenticated user
 
     Returns:
-        Response: 200 OK on success
+        Response: 200 OK
 
     Raises:
         HTTPException 403: If the user is not the message author
-        HTTPException 400: If the new content is empty
+        HTTPException 404: If the message is not found
     """
     async with async_session_scope() as db:
         message = await get_group_message_or_404(db, message_id)
-        if message.user_id != user.id:
-            raise HTTPException(status_code=403, detail="Not your message")
-        if not content.strip():
-            raise HTTPException(status_code=400, detail="Content cannot be empty")
-
-        now = datetime.now()
-        message.content = content
-        message.edited_at = now
-        await db.commit()
-
-        await manager.broadcast(
-            dumps(
-                {
-                    "type": "edit_message",
-                    "message_id": message_id,
-                    "content": content,
-                    "edited_at": now.isoformat(),
-                }
-            ),
-            f"group_{message.group_id}",
+        await edit_message_broadcast(
+            message, user.id, content, f"group_{message.group_id}"
         )
+        await db.commit()
 
     return Response(status_code=200)
 
@@ -393,57 +348,40 @@ async def edit_group_message(
     "/delete_group_message/{message_id}", dependencies=[Depends(validate_csrf)]
 )
 async def delete_group_message(
-    request: Request,
     message_id: int,
     user: User = Depends(get_current_user),
 ) -> Response:
     """Delete a group message.
 
-    Broadcasts the deletion to all group members via WebSocket.
-
     Args:
-        request: The incoming HTTP request
         message_id: The ID of the message to delete
         user: The authenticated user
 
     Returns:
-        Response: 200 OK on success
+        Response: 200 OK
 
     Raises:
         HTTPException 403: If the user is not the message author
+        HTTPException 404: If the message is not found
     """
     async with async_session_scope() as db:
         message = await get_group_message_or_404(db, message_id)
-        if message.user_id != user.id:
-            raise HTTPException(status_code=403, detail="Not your message")
-
-        group_id = message.group_id
+        channel_id = f"group_{message.group_id}"
+        await delete_message_broadcast(message, user.id, channel_id)
         await db.delete(message)
         await db.commit()
-
-        await manager.broadcast(
-            dumps(
-                {
-                    "type": "delete_message",
-                    "message_id": message_id,
-                }
-            ),
-            f"group_{group_id}",
-        )
 
     return Response(status_code=200)
 
 
 @router.get("/group_members/{group_id}")
 async def group_members(
-    request: Request,
     group_id: int,
     user: User = Depends(get_current_user),
 ) -> Response:
     """JSON endpoint listing group members.
 
     Args:
-        request: The incoming HTTP request
         group_id: The ID of the group
         user: The authenticated user
 

@@ -1,5 +1,8 @@
 import re
+from datetime import datetime
 from hashlib import sha256
+from json import dumps
+from typing import cast
 
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from itsdangerous.exc import BadSignature, SignatureExpired
@@ -7,6 +10,7 @@ from itsdangerous.exc import BadSignature, SignatureExpired
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy import or_, select
 
+from ..connection_manager import manager
 from ..database import async_session_scope, session_scope
 from ..models import (
     Channel,
@@ -21,11 +25,33 @@ from ..models import (
 from ..settings import settings
 
 
-def authentication_in_header(request: object) -> dict:
-    """Check if user is authenticated based on access token in header.
+def decode_access_token(cookies: dict) -> int | None:
+    """Extract user ID from access token cookie.
 
     Args:
-        request (Request): The incoming request object.
+        cookies: A dict-like object with cookie values
+
+    Returns:
+        int or None: The user ID if token is valid, None otherwise
+    """
+    raw = cookies.get(settings.access_token_cookie)
+    if not isinstance(raw, str):
+        return None
+    token: str = raw
+    s = Serializer(settings.chat_secret_key)
+    try:
+        return cast(
+            int | None, s.loads(token, max_age=settings.token_max_age).get("user_id")
+        )
+    except (BadSignature, SignatureExpired):
+        return None
+
+
+def authentication_in_header(request: object) -> dict:
+    """Check if user is authenticated based on access token in cookie.
+
+    Args:
+        request: The incoming request object
 
     Returns:
         dict: A dictionary with a boolean indicating if the user
@@ -33,41 +59,25 @@ def authentication_in_header(request: object) -> dict:
     """
     if not isinstance(request, Request):
         return {"is_authenticated": False}
-    token = request.cookies.get("access_token")
-    if not token:
-        return {"is_authenticated": False}
-
-    s = Serializer(settings.chat_secret_key)
-    try:
-        s.loads(token, max_age=settings.token_max_age)
-        return {"is_authenticated": True}
-    except (SignatureExpired, BadSignature):
-        return {"is_authenticated": False}
+    user_id = decode_access_token(request.cookies)
+    return {"is_authenticated": user_id is not None}
 
 
 async def is_authenticated(request: Request) -> bool:
     """Check if user is authenticated based on access token.
 
     Args:
-        request (Request): The request object
+        request: The request object
 
     Raises:
-        HTTPException: Error description
+        HTTPException 401: If not authenticated or user not found
 
     Returns:
-        bool: True if user is authenticated, False otherwise
+        bool: True if user is authenticated
     """
-    token = request.cookies.get("access_token")
-    if not token:
+    user_id = decode_access_token(request.cookies)
+    if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
-
-    s = Serializer(settings.chat_secret_key)
-    try:
-        user_id = s.loads(token, max_age=settings.token_max_age).get("user_id")
-    except SignatureExpired:
-        raise HTTPException(status_code=401, detail="Session expired")
-    except BadSignature:
-        raise HTTPException(status_code=401, detail="Invalid session token")
 
     async with async_session_scope() as db:
         user = await get_user_by_id(db, user_id)
@@ -77,28 +87,18 @@ async def is_authenticated(request: Request) -> bool:
     return True
 
 
-async def get_user_from_request(
-    request: Request,
-    max_age: int = settings.token_max_age,
-):
+async def get_user_from_request(request: Request) -> tuple[User | None, int | None]:
     """Get user object and ID from request based on access token.
 
     Args:
-        request (Request): The request object
-        max_age (int): The maximum age of the token in seconds
+        request: The request object
 
     Returns:
         tuple: A tuple containing the user object and user ID, or
             (None, None) if not found
     """
-    token = request.cookies.get("access_token")
-    if not token:
-        return None, None
-
-    s = Serializer(settings.chat_secret_key)
-    try:
-        user_id = s.loads(token, max_age=max_age).get("user_id")
-    except (SignatureExpired, BadSignature):
+    user_id = decode_access_token(request.cookies)
+    if not user_id:
         return None, None
 
     async with async_session_scope() as db:
@@ -133,17 +133,9 @@ async def get_current_user(request: Request) -> User:
     Raises:
         HTTPException 401: If token is missing, invalid, or user not found
     """
-    token = request.cookies.get("access_token")
-    if not token:
+    user_id = decode_access_token(request.cookies)
+    if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
-
-    s = Serializer(settings.chat_secret_key)
-    try:
-        user_id = s.loads(token, max_age=settings.token_max_age).get("user_id")
-    except SignatureExpired:
-        raise HTTPException(status_code=401, detail="Session expired")
-    except BadSignature:
-        raise HTTPException(status_code=401, detail="Invalid session token")
 
     async with async_session_scope() as db:
         user = await get_user_by_id(db, user_id)
@@ -162,14 +154,7 @@ def get_current_user_id(request: Request) -> int | None:
     Returns:
         int or None: The user ID if authenticated, None otherwise
     """
-    token = request.cookies.get("access_token")
-    if not token:
-        return None
-    s = Serializer(settings.chat_secret_key)
-    try:
-        return s.loads(token, max_age=settings.token_max_age).get("user_id")
-    except (SignatureExpired, BadSignature):
-        return None
+    return decode_access_token(request.cookies)
 
 
 def csrf_context(request: Request) -> dict:
@@ -416,13 +401,40 @@ async def get_users_by_ids(db, user_ids: list[int]) -> list[User]:
     return result.scalars().all()
 
 
+async def load_user_groups(db, user_id: int) -> tuple[list[GroupChat], dict[int, int]]:
+    result = await db.execute(
+        select(GroupMember).filter(GroupMember.user_id == user_id)
+    )
+    memberships = result.scalars().all()
+    group_ids = [m.group_id for m in memberships]
+    groups = []
+    group_member_counts: dict[int, int] = {}
+    if group_ids:
+        result_groups = await db.execute(
+            select(GroupChat).filter(GroupChat.id.in_(group_ids))
+        )
+        groups = result_groups.scalars().all()
+        for g in groups:
+            member_count = len(
+                (
+                    await db.execute(
+                        select(GroupMember).filter(GroupMember.group_id == g.id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            group_member_counts[g.id] = member_count
+    return groups, group_member_counts
+
+
 async def get_accepted_friends(db, user_id: int) -> list[User]:
     result = await db.execute(
         select(User)
         .distinct()
         .join(Friend, or_(Friend.user1_id == User.id, Friend.user2_id == User.id))
         .filter(
-            Friend.status == FriendStatus.ACCEPTED.value,
+            Friend.status == FriendStatus.ACCEPTED,
             or_(
                 (Friend.user1_id == user_id) & (User.id == Friend.user2_id),
                 (Friend.user2_id == user_id) & (User.id == Friend.user1_id),
@@ -456,3 +468,63 @@ def is_csrf_token_valid(token: str, user_id: int) -> bool:
         return data.get("user_id") == user_id
     except (BadSignature, SignatureExpired):
         return False
+
+
+async def edit_message_broadcast(message, user_id: int, content: str, channel_id: str):
+    """Edit a message and broadcast the update via WebSocket.
+
+    Args:
+        message: The message object to edit
+        user_id: The ID of the user requesting the edit
+        content: The new message content
+        channel_id: The channel to broadcast to
+
+    Raises:
+        HTTPException 403: If the user is not the message author
+        HTTPException 400: If content is empty
+    """
+    if message.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Not your message")
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="Content cannot be empty")
+
+    now = datetime.now()
+    message.content = content
+    message.edited_at = now
+
+    await manager.broadcast(
+        dumps(
+            {
+                "type": "edit_message",
+                "message_id": message.id,
+                "content": content,
+                "edited_at": now.isoformat(),
+            }
+        ),
+        channel_id,
+    )
+
+
+async def delete_message_broadcast(message, user_id: int, channel_id: str):
+    """Delete a message and broadcast the deletion via WebSocket.
+
+    Args:
+        message: The message object to delete
+        user_id: The ID of the user requesting deletion
+        channel_id: The channel to broadcast to
+
+    Raises:
+        HTTPException 403: If the user is not the message author
+    """
+    if message.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Not your message")
+
+    await manager.broadcast(
+        dumps(
+            {
+                "type": "delete_message",
+                "message_id": message.id,
+            }
+        ),
+        channel_id,
+    )

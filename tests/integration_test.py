@@ -9,26 +9,11 @@ from project.python.routes import generate_csrf_token
 from tests.model_test import TestingSessionLocal
 
 
-def test_register_user(test_db_session):
-    """
-    Test registering a new user.
-
-    Creates a test user and asserts a successful
-    registration response and user is saved.
-
-    Args:
-        test_db_session: The test database session
-
-    """
+def test_register_user():
+    """Test registering a new user."""
+    email = "integration-register@example.com"
     db = TestingSessionLocal()
-    user = create_user(
-        db,
-        "XXXXXXXX",
-        "XXXXXXXX",
-        "XXXXXXXX@gmail.com",
-        "XXXXXXXX",
-        "project/static/img/default avatar.png",
-    )
+    user = create_user(db, "Integration", "Register", email)
 
     csrf_token = generate_csrf_token(0)
     response = client.post(
@@ -48,22 +33,11 @@ def test_register_user(test_db_session):
     assert db.query(User).filter(User.email == user.email).first() is not None
 
 
-def test_login_user(test_db_session):
-    """
-    Test logging in a registered user.
-
-    Logs in a test user and asserts a successful
-    login response.
-    """
+def test_login_user():
+    """Test logging in a registered user."""
+    email = "integration-login@example.com"
     db = TestingSessionLocal()
-    user = create_user(
-        db,
-        "XXXXXXXX",
-        "XXXXXXXX",
-        "XXXXXXXX@gmail.com",
-        "XXXXXXXX",
-        "project/static/img/default avatar.png",
-    )
+    user = create_user(db, "Integration", "Login", email)
 
     csrf_token = generate_csrf_token(0)
     response = client.post(
@@ -147,8 +121,6 @@ def test_expired_token_mid_session(monkeypatch):
         "Mid",
         "Session",
         "mid-session@example.com",
-        "Password123",
-        "project/static/img/default avatar.png",
     )
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": user.id})
@@ -173,8 +145,6 @@ def test_concurrent_sessions_same_user():
         "Concurrent",
         "User",
         "concurrent@example.com",
-        "Password123",
-        "project/static/img/default avatar.png",
     )
     serializer = Serializer(settings.chat_secret_key)
     token = serializer.dumps({"user_id": user.id})
