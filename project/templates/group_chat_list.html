@@ -35,11 +35,26 @@
                     <div class="card-body text-center search-user-card-body">
                       <i class="bi bi-people icon-size mt-2"></i>
                       <div class="card-body px-2 pb-2">
-                        <p class="card-title lead text-primary mb-2">{{ group.name }}</p>
+                        <p class="card-title lead text-primary mb-2">
+                          {{ group.name }}
+                          {% if unread_counts.get(group.id, 0) > 0 %}
+                          <span class="badge bg-danger ms-1">{{ unread_counts[group.id] }}</span>
+                          {% endif %}
+                        </p>
                         <p class="text-muted mb-0">{{ group_member_counts[group.id] }} member{% if group_member_counts[group.id] != 1 %}s{% endif %}</p>
                       </div>
                     </div>
                   </a>
+                  {% if user.id != group.created_by %}
+                  <div class="card-footer text-center border-0 bg-transparent pt-0">
+                    <form action="{{ url_for('leave_group', group_id=group.id) }}" method="POST" onsubmit="return confirm('Are you sure you want to leave this group?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                      <button type="submit" class="btn btn-sm btn-outline-danger">
+                        <i class="bi bi-box-arrow-left"></i> Leave
+                      </button>
+                    </form>
+                  </div>
+                  {% endif %}
                 </div>
               </div>
               {% endfor %}

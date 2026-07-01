@@ -205,7 +205,7 @@ async def add_friend(
             )
             db.add(new_friendship)
 
-    return RedirectResponse(request.url_for("single_chat"), status_code=303)
+    return RedirectResponse(request.url_for("search_user"), status_code=303)
 
 
 @router.post("/accept_friend/{friend_id}", dependencies=[Depends(validate_csrf)])
@@ -225,7 +225,7 @@ async def accept_friend(
         Response: Redirect to the single chat page
     """
     await respond_to_friend_request(friend_id, user.id, FriendStatus.ACCEPTED)
-    return RedirectResponse(request.url_for("single_chat"), status_code=303)
+    return RedirectResponse(request.url_for("friend_requests"), status_code=303)
 
 
 @router.post("/deny_friend/{friend_id}", dependencies=[Depends(validate_csrf)])
@@ -245,4 +245,4 @@ async def deny_friend(
         Response: Redirect to the single chat page
     """
     await respond_to_friend_request(friend_id, user.id, FriendStatus.DENIED)
-    return RedirectResponse(request.url_for("single_chat"), status_code=303)
+    return RedirectResponse(request.url_for("friend_requests"), status_code=303)

@@ -10,10 +10,7 @@ from fastapi import HTTPException, Request
 
 from .settings import settings
 
-try:
-    import redis.asyncio as aioredis
-except ImportError:
-    aioredis = None
+import redis.asyncio as aioredis
 
 logger = logging.getLogger(__name__)
 

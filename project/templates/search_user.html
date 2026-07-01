@@ -26,6 +26,20 @@
               </p>
             </div>
 
+            <form method="GET" action="{{ url_for('search_user') }}" class="w-100 mb-3" style="max-width: 600px;">
+              <div class="input-group pb-5">
+                <input type="text" name="q" class="form-control" placeholder="Search by name, surname, or email..." value="{{ q }}">
+                <button type="submit" class="btn btn-outline-primary">
+                  <i class="bi bi-search"></i> Search
+                </button>
+                {% if q %}
+                <a href="{{ url_for('search_user') }}" class="btn btn-outline-secondary">
+                  <i class="bi bi-x-lg"></i> Clear
+                </a>
+                {% endif %}
+              </div>
+            </form>
+
             {% set visible_users = namespace(count=0) %} {% if users %}
             <div class="row justify-content-center g-4 search-users-grid">
               {% for user in users %} {% set visible_users.count =

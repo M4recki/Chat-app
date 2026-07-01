@@ -20,6 +20,14 @@
               <button class="btn btn-sm btn-outline-secondary ms-2" type="button" data-bs-toggle="collapse" data-bs-target="#memberListPanel" aria-expanded="false">
                 <i class="bi bi-person-lines-fill"></i> Members ({{ members|length }})
               </button>
+              {% if user.id != group.created_by %}
+              <form action="{{ url_for('leave_group', group_id=group.id) }}" method="POST" class="ms-auto" onsubmit="return confirm('Are you sure you want to leave this group?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger">
+                  <i class="bi bi-box-arrow-left"></i> Leave
+                </button>
+              </form>
+              {% endif %}
             </div>
 
             <div class="collapse mb-3" id="memberListPanel">
@@ -33,6 +41,9 @@
                       {{ m.name }} {{ m.surname }}
                       {% if member.user_id == group.created_by %}
                       <span class="badge bg-primary ms-1">Creator</span>
+                      {% endif %}
+                      {% if m.last_active %}
+                      <br><small class="text-muted">last active {{ m.last_active.strftime('%H:%M, %Y-%m-%d') }}</small>
                       {% endif %}
                     </span>
                     {% if user.id == group.created_by and member.user_id != user.id %}
@@ -82,7 +93,15 @@
             {% endif %}
 
             {% if messages %}
-            {% for message in messages %}
+            <div id="load-older-container">
+              {% if has_more %}
+              <div class="text-center my-3">
+                <button id="load-older-btn" class="btn btn-outline-secondary btn-sm">
+                  <i class="bi bi-arrow-up"></i> Load older messages
+                </button>
+              </div>
+              {% endif %}
+              {% for message in messages %}
             <div class="card my-3" data-message-id="{{ message.id }}">
               <div class="card-body">
                 <p class="card-title">
@@ -104,7 +123,8 @@
                 {% endif %}
               </div>
             </div>
-            {% endfor %}
+              {% endfor %}
+            </div>
             {% else %}
             <h1 id="start-new-conversation" class="mt-5 mb-5 text-center">Start a new conversation</h1>
             {% endif %}
@@ -441,6 +461,57 @@
         document.querySelectorAll(".delete-btn").forEach(function (btn) { btn.addEventListener("click", function () { showDeleteConfirmation(parseInt(this.dataset.messageId)); }); });
         const textarea = document.querySelector('textarea[name="message"]') || document.getElementById("messageText") || document.getElementById("message");
         if (textarea) textarea.addEventListener("input", handleTypingInput);
+
+        // Load older messages
+        const loadBtn = document.getElementById("load-older-btn");
+        if (loadBtn) {
+          let offset = 50;
+          loadBtn.addEventListener("click", async function () {
+            loadBtn.disabled = true;
+            loadBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Loading...';
+            try {
+              const response = await fetch(`/api/group_messages/${group_id}?offset=${offset}&limit=50`);
+              if (!response.ok) throw new Error("Failed to load messages");
+              const data = await response.json();
+              const container = document.getElementById("load-older-container");
+              data.messages.slice().reverse().forEach(function (msg) {
+                const card = document.createElement("div");
+                card.className = "card my-3";
+                card.dataset.messageId = msg.id;
+                const body = document.createElement("div");
+                body.className = "card-body";
+                const title = document.createElement("p");
+                title.className = "card-title";
+                title.textContent = " " + msg.created_at;
+                body.appendChild(title);
+                const content = document.createElement("p");
+                content.className = "pt-2 text-start";
+                const name = document.createElement("strong");
+                name.className = "text-primary";
+                name.textContent = msg.sender_name + ": ";
+                content.appendChild(name);
+                const text = document.createElement("span");
+                text.className = "message-content";
+                text.textContent = msg.content;
+                content.appendChild(text);
+                body.appendChild(content);
+                card.appendChild(body);
+                container.insertBefore(card, container.firstChild);
+              });
+              offset += data.messages.length;
+              if (!data.has_more) {
+                loadBtn.remove();
+              } else {
+                loadBtn.disabled = false;
+                loadBtn.innerHTML = '<i class="bi bi-arrow-up"></i> Load older messages';
+              }
+            } catch (err) {
+              alert("Failed to load older messages: " + err.message);
+              loadBtn.disabled = false;
+              loadBtn.innerHTML = '<i class="bi bi-arrow-up"></i> Load older messages';
+            }
+          });
+        }
       });
     </script>
   </body>

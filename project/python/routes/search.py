@@ -16,18 +16,29 @@ router = APIRouter()
 async def search_user(
     request: Request,
     user: User = Depends(get_current_user),
+    q: str | None = None,
 ) -> Response:
     """Search for and return other users.
 
     Args:
         request: The request object
         user: The authenticated user
+        q: Optional search query to filter by name, surname, or email
 
     Returns:
         Response: User search template
     """
     async with async_session_scope() as db:
-        result = await db.execute(select(User).filter(User.id != user.id))
+        stmt = select(User).filter(User.id != user.id)
+        if q:
+            stmt = stmt.filter(
+                or_(
+                    User.name.ilike(f"%{q}%"),
+                    User.surname.ilike(f"%{q}%"),
+                    User.email.ilike(f"%{q}%"),
+                )
+            )
+        result = await db.execute(stmt)
         users = result.scalars().all()
 
         result_friends = await db.execute(
@@ -81,5 +92,6 @@ async def search_user(
             "avatar_map": avatar_map,
             "friend_status_map": friend_status_map,
             "channel_ids": channel_ids,
+            "q": q or "",
         },
     )

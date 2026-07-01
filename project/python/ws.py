@@ -59,6 +59,8 @@ async def handle_ws_connection(
                 await websocket.close(code=4003)
                 return
 
+        user.last_active = datetime.now()
+
     leave_key = (channel_id, user_id)
     old_task = _pending_leave.pop(leave_key, None)
     if old_task:

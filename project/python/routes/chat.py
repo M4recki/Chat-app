@@ -1,18 +1,19 @@
 from base64 import b64encode
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import Response
-from sqlalchemy import or_, select
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, Response
+from sqlalchemy import func, or_, select
 
 from ..database import async_session_scope
 from ..models import (
-    Channel,
     Friend,
     FriendStatus,
     Message,
     User,
 )
 from .helpers import (
+    PAGE_SIZE,
+    compute_channel_unread_counts,
     create_channel,
     delete_message_broadcast,
     edit_message_broadcast,
@@ -21,8 +22,11 @@ from .helpers import (
     get_friend_status_map,
     get_friendship,
     get_message_or_404,
+    get_paginated_messages,
     get_user_by_id,
-    load_user_groups,
+    mark_channel_read,
+    message_to_json,
+    require_channel_participant,
     validate_csrf,
 )
 from .template import encode_avatar, templates
@@ -78,7 +82,15 @@ async def single_chat(
                     ch = await create_channel(db, user.id, fid)
                     channel_ids[fid] = ch.channel_id
 
-        groups, group_member_counts = await load_user_groups(db, user.id)
+        # Compute unread message counts for friend chats
+        unread_counts: dict[int, int] = {}
+        if channel_ids:
+            ch_id_to_friend = {v: k for k, v in channel_ids.items()}
+            ch_unread = await compute_channel_unread_counts(
+                db, user.id, list(ch_id_to_friend.keys())
+            )
+            for ch_id, count in ch_unread.items():
+                unread_counts[ch_id_to_friend[ch_id]] = count
 
     return templates.TemplateResponse(
         request,
@@ -90,8 +102,7 @@ async def single_chat(
             "friend_avatars": friend_avatars,
             "friend_status_map": friend_status_map,
             "channel_ids": channel_ids,
-            "groups": groups,
-            "group_member_counts": group_member_counts,
+            "unread_counts": unread_counts,
         },
     )
 
@@ -123,41 +134,21 @@ async def friend_chat_page(
         if not friend:
             raise HTTPException(status_code=404, detail="Friend not found")
 
-        result_messages = await db.execute(
-            select(Message)
-            .filter(Message.channel_id == channel_id)
-            .order_by(Message.created_at.asc())
-        )
-        messages = result_messages.scalars().all()
+        await require_channel_participant(db, channel_id, user.id)
 
-        # Bulk-load all message authors to avoid N+1 queries
-        author_ids = {m.user_id for m in messages}
-        if author_ids:
-            result_authors = await db.execute(
-                select(User).filter(User.id.in_(author_ids))
-            )
-            users_map = {u.id: u for u in result_authors.scalars().all()}
-        else:
-            users_map = {}
-
-        result_channel = await db.execute(
-            select(Channel).filter(Channel.channel_id == channel_id)
+        total_messages, messages, users_map = await get_paginated_messages(
+            db, Message, Message.channel_id, channel_id
         )
-        channel = result_channel.scalar()
 
         friend_status = await get_friendship(db, user.id, friend_id)
         friend_status_value = friend_status.status if friend_status else None
 
-        if not channel:
-            raise HTTPException(status_code=404, detail="Channel not found")
-
-        if user.id not in (channel.user1_id, channel.user2_id):
-            raise HTTPException(
-                status_code=403, detail="Not a participant in this channel"
-            )
+        await mark_channel_read(db, user.id, channel_id)
 
     avatar_b64 = encode_avatar(user)
     friend_avatar_b64 = encode_avatar(friend)
+
+    has_more = total_messages > PAGE_SIZE
 
     return templates.TemplateResponse(
         request,
@@ -172,8 +163,77 @@ async def friend_chat_page(
             "messages": messages,
             "channel_id": channel_id,
             "users": users_map,
+            "has_more": has_more,
         },
     )
+
+
+@router.get("/api/chat_messages/{channel_id}")
+async def api_chat_messages(
+    channel_id: str,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=PAGE_SIZE, ge=1, le=200),
+    user: User = Depends(get_current_user),
+) -> JSONResponse:
+    """Fetch paginated chat messages as JSON.
+
+    Args:
+        channel_id: The channel ID
+        offset: Number of messages to skip (from newest)
+        limit: Maximum number of messages to return
+        user: The authenticated user
+
+    Returns:
+        JSONResponse: JSON with messages list and has_more flag
+    """
+    async with async_session_scope() as db:
+        await require_channel_participant(db, channel_id, user.id)
+
+        count_result = await db.execute(
+            select(func.count())
+            .select_from(Message)
+            .filter(Message.channel_id == channel_id)
+        )
+        total = count_result.scalar()
+
+        # Get messages ordered by created_at DESC (newest first), then reverse
+        result_messages = await db.execute(
+            select(Message)
+            .filter(Message.channel_id == channel_id)
+            .order_by(Message.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        msgs = list(reversed(result_messages.scalars().all()))
+
+        author_ids = {m.user_id for m in msgs}
+        if author_ids:
+            result_authors = await db.execute(
+                select(User).filter(User.id.in_(author_ids))
+            )
+            users_map = {
+                u.id: {"name": u.name, "surname": u.surname}
+                for u in result_authors.scalars().all()
+            }
+        else:
+            users_map = {}
+
+        messages_json = []
+        for m in msgs:
+            sender = users_map.get(m.user_id, {})
+            messages_json.append(
+                message_to_json(
+                    m, f"{sender.get('name', '')} {sender.get('surname', '')}".strip()
+                )
+            )
+
+        return JSONResponse(
+            {
+                "messages": messages_json,
+                "has_more": (offset + limit) < total,
+                "total": total,
+            }
+        )
 
 
 @router.post("/edit_message/{message_id}", dependencies=[Depends(validate_csrf)])

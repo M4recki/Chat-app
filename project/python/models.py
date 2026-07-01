@@ -27,6 +27,7 @@ class User(Base):
     password = Column(String(255), nullable=False)
     avatar = Column(LargeBinary, nullable=False)
     created_at = Column(DateTime, nullable=False)
+    last_active = Column(DateTime, nullable=True)
     chatbot_messages = relationship("ChatbotMessage", back_populates="user")
 
 
@@ -136,6 +137,28 @@ class GroupMessage(Base):
     edited_at = Column(DateTime, nullable=True)
     group = relationship("GroupChat", foreign_keys="GroupMessage.group_id")
     user = relationship("User", foreign_keys="GroupMessage.user_id")
+
+
+class UserChannelRead(Base):
+    """Tracks the last message read by a user in a friend chat channel."""
+
+    __tablename__ = "user_channel_read"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    channel_id = Column(String(100), ForeignKey("channels.channel_id"), nullable=False)
+    last_read_message_id = Column(Integer, ForeignKey("messages.id"), nullable=True)
+
+
+class UserGroupRead(Base):
+    """Tracks the last message read by a user in a group chat."""
+
+    __tablename__ = "user_group_read"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    group_id = Column(Integer, ForeignKey("group_chats.id"), nullable=False)
+    last_read_message_id = Column(
+        Integer, ForeignKey("group_messages.id"), nullable=True
+    )
 
 
 # Do not call `Base.metadata.create_all()` on import.

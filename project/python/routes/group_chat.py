@@ -2,14 +2,16 @@ from base64 import b64encode
 from datetime import datetime
 from json import dumps
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import RedirectResponse, Response
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, RedirectResponse, Response
+from sqlalchemy import func, select
 
 from ..models import GroupChat, GroupMember, GroupMessage, User
 
 from ..database import async_session_scope
 from .helpers import (
+    PAGE_SIZE,
+    compute_group_unread_counts,
     delete_message_broadcast,
     edit_message_broadcast,
     get_accepted_friends,
@@ -18,9 +20,12 @@ from .helpers import (
     get_group_members,
     get_group_message_or_404,
     get_group_or_404,
+    get_paginated_messages,
     get_user_by_id,
     get_users_by_ids,
     load_user_groups,
+    mark_group_read,
+    message_to_json,
     require_group_member,
     validate_csrf,
 )
@@ -46,6 +51,10 @@ async def group_chat_list(
     async with async_session_scope() as db:
         groups, group_member_counts = await load_user_groups(db, user.id)
 
+        unread_counts = await compute_group_unread_counts(
+            db, user.id, [g.id for g in groups] if groups else []
+        )
+
     return templates.TemplateResponse(
         request,
         "group_chat_list.html",
@@ -54,6 +63,7 @@ async def group_chat_list(
             "user": user,
             "groups": groups,
             "group_member_counts": group_member_counts,
+            "unread_counts": unread_counts,
         },
     )
 
@@ -82,19 +92,9 @@ async def group_chat_page(
         group = await get_group_or_404(db, group_id)
         await require_group_member(db, group_id, user.id)
 
-        result_messages = await db.execute(
-            select(GroupMessage)
-            .filter(GroupMessage.group_id == group_id)
-            .order_by(GroupMessage.created_at.asc())
+        total_messages, messages, users_map = await get_paginated_messages(
+            db, GroupMessage, GroupMessage.group_id, group_id
         )
-        messages = result_messages.scalars().all()
-
-        author_ids = {m.user_id for m in messages}
-        if author_ids:
-            authors = await get_users_by_ids(db, list(author_ids))
-            users_map = {u.id: u for u in authors}
-        else:
-            users_map = {}
 
         members = await get_group_members(db, group_id)
         member_ids = [m.user_id for m in members]
@@ -110,7 +110,10 @@ async def group_chat_page(
                 f.id: b64encode(f.avatar).decode() for f in friend_candidates
             }
 
+        await mark_group_read(db, user.id, group_id)
+
     avatar_b64 = encode_avatar(user)
+    has_more = total_messages > PAGE_SIZE
 
     return templates.TemplateResponse(
         request,
@@ -126,6 +129,7 @@ async def group_chat_page(
             "member_users": member_users_map,
             "friend_candidates": friend_candidates,
             "friend_candidate_avatars": friend_candidate_avatars,
+            "has_more": has_more,
         },
     )
 
@@ -372,6 +376,106 @@ async def delete_group_message(
         await db.commit()
 
     return Response(status_code=200)
+
+
+@router.post("/leave_group/{group_id}", dependencies=[Depends(validate_csrf)])
+async def leave_group(
+    group_id: int,
+    user: User = Depends(get_current_user),
+) -> Response:
+    """Leave a group chat (creator cannot leave).
+
+    Args:
+        group_id: The ID of the group to leave
+        user: The authenticated user
+
+    Returns:
+        RedirectResponse: Redirects to the group chat list
+
+    Raises:
+        HTTPException 400: If the user is the group creator
+        HTTPException 404: If the user is not a member
+    """
+    async with async_session_scope() as db:
+        group = await get_group_or_404(db, group_id)
+        if group.created_by == user.id:
+            raise HTTPException(
+                status_code=400,
+                detail="Creator cannot leave the group. Transfer ownership or delete the group.",
+            )
+
+        member = await get_group_member(db, group_id, user.id)
+        if not member:
+            raise HTTPException(status_code=404, detail="Not a member of this group")
+
+        await db.delete(member)
+
+    return RedirectResponse(
+        url=f"/group_chat_list",
+        status_code=303,
+    )
+
+
+@router.get("/api/group_messages/{group_id}")
+async def api_group_messages(
+    group_id: int,
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=PAGE_SIZE, ge=1, le=200),
+    user: User = Depends(get_current_user),
+) -> JSONResponse:
+    """Fetch paginated group messages as JSON.
+
+    Args:
+        group_id: The group ID
+        offset: Number of messages to skip (from newest)
+        limit: Maximum number of messages to return
+        user: The authenticated user
+
+    Returns:
+        JSONResponse: JSON with messages list and has_more flag
+    """
+    async with async_session_scope() as db:
+        await require_group_member(db, group_id, user.id)
+
+        count_result = await db.execute(
+            select(func.count())
+            .select_from(GroupMessage)
+            .filter(GroupMessage.group_id == group_id)
+        )
+        total = count_result.scalar()
+
+        # Get messages ordered by created_at DESC (newest first), then reverse
+        result_messages = await db.execute(
+            select(GroupMessage)
+            .filter(GroupMessage.group_id == group_id)
+            .order_by(GroupMessage.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        msgs = list(reversed(result_messages.scalars().all()))
+
+        author_ids = {m.user_id for m in msgs}
+        users_map = {}
+        if author_ids:
+            users = await get_users_by_ids(db, list(author_ids))
+            users_map = {u.id: {"name": u.name, "surname": u.surname} for u in users}
+
+        messages_json = []
+        for m in msgs:
+            sender = users_map.get(m.user_id, {})
+            messages_json.append(
+                message_to_json(
+                    m, f"{sender.get('name', '')} {sender.get('surname', '')}".strip()
+                )
+            )
+
+        return JSONResponse(
+            {
+                "messages": messages_json,
+                "has_more": (offset + limit) < total,
+                "total": total,
+            }
+        )
 
 
 @router.get("/group_members/{group_id}")

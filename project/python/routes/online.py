@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from ..connection_manager import manager
@@ -8,11 +8,9 @@ router = APIRouter()
 
 
 @router.get("/online-users", dependencies=[Depends(is_authenticated)])
-async def online_users(request: Request):
+async def online_users():
     """Return the set of currently online user IDs as JSON.
 
-    Args:
-        request (Request): The HTTP request
 
     Returns:
         JSONResponse: A JSON object with online user IDs

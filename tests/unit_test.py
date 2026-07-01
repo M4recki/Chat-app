@@ -6,7 +6,7 @@ from datetime import datetime
 from hashlib import sha256
 from io import BytesIO
 from typing import cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import openai as openai_mod
@@ -14,6 +14,9 @@ import pytest
 from conftest import (
     async_session_scope,
     client,
+    create_channel,
+    create_group,
+    create_group_member,
     create_user,
     DEFAULT_AVATAR,
     NONEXISTENT_ID,
@@ -28,6 +31,7 @@ from starlette.testclient import TestClient as WSClient
 from project.python.chatbot_utils import (
     ChatbotServiceError,
     build_chatbot_messages,
+    call_model,
     chatbot_context,
     chatbot_json_error,
     chatbot_json_success,
@@ -35,7 +39,7 @@ from project.python.chatbot_utils import (
     normalize_chatbot_response,
 )
 from project.python.connection_manager import ConnectionManager
-from project.python.database import async_url, get_db
+from project.python.database import async_url, get_async_db, get_db
 from project.python.main import app
 from project.python.main import app as ws_app
 from project.python.models import (
@@ -47,8 +51,15 @@ from project.python.models import (
     GroupMessage,
     Message,
     User,
+    UserChannelRead,
+    UserGroupRead,
 )
-from project.python.rate_limit import MemoryBackend, RateLimiter, get_client_identifier
+from project.python.rate_limit import (
+    MemoryBackend,
+    RateLimiter,
+    RedisBackend,
+    get_client_identifier,
+)
 from project.python.routes import (
     authentication_in_header,
     chatbot_response,
@@ -69,12 +80,23 @@ from project.python.routes.email import (
     verify_password_reset_token,
 )
 from project.python.routes.helpers import (
+    compute_channel_unread_counts,
+    compute_group_unread_counts,
     get_channel_id_map,
+    get_channel_or_404,
+    get_current_user_id,
     get_friend_status_map,
     get_message_or_404,
+    get_or_create_channel,
+    get_paginated_messages,
     get_user_by_id,
+    mark_channel_read,
+    mark_group_read,
+    message_to_json,
+    require_channel_participant,
 )
 from project.python.settings import settings as app_settings
+from sqlalchemy.ext.asyncio import AsyncSession
 from tests.model_test import TestingSessionLocal
 
 
@@ -481,7 +503,7 @@ class MockClient:
     chat = Chat()
 
 
-def mock_openai(monkeypatch, content=MOCK_CONTENT, create_fn=None):
+def mock_openai(monkeypatch, content: str | None = MOCK_CONTENT, create_fn=None):
     MockMsg.content = content
 
     if create_fn is not None:
@@ -1229,7 +1251,7 @@ def test_send_email_contact_form_calls_send(monkeypatch):
 def test_websocket_auth_failure_no_token():
     ws_client = WSClient(ws_app)
     with pytest.raises(WebSocketDisconnect) as exc_info:
-        with ws_client.websocket_connect("/ws/no-token-ch") as ws:
+        with ws_client.websocket_connect("/ws/no-token-ch"):
             pass
     assert exc_info.value.code == 4008
 
@@ -1239,7 +1261,7 @@ def test_websocket_user_not_found():
     ws_client = WSClient(ws_app)
     ws_client.cookies.set("access_token", token)
     with pytest.raises(WebSocketDisconnect) as exc_info:
-        with ws_client.websocket_connect("/ws/no-user-ch") as ws:
+        with ws_client.websocket_connect("/ws/no-user-ch"):
             pass
     assert exc_info.value.code == 4008
 
@@ -1322,7 +1344,7 @@ def test_websocket_group_non_member():
     ws_client.cookies.set("access_token", token)
 
     with pytest.raises(WebSocketDisconnect) as exc_info:
-        with ws_client.websocket_connect(f"/ws/group/{group.id}") as ws:
+        with ws_client.websocket_connect(f"/ws/group/{group.id}"):
             pass
     assert exc_info.value.code == 4003
 
@@ -1364,3 +1386,612 @@ def test_websocket_reconnect_cancels_pending_leave():
         ws.send_json({"type": "message", "message": "reconnect"})
         data = ws.receive_text()
         assert "reconnect" in data
+
+
+# ---------------------------------------------------------------------------
+# get_current_user_id
+# ---------------------------------------------------------------------------
+
+
+def test_get_current_user_id_valid():
+    serializer = Serializer(app_settings.chat_secret_key)
+    token = serializer.dumps({"user_id": 42})
+    request = make_request_with_cookie(token)
+    assert get_current_user_id(request) == 42
+
+
+def test_get_current_user_id_invalid():
+    assert get_current_user_id(make_request()) is None
+
+
+# ---------------------------------------------------------------------------
+# get_user (found case)
+# ---------------------------------------------------------------------------
+
+
+def test_get_user_found():
+    db_sync = TestingSessionLocal()
+    user = create_user(db_sync, "Found", "User", "found@example.com")
+    db_sync.close()
+    result = get_user(user.id)
+    assert result is not None
+    assert result.name == "Found"
+
+
+# ---------------------------------------------------------------------------
+# get_or_create_channel
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_channel_creates_new():
+    db_sync = TestingSessionLocal()
+    u1 = create_user(db_sync, "New", "Channel", "newch@example.com")
+    u2 = create_user(db_sync, "Other", "Side", "other@example.com")
+    db_sync.close()
+    async with async_session_scope() as db:
+        ch = await get_or_create_channel(db, u1.id, u2.id)
+    assert ch is not None
+    assert ch.user1_id == u1.id
+    assert ch.user2_id == u2.id
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_channel_returns_existing():
+    db_sync = TestingSessionLocal()
+    u1 = create_user(db_sync, "Existing", "Ch", "existch@example.com")
+    u2 = create_user(db_sync, "Existing", "Other", "existother@example.com")
+    ch = create_channel(db_sync, u1, u2)
+    existing_id = ch.channel_id
+    db_sync.close()
+    async with async_session_scope() as db:
+        result = await get_or_create_channel(db, u1.id, u2.id)
+    assert result.channel_id == existing_id
+
+
+# ---------------------------------------------------------------------------
+# get_async_db
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_async_db_yields_session():
+    gen = get_async_db()
+    db = await gen.__anext__()
+    assert isinstance(db, AsyncSession)
+    try:
+        await gen.__anext__()
+    except StopAsyncIteration:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# call_model
+# ---------------------------------------------------------------------------
+
+
+def test_call_model_success():
+    mock_client = MagicMock()
+    mock_completion = MagicMock()
+    mock_completion.choices[0].message.content = "hello world"
+    mock_client.chat.completions.create.return_value = mock_completion
+
+    result = call_model(mock_client, "test-model", [{"role": "user", "content": "hi"}])
+    assert result == "hello world"
+
+
+def test_call_model_empty_content():
+    mock_client = MagicMock()
+    mock_completion = MagicMock()
+    mock_completion.choices[0].message.content = None
+    mock_client.chat.completions.create.return_value = mock_completion
+
+    result = call_model(mock_client, "test-model", [{"role": "user", "content": "hi"}])
+    assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# RedisBackend
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_redis_backend_enforce_under_limit(monkeypatch):
+    mock_redis = MagicMock()
+    mock_pipe = AsyncMock()
+    mock_pipe.__aenter__.return_value = mock_pipe
+    mock_pipe.execute.return_value = (0, 1, 1, True)
+    mock_redis.pipeline.return_value = mock_pipe
+    monkeypatch.setattr(
+        "project.python.rate_limit.aioredis.from_url",
+        lambda url, **kw: mock_redis,
+    )
+
+    backend = RedisBackend("redis://localhost:6379/0")
+    result = await backend.enforce("test:bucket", 5, 60)
+
+    assert result["remaining"] == 3
+    assert result["limit"] == 5
+    assert result["reset"] > 0
+
+
+@pytest.mark.asyncio
+async def test_redis_backend_enforce_over_limit(monkeypatch):
+    mock_redis = MagicMock()
+    mock_pipe = AsyncMock()
+    mock_pipe.__aenter__.return_value = mock_pipe
+    mock_pipe.execute.return_value = (0, 5, 1, True)
+    mock_redis.pipeline.return_value = mock_pipe
+    mock_redis.zrange = AsyncMock(return_value=[(b"1234567890", 1234567890.0)])
+    monkeypatch.setattr(
+        "project.python.rate_limit.aioredis.from_url",
+        lambda url, **kw: mock_redis,
+    )
+
+    backend = RedisBackend("redis://localhost:6379/0")
+    with pytest.raises(HTTPException) as exc:
+        await backend.enforce("test:bucket", 5, 60)
+    assert exc.value.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_rate_limiter_redis_connection_error_falls_to_memory(monkeypatch):
+    monkeypatch.setattr(app_settings, "redis_url", "redis://localhost:6379/0")
+    monkeypatch.setattr(
+        "project.python.rate_limit.aioredis.from_url",
+        lambda url, **kw: (_ for _ in ()).throw(ConnectionError("timeout")),
+    )
+
+    limiter = RateLimiter()
+    assert isinstance(limiter.backend, MemoryBackend)
+
+
+# ---------------------------------------------------------------------------
+# message_to_json
+# ---------------------------------------------------------------------------
+
+
+def test_message_to_json_basic():
+    msg = Message(
+        id=1,
+        user_id=10,
+        channel_id="ch-1",
+        content="hello",
+        created_at=datetime(2026, 1, 1, 12, 0),
+    )
+    result = message_to_json(msg, "John Doe")
+    assert result["id"] == 1
+    assert result["user_id"] == 10
+    assert result["sender_name"] == "John Doe"
+    assert result["content"] == "hello"
+    assert result["created_at"] == "12:00, 2026-01-01"
+    assert result["edited_at"] is None
+
+
+def test_message_to_json_with_edited_at():
+    msg = Message(
+        id=2,
+        user_id=20,
+        channel_id="ch-2",
+        content="edited",
+        created_at=datetime(2026, 6, 15, 8, 30),
+        edited_at=datetime(2026, 6, 15, 9, 0),
+    )
+    result = message_to_json(msg, "Jane Smith")
+    assert result["edited_at"] == "09:00, 2026-06-15"
+    assert result["content"] == "edited"
+
+
+# ---------------------------------------------------------------------------
+# get_paginated_messages
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_paginated_messages_basic():
+    db_sync = TestingSessionLocal()
+    user = create_user(db_sync, "Pag", "User", "pag-user@example.com")
+    friend = create_user(db_sync, "Pag", "Friend", "pag-friend@example.com")
+    ch = Channel(channel_id="pag-ch-1", user1_id=user.id, user2_id=friend.id)
+    db_sync.add(ch)
+    db_sync.commit()
+    for i in range(5):
+        msg = Message(
+            content=f"msg {i}",
+            channel_id="pag-ch-1",
+            user_id=user.id,
+            created_at=datetime(2026, 1, 1, 12, i),
+        )
+        db_sync.add(msg)
+    db_sync.commit()
+    db_sync.close()
+
+    async with async_session_scope() as db:
+        total, messages, users_map = await get_paginated_messages(
+            db, Message, Message.channel_id, "pag-ch-1"
+        )
+    assert total == 5
+    assert len(messages) == 5
+    assert messages[0].content == "msg 0"
+    assert user.id in users_map
+
+
+@pytest.mark.asyncio
+async def test_get_paginated_messages_empty():
+    async with async_session_scope() as db:
+        total, messages, users_map = await get_paginated_messages(
+            db, Message, Message.channel_id, "nonexistent-ch"
+        )
+    assert total == 0
+    assert messages == []
+    assert users_map == {}
+
+
+# ---------------------------------------------------------------------------
+# get_channel_or_404
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_channel_or_404_found():
+    db_sync = TestingSessionLocal()
+    user = create_user(db_sync, "CH", "Found", "ch-found@example.com")
+    friend = create_user(db_sync, "CH", "Other", "ch-other@example.com")
+    ch = Channel(channel_id="ch-test-1", user1_id=user.id, user2_id=friend.id)
+    db_sync.add(ch)
+    db_sync.commit()
+    db_sync.close()
+
+    async with async_session_scope() as db:
+        result = await get_channel_or_404(db, "ch-test-1")
+    assert result.channel_id == "ch-test-1"
+
+
+@pytest.mark.asyncio
+async def test_get_channel_or_404_not_found():
+    from fastapi import HTTPException
+
+    async with async_session_scope() as db:
+        with pytest.raises(HTTPException) as exc_info:
+            await get_channel_or_404(db, "nonexistent-ch")
+    assert exc_info.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# require_channel_participant
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_require_channel_participant_ok():
+    db_sync = TestingSessionLocal()
+    user = create_user(db_sync, "CP", "Ok", "cp-ok@example.com")
+    friend = create_user(db_sync, "CP", "Friend", "cp-friend@example.com")
+    ch = Channel(channel_id="cp-ch-1", user1_id=user.id, user2_id=friend.id)
+    db_sync.add(ch)
+    db_sync.commit()
+    db_sync.close()
+
+    async with async_session_scope() as db:
+        await require_channel_participant(db, "cp-ch-1", user.id)
+
+
+@pytest.mark.asyncio
+async def test_require_channel_participant_not_member():
+    db_sync = TestingSessionLocal()
+    user = create_user(db_sync, "CP", "Not", "cp-not@example.com")
+    friend = create_user(db_sync, "CP", "Friend2", "cp-friend2@example.com")
+    outsider = create_user(db_sync, "CP", "Out", "cp-out@example.com")
+    ch = Channel(channel_id="cp-ch-2", user1_id=user.id, user2_id=friend.id)
+    db_sync.add(ch)
+    db_sync.commit()
+    db_sync.close()
+
+    async with async_session_scope() as db:
+        with pytest.raises(HTTPException) as exc_info:
+            await require_channel_participant(db, "cp-ch-2", outsider.id)
+    assert exc_info.value.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# mark_channel_read
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_mark_channel_read_creates():
+    db_sync = TestingSessionLocal()
+    user = create_user(db_sync, "MCR", "Create", "mcr-create@example.com")
+    friend = create_user(db_sync, "MCR", "Friend", "mcr-friend@example.com")
+    ch = Channel(channel_id="mcr-ch-1", user1_id=user.id, user2_id=friend.id)
+    db_sync.add(ch)
+    db_sync.commit()
+    msg = Message(
+        content="latest",
+        channel_id="mcr-ch-1",
+        user_id=friend.id,
+        created_at=datetime.now(),
+    )
+    db_sync.add(msg)
+    db_sync.commit()
+    msg_id = msg.id
+    db_sync.close()
+
+    async with async_session_scope() as db:
+        await mark_channel_read(db, user.id, "mcr-ch-1")
+
+    db_check = TestingSessionLocal()
+    ucr = (
+        db_check.query(UserChannelRead)
+        .filter(
+            UserChannelRead.user_id == user.id,
+            UserChannelRead.channel_id == "mcr-ch-1",
+        )
+        .first()
+    )
+    assert ucr is not None
+    assert ucr.last_read_message_id == msg_id
+    db_check.close()
+
+
+@pytest.mark.asyncio
+async def test_mark_channel_read_updates():
+    db_sync = TestingSessionLocal()
+    user = create_user(db_sync, "MCR", "Update", "mcr-update@example.com")
+    friend = create_user(db_sync, "MCR", "Friend2", "mcr-friend2@example.com")
+    ch = Channel(channel_id="mcr-ch-2", user1_id=user.id, user2_id=friend.id)
+    db_sync.add(ch)
+    db_sync.commit()
+    msg1 = Message(
+        content="old",
+        channel_id="mcr-ch-2",
+        user_id=friend.id,
+        created_at=datetime.now(),
+    )
+    db_sync.add(msg1)
+    db_sync.commit()
+
+    async with async_session_scope() as db:
+        await mark_channel_read(db, user.id, "mcr-ch-2")
+
+    msg2 = Message(
+        content="new",
+        channel_id="mcr-ch-2",
+        user_id=friend.id,
+        created_at=datetime.now(),
+    )
+    db_sync.add(msg2)
+    db_sync.commit()
+    msg2_id = msg2.id
+    db_sync.close()
+
+    async with async_session_scope() as db:
+        await mark_channel_read(db, user.id, "mcr-ch-2")
+
+    db_check = TestingSessionLocal()
+    ucr = (
+        db_check.query(UserChannelRead)
+        .filter(
+            UserChannelRead.user_id == user.id,
+            UserChannelRead.channel_id == "mcr-ch-2",
+        )
+        .first()
+    )
+    assert ucr.last_read_message_id == msg2_id
+    db_check.close()
+
+
+@pytest.mark.asyncio
+async def test_mark_channel_read_empty_channel():
+    async with async_session_scope() as db:
+        await mark_channel_read(db, 99999, "empty-ch")
+    assert True
+
+
+# ---------------------------------------------------------------------------
+# mark_group_read
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_mark_group_read_creates():
+    db_sync = TestingSessionLocal()
+    user = create_user(db_sync, "MGR", "Create", "mgr-create@example.com")
+    group = create_group(db_sync, "MGR Group", user)
+    create_group_member(db_sync, group.id, user)
+    gmsg = GroupMessage(
+        content="latest",
+        group_id=group.id,
+        user_id=user.id,
+        created_at=datetime.now(),
+    )
+    db_sync.add(gmsg)
+    db_sync.commit()
+    gmsg_id = gmsg.id
+    db_sync.close()
+
+    async with async_session_scope() as db:
+        await mark_group_read(db, user.id, group.id)
+
+    db_check = TestingSessionLocal()
+    ugr = (
+        db_check.query(UserGroupRead)
+        .filter(
+            UserGroupRead.user_id == user.id,
+            UserGroupRead.group_id == group.id,
+        )
+        .first()
+    )
+    assert ugr is not None
+    assert ugr.last_read_message_id == gmsg_id
+    db_check.close()
+
+
+@pytest.mark.asyncio
+async def test_mark_group_read_updates():
+    db_sync = TestingSessionLocal()
+    user = create_user(db_sync, "MGR", "Update", "mgr-update@example.com")
+    group = create_group(db_sync, "MGR Group 2", user)
+    create_group_member(db_sync, group.id, user)
+    gmsg1 = GroupMessage(
+        content="old", group_id=group.id, user_id=user.id, created_at=datetime.now()
+    )
+    db_sync.add(gmsg1)
+    db_sync.commit()
+
+    async with async_session_scope() as db:
+        await mark_group_read(db, user.id, group.id)
+
+    gmsg2 = GroupMessage(
+        content="new", group_id=group.id, user_id=user.id, created_at=datetime.now()
+    )
+    db_sync.add(gmsg2)
+    db_sync.commit()
+    gmsg2_id = gmsg2.id
+    db_sync.close()
+
+    async with async_session_scope() as db:
+        await mark_group_read(db, user.id, group.id)
+
+    db_check = TestingSessionLocal()
+    ugr = (
+        db_check.query(UserGroupRead)
+        .filter(
+            UserGroupRead.user_id == user.id,
+            UserGroupRead.group_id == group.id,
+        )
+        .first()
+    )
+    assert ugr.last_read_message_id == gmsg2_id
+    db_check.close()
+
+
+@pytest.mark.asyncio
+async def test_mark_group_read_empty_group():
+    async with async_session_scope() as db:
+        await mark_group_read(db, 99999, 99999)
+    assert True
+
+
+# ---------------------------------------------------------------------------
+# compute_channel_unread_counts
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_compute_channel_unread_counts_basic():
+    db_sync = TestingSessionLocal()
+    user = create_user(db_sync, "CCU", "Basic", "ccu-basic@example.com")
+    friend = create_user(db_sync, "CCU", "Friend", "ccu-friend@example.com")
+    ch = Channel(channel_id="ccu-ch-1", user1_id=user.id, user2_id=friend.id)
+    db_sync.add(ch)
+    db_sync.commit()
+    for i in range(3):
+        msg = Message(
+            content=f"m{i}",
+            channel_id="ccu-ch-1",
+            user_id=friend.id,
+            created_at=datetime.now(),
+        )
+        db_sync.add(msg)
+    db_sync.commit()
+    db_sync.close()
+
+    async with async_session_scope() as db:
+        counts = await compute_channel_unread_counts(db, user.id, ["ccu-ch-1"])
+    assert counts["ccu-ch-1"] == 3
+
+
+@pytest.mark.asyncio
+async def test_compute_channel_unread_counts_all_read():
+    db_sync = TestingSessionLocal()
+    user = create_user(db_sync, "CCU", "Read", "ccu-read@example.com")
+    friend = create_user(db_sync, "CCU", "Friend2", "ccu-friend2@example.com")
+    ch = Channel(channel_id="ccu-ch-2", user1_id=user.id, user2_id=friend.id)
+    db_sync.add(ch)
+    db_sync.commit()
+    msg = Message(
+        content="m0",
+        channel_id="ccu-ch-2",
+        user_id=friend.id,
+        created_at=datetime.now(),
+    )
+    db_sync.add(msg)
+    db_sync.commit()
+    msg_id = msg.id
+    db_sync.close()
+
+    async with async_session_scope() as db:
+        await mark_channel_read(db, user.id, "ccu-ch-2")
+
+    async with async_session_scope() as db:
+        counts = await compute_channel_unread_counts(db, user.id, ["ccu-ch-2"])
+    assert counts["ccu-ch-2"] == 0
+
+
+@pytest.mark.asyncio
+async def test_compute_channel_unread_counts_empty():
+    async with async_session_scope() as db:
+        counts = await compute_channel_unread_counts(db, 99999, [])
+    assert counts == {}
+
+
+# ---------------------------------------------------------------------------
+# compute_group_unread_counts
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_compute_group_unread_counts_basic():
+    db_sync = TestingSessionLocal()
+    user = create_user(db_sync, "CGU", "Basic", "cgu-basic@example.com")
+    other = create_user(db_sync, "CGU", "Other", "cgu-other@example.com")
+    group = create_group(db_sync, "CGU Group", user)
+    create_group_member(db_sync, group.id, user)
+    create_group_member(db_sync, group.id, other)
+    for i in range(4):
+        gmsg = GroupMessage(
+            content=f"g{i}",
+            group_id=group.id,
+            user_id=other.id,
+            created_at=datetime.now(),
+        )
+        db_sync.add(gmsg)
+    db_sync.commit()
+    group_id = group.id
+    db_sync.close()
+
+    async with async_session_scope() as db:
+        counts = await compute_group_unread_counts(db, user.id, [group_id])
+    assert counts[group_id] == 4
+
+
+@pytest.mark.asyncio
+async def test_compute_group_unread_counts_all_read():
+    db_sync = TestingSessionLocal()
+    user = create_user(db_sync, "CGU", "Read", "cgu-read@example.com")
+    other = create_user(db_sync, "CGU", "Other2", "cgu-other2@example.com")
+    group = create_group(db_sync, "CGU Group 2", user)
+    create_group_member(db_sync, group.id, user)
+    create_group_member(db_sync, group.id, other)
+    gmsg = GroupMessage(
+        content="g0", group_id=group.id, user_id=other.id, created_at=datetime.now()
+    )
+    db_sync.add(gmsg)
+    db_sync.commit()
+    group_id = group.id
+    db_sync.close()
+
+    async with async_session_scope() as db:
+        await mark_group_read(db, user.id, group_id)
+
+    async with async_session_scope() as db:
+        counts = await compute_group_unread_counts(db, user.id, [group_id])
+    assert counts[group_id] == 0
+
+
+@pytest.mark.asyncio
+async def test_compute_group_unread_counts_empty():
+    async with async_session_scope() as db:
+        counts = await compute_group_unread_counts(db, 99999, [])
+    assert counts == {}

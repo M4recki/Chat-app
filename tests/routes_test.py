@@ -921,6 +921,56 @@ def test_deny_friend_not_found():
     assert response.status_code == 404
 
 
+def test_add_friend_redirects_to_search_user():
+    db = TestingSessionLocal()
+    user = create_user(db, "RF", "User", "rf-user@example.com")
+    target = create_user(db, "RF", "Target", "rf-target@example.com")
+
+    local_client = authed_client(user)
+    response = local_client.post(
+        f"/add_friend/{target.id}",
+        data={"csrf_token": generate_csrf_token(user.id)},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "/search_user" in response.headers["location"]
+
+
+def test_accept_friend_redirects_to_friend_requests():
+    db = TestingSessionLocal()
+    user = create_user(db, "RF", "Accept", "rf-accept@example.com")
+    requester = create_user(db, "RF", "Requester", "rf-requester@example.com")
+
+    create_friendship(db, requester, user, FriendStatus.PENDING)
+    local_client = authed_client(user)
+    response = local_client.post(
+        f"/accept_friend/{requester.id}",
+        data={"csrf_token": generate_csrf_token(user.id)},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "/friend_requests" in response.headers["location"]
+
+
+def test_deny_friend_redirects_to_friend_requests():
+    db = TestingSessionLocal()
+    user = create_user(db, "RF", "Deny", "rf-deny@example.com")
+    requester = create_user(db, "RF", "DenyReq", "rf-denyreq@example.com")
+
+    create_friendship(db, requester, user, FriendStatus.PENDING)
+    local_client = authed_client(user)
+    response = local_client.post(
+        f"/deny_friend/{requester.id}",
+        data={"csrf_token": generate_csrf_token(user.id)},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert "/friend_requests" in response.headers["location"]
+
+
 def test_block_friend():
     db = TestingSessionLocal()
     user = create_user(
@@ -1436,6 +1486,60 @@ def test_search_user_with_friend_no_channel():
     response = local_client.get("/search_user")
 
     assert response.status_code == 200
+
+
+def test_search_user_with_query_filters_by_name():
+    db = TestingSessionLocal()
+    user = create_user(db, "SQ", "Owner", "sq-owner@example.com")
+    jan = create_user(db, "Jan", "Kowalski", "sq-jan@example.com")
+    create_user(db, "Piotr", "Nowak", "sq-piotr@example.com")
+
+    local_client = authed_client(user)
+    response = local_client.get("/search_user?q=Jan")
+
+    assert response.status_code == 200
+    assert jan.name in response.text
+    assert jan.surname in response.text
+
+
+def test_search_user_with_query_filters_by_email():
+    db = TestingSessionLocal()
+    user = create_user(db, "SQ2", "Owner", "sq2-owner@example.com")
+    target = create_user(db, "Target", "Unique", "unique-email@example.com")
+    create_user(db, "Other", "User", "other@example.com")
+
+    local_client = authed_client(user)
+    response = local_client.get("/search_user?q=unique-email")
+
+    assert response.status_code == 200
+    assert target.name in response.text
+    assert target.surname in response.text
+
+
+def test_search_user_with_query_no_results():
+    db = TestingSessionLocal()
+    user = create_user(db, "SQ3", "Owner", "sq3-owner@example.com")
+    create_user(db, "Some", "User", "some@example.com")
+
+    local_client = authed_client(user)
+    response = local_client.get("/search_user?q=xyz123nonexistent")
+
+    assert response.status_code == 200
+    assert "Some" not in response.text
+
+
+def test_search_user_with_empty_query_returns_all():
+    db = TestingSessionLocal()
+    user = create_user(db, "SQ4", "Owner", "sq4-owner@example.com")
+    user1 = create_user(db, "Alpha", "User", "alpha@example.com")
+    user2 = create_user(db, "Beta", "User", "beta@example.com")
+
+    local_client = authed_client(user)
+    response = local_client.get("/search_user?q=")
+
+    assert response.status_code == 200
+    assert user1.name in response.text
+    assert user2.name in response.text
 
 
 #  Update profile data
@@ -2223,6 +2327,246 @@ def test_group_members_json_not_member():
     response = local_client.get(f"/group_members/{group.id}")
 
     assert response.status_code == 403
+
+
+def test_leave_group_success():
+    db = TestingSessionLocal()
+    creator = create_user(db, "LG", "Creator", "lg-creator@example.com")
+    member = create_user(db, "LG", "Member", "lg-member@example.com")
+
+    group = create_group(db, "Leave Group", creator)
+    create_group_member(db, group.id, creator)
+    create_group_member(db, group.id, member)
+    local_client = authed_client(member)
+    csrf = generate_csrf_token(member.id)
+
+    response = local_client.post(
+        f"/leave_group/{group.id}",
+        data={"csrf_token": csrf},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/group_chat_list"
+
+    db_check = TestingSessionLocal()
+    remaining = (
+        db_check.query(GroupMember)
+        .filter(GroupMember.group_id == group.id, GroupMember.user_id == member.id)
+        .first()
+    )
+    assert remaining is None
+    db_check.close()
+
+
+def test_leave_group_creator_forbidden():
+    db = TestingSessionLocal()
+    creator = create_user(db, "LG", "Creator2", "lg-creator2@example.com")
+    member = create_user(db, "LG", "Member2", "lg-member2@example.com")
+
+    group = create_group(db, "Leave Group 2", creator)
+    create_group_member(db, group.id, creator)
+    create_group_member(db, group.id, member)
+    local_client = authed_client(creator)
+    csrf = generate_csrf_token(creator.id)
+
+    response = local_client.post(
+        f"/leave_group/{group.id}",
+        data={"csrf_token": csrf},
+    )
+
+    assert response.status_code == 400
+    assert "Creator cannot leave" in response.text
+
+
+def test_leave_group_not_member():
+    db = TestingSessionLocal()
+    creator = create_user(db, "LG", "Creator3", "lg-creator3@example.com")
+    outsider = create_user(db, "LG", "Outsider", "lg-outsider@example.com")
+
+    group = create_group(db, "Leave Group 3", creator)
+    create_group_member(db, group.id, creator)
+    local_client = authed_client(outsider)
+    csrf = generate_csrf_token(outsider.id)
+
+    response = local_client.post(
+        f"/leave_group/{group.id}",
+        data={"csrf_token": csrf},
+    )
+
+    assert response.status_code == 404
+
+
+def test_leave_group_no_auth():
+    db = TestingSessionLocal()
+    creator = create_user(db, "LG", "Creator4", "lg-creator4@example.com")
+    group = create_group(db, "Leave Group 4", creator)
+    create_group_member(db, group.id, creator)
+
+    response = client.post(
+        f"/leave_group/{group.id}",
+        data={"csrf_token": generate_csrf_token(0)},
+    )
+
+    assert response.status_code == 401
+
+
+def test_api_chat_messages_basic():
+    db = TestingSessionLocal()
+    user = create_user(db, "API", "User", "api-user@example.com")
+    friend = create_user(db, "API", "Friend", "api-friend@example.com")
+
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED)
+    ch_id = str(uuid4())
+    ch = Channel(channel_id=ch_id, user1_id=user.id, user2_id=friend.id)
+    db.add(ch)
+    db.commit()
+    create_message(db, "hello", ch_id, user)
+    create_message(db, "hi there", ch_id, friend)
+    db.close()
+
+    local_client = authed_client(user)
+    response = local_client.get(f"/api/chat_messages/{ch_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "messages" in data
+    assert "has_more" in data
+    assert "total" in data
+    assert data["total"] == 2
+    assert len(data["messages"]) == 2
+    assert data["messages"][0]["content"] == "hello"
+    assert data["messages"][1]["content"] == "hi there"
+
+
+def test_api_chat_messages_empty():
+    db = TestingSessionLocal()
+    user = create_user(db, "API", "Empty", "api-empty@example.com")
+    friend = create_user(db, "API", "Friend2", "api-friend2@example.com")
+
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED)
+    ch_id = str(uuid4())
+    ch = Channel(channel_id=ch_id, user1_id=user.id, user2_id=friend.id)
+    db.add(ch)
+    db.commit()
+    db.close()
+
+    local_client = authed_client(user)
+    response = local_client.get(f"/api/chat_messages/{ch_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["messages"] == []
+    assert data["total"] == 0
+    assert data["has_more"] is False
+
+
+def test_api_chat_messages_not_participant():
+    db = TestingSessionLocal()
+    user = create_user(db, "API", "NP", "api-np@example.com")
+    friend = create_user(db, "API", "Friend3", "api-friend3@example.com")
+    outsider = create_user(db, "API", "Outsider", "api-outsider@example.com")
+
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED)
+    ch_id = str(uuid4())
+    ch = Channel(channel_id=ch_id, user1_id=user.id, user2_id=friend.id)
+    db.add(ch)
+    db.commit()
+    db.close()
+
+    local_client = authed_client(outsider)
+    response = local_client.get(f"/api/chat_messages/{ch_id}")
+
+    assert response.status_code == 403
+
+
+def test_api_chat_messages_no_auth():
+    db = TestingSessionLocal()
+    user = create_user(db, "API", "NoAuth", "api-noauth@example.com")
+    friend = create_user(db, "API", "Friend4", "api-friend4@example.com")
+
+    create_friendship(db, user, friend, FriendStatus.ACCEPTED)
+    ch_id = str(uuid4())
+    ch = Channel(channel_id=ch_id, user1_id=user.id, user2_id=friend.id)
+    db.add(ch)
+    db.commit()
+    db.close()
+
+    response = client.get(f"/api/chat_messages/{ch_id}")
+
+    assert response.status_code == 401
+
+
+def test_api_group_messages_basic():
+    db = TestingSessionLocal()
+    user = create_user(db, "API", "Group", "api-group@example.com")
+    member = create_user(db, "API", "GMember", "api-gmember@example.com")
+
+    group = create_group(db, "API Group", user)
+    create_group_member(db, group.id, user)
+    create_group_member(db, group.id, member)
+    create_group_message(db, group.id, user, "group msg 1")
+    create_group_message(db, group.id, member, "group msg 2")
+    db.close()
+
+    local_client = authed_client(user)
+    response = local_client.get(f"/api/group_messages/{group.id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "messages" in data
+    assert "has_more" in data
+    assert "total" in data
+    assert data["total"] == 2
+    assert len(data["messages"]) == 2
+    assert data["messages"][0]["content"] == "group msg 1"
+    assert data["messages"][1]["content"] == "group msg 2"
+
+
+def test_api_group_messages_empty():
+    db = TestingSessionLocal()
+    user = create_user(db, "API", "GEmpty", "api-gempty@example.com")
+
+    group = create_group(db, "API Group Empty", user)
+    create_group_member(db, group.id, user)
+    db.close()
+
+    local_client = authed_client(user)
+    response = local_client.get(f"/api/group_messages/{group.id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["messages"] == []
+    assert data["total"] == 0
+    assert data["has_more"] is False
+
+
+def test_api_group_messages_not_member():
+    db = TestingSessionLocal()
+    user = create_user(db, "API", "GNM", "api-gnm@example.com")
+    outsider = create_user(db, "API", "GOut", "api-gout@example.com")
+
+    group = create_group(db, "API Group NM", user)
+    create_group_member(db, group.id, user)
+    db.close()
+
+    local_client = authed_client(outsider)
+    response = local_client.get(f"/api/group_messages/{group.id}")
+
+    assert response.status_code == 403
+
+
+def test_api_group_messages_no_auth():
+    db = TestingSessionLocal()
+    user = create_user(db, "API", "GNoAuth", "api-gnoauth@example.com")
+
+    group = create_group(db, "API Group NoAuth", user)
+    create_group_member(db, group.id, user)
+    db.close()
+
+    response = client.get(f"/api/group_messages/{group.id}")
+
+    assert response.status_code == 401
 
 
 #  Password Reset
