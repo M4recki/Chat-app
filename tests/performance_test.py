@@ -16,6 +16,7 @@ from PIL import Image
 
 def test_rate_limiter_parallel_requests():
     clear_rate_limiter()
+    client.cookies.clear()
     n_requests = 20
     results = []
 
@@ -164,6 +165,7 @@ def test_websocket_multiple_broadcast():
 
 def test_endpoint_response_times():
     clear_rate_limiter()
+    client.cookies.clear()
     endpoints = ["/", "/login", "/sign_up", "/contact"]
     max_time_ms = 500
 

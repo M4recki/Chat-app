@@ -109,6 +109,8 @@ def test_chatbot_api_failure_returns_structured_error(monkeypatch):
         db.query(ChatbotMessage).filter(ChatbotMessage.user_id == user.id).count() == 0
     )
 
+    client.cookies.clear()
+
 
 #  Pydantic edge cases
 
