@@ -2,11 +2,9 @@ from itsdangerous import URLSafeTimedSerializer as Serializer
 from fastapi.testclient import TestClient
 from project.python.models import ChatbotMessage
 from project.python.chatbot_utils import ChatbotServiceError
-from project.python.routes import (
-    send_email,
-    chatbot_response,
-    generate_csrf_token,
-)
+from project.python.chatbot_utils import chatbot_response
+from project.python.routes.email import send_email
+from project.python.routes.helpers import generate_csrf_token
 from project.python.settings import settings
 from project.python.main import app
 from project.python.rate_limit import clear_rate_limiter

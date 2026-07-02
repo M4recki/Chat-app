@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime
+from gc import collect as gc_collect
 from importlib import import_module
 from io import BytesIO
 from os import environ
@@ -10,8 +11,10 @@ from warnings import filterwarnings
 
 import pytest
 from fastapi.testclient import TestClient
+from itsdangerous import URLSafeTimedSerializer as Serializer
 from PIL import Image
 from sqlalchemy.orm import Session
+from starlette.requests import Request
 
 filterwarnings("ignore", message="unclosed database", category=ResourceWarning)
 
@@ -22,33 +25,86 @@ db_file = project_root / "test.db"
 if db_file.exists():
     db_file.unlink()
 
+# must happen before any project import reads settings
+environ["TESTING"] = "1"
+environ["CHAT_SECRET_KEY"] = "test-secret"
+
+from project.python import models
+from project.python.main import app
+import tests.model_test as _model_test_mod
 from tests.model_test import (
     async_engine as test_async_engine,
     sync_engine as test_engine,
     TestingAsyncSessionLocal,
-    TestingSessionLocal,
+    TestingSessionLocal as _TestingSessionLocal,
 )
 
+# session-leak prevention
+_all_sessions: set = set()
+
+
+def _tracked_session(**kwargs):
+    session = _TestingSessionLocal(**kwargs)
+    _all_sessions.add(session)
+    return session
+
+
+def _close_all_sessions():
+    for s in list(_all_sessions):
+        try:
+            s.close()
+        except Exception:
+            pass
+        _all_sessions.discard(s)
+    gc_collect()
+
+
+TestingSessionLocal = _tracked_session
+_model_test_mod.TestingSessionLocal = _tracked_session
+
+#  wire test database into production modules
 prod_db = import_module("project.python.database")
 prod_db.engine = test_engine
-prod_db.SessionLocal = TestingSessionLocal
+prod_db.SessionLocal = _tracked_session
 prod_db.async_engine = test_async_engine
 prod_db.AsyncSessionLocal = TestingAsyncSessionLocal
 
-from project.python import models
-
 models.Base.metadata.create_all(bind=test_engine)
-
-environ["TESTING"] = "1"
-environ["CHAT_SECRET_KEY"] = "test-secret"
 
 TEST_PASSWORD = "Password123"
 NONEXISTENT_ID = 99999
 DEFAULT_AVATAR = "project/static/img/default avatar.png"
 
-from project.python.main import app
-
 client = TestClient(app)
+
+from project.python.settings import settings as _settings
+
+
+def set_access_token(user_id: int, target_client=client) -> None:
+    serializer = Serializer(_settings.chat_secret_key)
+    token = serializer.dumps({"user_id": user_id})
+    target_client.cookies.set("access_token", token)
+
+
+def authed_client(user) -> TestClient:
+    c = TestClient(app, raise_server_exceptions=False)
+    set_access_token(user.id, target_client=c)
+    return c
+
+
+def make_request(headers: list | None = None, host: str | None = "127.0.0.1"):
+    scope = {
+        "type": "http",
+        "method": "GET",
+        "path": "/",
+        "headers": headers or [],
+        "client": (host, 8000) if host else None,
+    }
+    return Request(scope)
+
+
+def make_request_with_cookie(token: str) -> Request:
+    return make_request([(b"cookie", f"access_token={token}".encode())])
 
 
 def create_user(
@@ -207,6 +263,7 @@ async def async_session_scope():
 
 def clear_tables():
     """Reset test database by dropping and recreating all tables."""
+    _close_all_sessions()
     models.Base.metadata.drop_all(bind=test_engine)
     models.Base.metadata.create_all(bind=test_engine)
 

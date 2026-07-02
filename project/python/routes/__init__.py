@@ -1,33 +1,5 @@
 from fastapi import APIRouter
 
-# Re-exports for backward compatibility with tests
-from ..chatbot_utils import chatbot_response  # noqa: F401
-from ..settings import settings  # noqa: F401
-from .helpers import generate_channel_id
-from .email import send_email
-from .helpers import (
-    authentication_in_header,
-    csrf_context,
-    generate_csrf_token,
-    get_current_user,
-    get_current_user_id,
-    get_user,
-    get_user_from_request,
-    is_authenticated,
-    is_csrf_token_valid,
-    validate_csrf,
-)
-from .template import (
-    DEFAULT_AVATAR_PATH,
-    PROJECT_DIR,
-    current_year,
-    encode_avatar,
-    render_template,
-    templates,
-    user_image,
-    user_name,
-)
-
 from .auth import router as auth_router
 from .chat import router as chat_router
 from .chatbot import router as chatbot_router

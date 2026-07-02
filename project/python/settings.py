@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     email_receiver: str = "admin@example.com"
     email_password: str = ""
     email_sender: str = ""
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 465
+    smtp_use_tls: bool = True
 
     # AI
     ai_key: str = ""
@@ -65,6 +68,10 @@ class Settings(BaseSettings):
     testing: bool = False
     app_name: str = "Chat App"
     app_version: str = "1.0.0"
+    password_min_length: int = 8
+    max_avatar_size: int = 5 * 1024 * 1024
+    friend_request_cooldown_days: int = 14
+    disconnect_grace_seconds: int = 5
 
     # Server
     host: str = "0.0.0.0"

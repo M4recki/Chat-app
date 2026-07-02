@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy import select
 from werkzeug.security import generate_password_hash
 
 from ..database import async_session_scope
 from ..models import User
+from ..settings import settings
+from .forms import profile_update_form, ProfileUpdateForm
 from .helpers import get_current_user, validate_csrf, validate_email
 from .template import templates
 
@@ -35,48 +37,31 @@ async def update_profile_page(
 @router.post("/update_profile", dependencies=[Depends(validate_csrf)])
 async def update_profile_data(
     request: Request,
-    avatar: UploadFile = File(None),
-    name: str = Form(None),
-    surname: str = Form(None),
-    email: str = Form(None),
-    password: str = Form(None),
-    confirm_password: str = Form(None),
+    form: ProfileUpdateForm = Depends(profile_update_form),
     user: User = Depends(get_current_user),
 ) -> Response:
-    """Handle update profile form submission.
-
-    Args:
-        request: The request object
-        avatar: The avatar upload field
-        name: The name form field
-        surname: The surname form field
-        email: The email form field
-        password: The password form field
-        confirm_password: The confirm password form field
-        user: The authenticated user
-
-    Returns:
-        Response: Redirect or update profile template
-    """
-
     errors = {}
 
-    if email is not None and not validate_email(email):
+    if form.email is not None and not validate_email(form.email):
         errors["email"] = "Invalid email format"
 
-    if password is not None and len(password) < 8:
-        errors["password"] = "Password must be at least 8 characters long"
+    if form.password is not None and len(form.password) < settings.password_min_length:
+        errors["password"] = (
+            f"Password must be at least {settings.password_min_length} characters long"
+        )
 
-    if password != confirm_password:
+    if form.password != form.confirm_password:
         errors["confirm_password"] = "Passwords do not match"
 
-    if avatar and avatar.content_type:
-        if avatar.content_type not in ["image/jpeg", "image/png"]:
+    if form.avatar and form.avatar.content_type:
+        if form.avatar.content_type not in ["image/jpeg", "image/png"]:
             errors["avatar"] = "Avatar must be a JPEG or PNG file"
         else:
-            avatar_data = await avatar.read()
-            if len(avatar_data) > 5 * 1024 * 1024:
-                errors["avatar"] = "Avatar must be smaller than 5 MB"
+            avatar_data = await form.avatar.read()
+            if len(avatar_data) > settings.max_avatar_size:
+                errors["avatar"] = (
+                    f"Avatar must be smaller than {settings.max_avatar_size // (1024 * 1024)} MB"
+                )
             else:
                 user.avatar = avatar_data
 
@@ -90,15 +75,15 @@ async def update_profile_data(
     async with async_session_scope() as db:
         result = await db.execute(select(User).filter(User.id == user.id))
         updated_user = result.scalar()
-        if name is not None:
-            updated_user.name = name
-        if surname is not None:
-            updated_user.surname = surname
-        if email is not None:
-            updated_user.email = email
-        if password is not None:
-            updated_user.password = generate_password_hash(password)
-        if avatar and avatar.content_type:
+        if form.name is not None:
+            updated_user.name = form.name
+        if form.surname is not None:
+            updated_user.surname = form.surname
+        if form.email is not None:
+            updated_user.email = form.email
+        if form.password is not None:
+            updated_user.password = generate_password_hash(form.password)
+        if form.avatar and form.avatar.content_type:
             updated_user.avatar = user.avatar
 
     return RedirectResponse(request.url_for("single_chat"), status_code=303)

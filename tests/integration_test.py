@@ -5,7 +5,7 @@ from project.python.models import User
 from project.python.settings import settings
 from project.python.rate_limit import clear_rate_limiter
 from itsdangerous import URLSafeTimedSerializer as Serializer
-from project.python.routes import generate_csrf_token
+from project.python.routes.helpers import generate_csrf_token
 from tests.model_test import TestingSessionLocal
 
 
@@ -130,7 +130,7 @@ def test_expired_token_mid_session(monkeypatch):
     resp = local.get("/single_chat")
     assert resp.status_code == 200
 
-    monkeypatch.setattr("project.python.routes.settings.token_max_age", -1)
+    monkeypatch.setattr("project.python.settings.settings.token_max_age", -1)
     resp = local.get("/single_chat")
     assert resp.status_code == 401
 

@@ -3,7 +3,6 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
-from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from uvicorn import run
 
@@ -19,10 +18,6 @@ from .settings import settings
 from .ws import ws_router
 
 app = FastAPI()
-
-templates = Jinja2Templates(
-    directory=Path(__file__).parent.parent / "templates",
-)
 
 app.mount(
     "/static",

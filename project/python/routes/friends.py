@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from ..database import async_session_scope
 from ..models import Friend, FriendStatus, User
+from ..settings import settings
 from .helpers import (
     get_current_user,
     get_friendship,
@@ -183,7 +184,9 @@ async def add_friend(
 
         if existing_request:
             if existing_request.status == FriendStatus.PENDING:
-                if datetime.now() - existing_request.last_sent > timedelta(days=14):
+                if datetime.now() - existing_request.last_sent > timedelta(
+                    days=settings.friend_request_cooldown_days
+                ):
                     existing_request.last_sent = datetime.now()
                 else:
                     raise HTTPException(

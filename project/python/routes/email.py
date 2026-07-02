@@ -3,6 +3,7 @@ import secrets
 
 from email.message import EmailMessage
 from smtplib import SMTPException, SMTP_SSL
+import smtplib
 from ssl import create_default_context
 
 from itsdangerous import URLSafeTimedSerializer as Serializer
@@ -41,13 +42,17 @@ def send_email_raw(to_email: str, subject: str, body: str) -> str | None:
     context = create_default_context()
 
     try:
-        with SMTP_SSL("smtp.gmail.com", 465, context=context) as smtp:
-            smtp.login(sender, settings.email_password)
-            smtp.sendmail(
-                sender,
-                to_email,
-                email.as_string(),
-            )
+        host = settings.smtp_host
+        port = settings.smtp_port
+        if settings.smtp_use_tls:
+            with SMTP_SSL(host, port, context=context) as smtp:
+                smtp.login(sender, settings.email_password)
+                smtp.sendmail(sender, to_email, email.as_string())
+        else:
+            with smtplib.SMTP(host, port) as smtp:
+                smtp.starttls(context=context)
+                smtp.login(sender, settings.email_password)
+                smtp.sendmail(sender, to_email, email.as_string())
     except (SMTPException, OSError) as e:
         logger.error("Failed to send email to %s: %s", to_email, e)
         return "Failed to send email. Please try again later."

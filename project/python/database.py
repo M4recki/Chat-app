@@ -68,9 +68,7 @@ def get_db():
         db.close()
 
 
-# ---------------------------------------------------------------------------
 # Async engine – used in route handlers to avoid blocking the event loop
-# ---------------------------------------------------------------------------
 
 
 def async_url(url: str | URL) -> str | URL:

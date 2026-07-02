@@ -16,6 +16,7 @@ from .email import (
     send_reset_email,
     verify_password_reset_token,
 )
+from .forms import sign_up_form, SignUpForm
 from .helpers import is_authenticated, validate_csrf_optional, validate_email
 from .template import DEFAULT_AVATAR_PATH, render_template
 
@@ -56,39 +57,22 @@ def sign_up_page(request: Request):
 @router.post("/sign_up", dependencies=[Depends(validate_csrf_optional)])
 async def sign_up_data(
     request: Request,
-    name: str = Form(...),
-    surname: str = Form(...),
-    email: str = Form(...),
-    password: str = Form(...),
-    confirm_password: str = Form(...),
-    terms_conditions: bool = Form(...),
+    form: SignUpForm = Depends(sign_up_form),
 ) -> Response:
-    """Handle sign up form submission.
-
-    Args:
-        request: The request object
-        name: The name form field
-        surname: The surname form field
-        email: The email form field
-        password: The password form field
-        confirm_password: The confirm password form field
-        terms_conditions: The terms and conditions form field
-
-    Returns:
-        Response: Redirect to home or sign up template
-    """
     async with async_session_scope() as db:
-        result = await db.execute(select(User).filter(User.email == email))
+        result = await db.execute(select(User).filter(User.email == form.email))
         existing = result.scalar()
 
         errors = {}
-        if not validate_email(email):
+        if not validate_email(form.email):
             errors["email"] = "Invalid email format"
         if existing and "email" not in errors:
             errors["email"] = "User with this email already exists"
-        if len(password) < 8:
-            errors["password"] = "Password must be at least 8 characters long"
-        if password != confirm_password:
+        if len(form.password) < settings.password_min_length:
+            errors["password"] = (
+                f"Password must be at least {settings.password_min_length} characters long"
+            )
+        if form.password != form.confirm_password:
             errors["confirm_password"] = "Passwords do not match"
 
         if errors:
@@ -99,10 +83,10 @@ async def sign_up_data(
             img.save(img_binary, format="PNG")
 
         new_user = User(
-            name=name,
-            surname=surname,
-            email=email,
-            password=generate_password_hash(password),
+            name=form.name,
+            surname=form.surname,
+            email=form.email,
+            password=generate_password_hash(form.password),
             avatar=img_binary.getvalue(),
             created_at=datetime.now(),
         )
@@ -283,8 +267,10 @@ async def reset_password_data(
             "reset_password.html", request, token=token, errors=errors
         )
 
-    if len(password) < 8:
-        errors["password"] = "Password must be at least 8 characters long"
+    if len(password) < settings.password_min_length:
+        errors["password"] = (
+            f"Password must be at least {settings.password_min_length} characters long"
+        )
 
     if password != confirm_password:
         errors["confirm_password"] = "Passwords do not match"

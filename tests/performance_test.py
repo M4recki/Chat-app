@@ -6,7 +6,7 @@ from itsdangerous import URLSafeTimedSerializer as Serializer
 from conftest import client, DEFAULT_AVATAR, TEST_PASSWORD
 from project.python.main import app
 from project.python.rate_limit import clear_rate_limiter
-from project.python.routes import generate_csrf_token
+from project.python.routes.helpers import generate_csrf_token
 from project.python.settings import settings
 from tests.model_test import TestingSessionLocal
 from project.python.models import Channel, User

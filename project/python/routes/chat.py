@@ -2,7 +2,7 @@ from base64 import b64encode
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
-from sqlalchemy import func, or_, select
+from sqlalchemy import or_, select
 
 from ..database import async_session_scope
 from ..models import (
@@ -17,6 +17,7 @@ from .helpers import (
     create_channel,
     delete_message_broadcast,
     edit_message_broadcast,
+    fetch_api_messages_json,
     get_channel_id_map,
     get_current_user,
     get_friend_status_map,
@@ -25,7 +26,6 @@ from .helpers import (
     get_paginated_messages,
     get_user_by_id,
     mark_channel_read,
-    message_to_json,
     require_channel_participant,
     validate_csrf,
 )
@@ -175,65 +175,12 @@ async def api_chat_messages(
     limit: int = Query(default=PAGE_SIZE, ge=1, le=200),
     user: User = Depends(get_current_user),
 ) -> JSONResponse:
-    """Fetch paginated chat messages as JSON.
-
-    Args:
-        channel_id: The channel ID
-        offset: Number of messages to skip (from newest)
-        limit: Maximum number of messages to return
-        user: The authenticated user
-
-    Returns:
-        JSONResponse: JSON with messages list and has_more flag
-    """
     async with async_session_scope() as db:
         await require_channel_participant(db, channel_id, user.id)
-
-        count_result = await db.execute(
-            select(func.count())
-            .select_from(Message)
-            .filter(Message.channel_id == channel_id)
+        data = await fetch_api_messages_json(
+            db, Message, Message.channel_id, channel_id, offset, limit
         )
-        total = count_result.scalar()
-
-        # Get messages ordered by created_at DESC (newest first), then reverse
-        result_messages = await db.execute(
-            select(Message)
-            .filter(Message.channel_id == channel_id)
-            .order_by(Message.created_at.desc())
-            .offset(offset)
-            .limit(limit)
-        )
-        msgs = list(reversed(result_messages.scalars().all()))
-
-        author_ids = {m.user_id for m in msgs}
-        if author_ids:
-            result_authors = await db.execute(
-                select(User).filter(User.id.in_(author_ids))
-            )
-            users_map = {
-                u.id: {"name": u.name, "surname": u.surname}
-                for u in result_authors.scalars().all()
-            }
-        else:
-            users_map = {}
-
-        messages_json = []
-        for m in msgs:
-            sender = users_map.get(m.user_id, {})
-            messages_json.append(
-                message_to_json(
-                    m, f"{sender.get('name', '')} {sender.get('surname', '')}".strip()
-                )
-            )
-
-        return JSONResponse(
-            {
-                "messages": messages_json,
-                "has_more": (offset + limit) < total,
-                "total": total,
-            }
-        )
+        return JSONResponse(data)
 
 
 @router.post("/edit_message/{message_id}", dependencies=[Depends(validate_csrf)])
@@ -245,7 +192,12 @@ async def edit_message(
 ) -> Response:
     async with async_session_scope() as db:
         message = await get_message_or_404(db, message_id)
-        await edit_message_broadcast(message, user.id, content, message.channel_id)
+        error = await edit_message_broadcast(
+            message, user.id, content, message.channel_id
+        )
+        if error:
+            status = 400 if error == "Content cannot be empty" else 403
+            raise HTTPException(status_code=status, detail=error)
         await db.commit()
 
     return Response(status_code=200)
@@ -260,7 +212,9 @@ async def delete_message(
     async with async_session_scope() as db:
         message = await get_message_or_404(db, message_id)
         channel_id = message.channel_id
-        await delete_message_broadcast(message, user.id, channel_id)
+        error = await delete_message_broadcast(message, user.id, channel_id)
+        if error:
+            raise HTTPException(status_code=403, detail=error)
         await db.delete(message)
         await db.commit()
 

@@ -4,7 +4,6 @@ from json import dumps
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
-from sqlalchemy import func, select
 
 from ..models import GroupChat, GroupMember, GroupMessage, User
 
@@ -14,6 +13,7 @@ from .helpers import (
     compute_group_unread_counts,
     delete_message_broadcast,
     edit_message_broadcast,
+    fetch_api_messages_json,
     get_accepted_friends,
     get_current_user,
     get_group_member,
@@ -25,7 +25,6 @@ from .helpers import (
     get_users_by_ids,
     load_user_groups,
     mark_group_read,
-    message_to_json,
     require_group_member,
     validate_csrf,
 )
@@ -324,25 +323,14 @@ async def edit_group_message(
     content: str = Form(...),
     user: User = Depends(get_current_user),
 ) -> Response:
-    """Edit a group message.
-
-    Args:
-        message_id: The ID of the message to edit
-        content: The new message content
-        user: The authenticated user
-
-    Returns:
-        Response: 200 OK
-
-    Raises:
-        HTTPException 403: If the user is not the message author
-        HTTPException 404: If the message is not found
-    """
     async with async_session_scope() as db:
         message = await get_group_message_or_404(db, message_id)
-        await edit_message_broadcast(
+        error = await edit_message_broadcast(
             message, user.id, content, f"group_{message.group_id}"
         )
+        if error:
+            status = 400 if error == "Content cannot be empty" else 403
+            raise HTTPException(status_code=status, detail=error)
         await db.commit()
 
     return Response(status_code=200)
@@ -355,23 +343,12 @@ async def delete_group_message(
     message_id: int,
     user: User = Depends(get_current_user),
 ) -> Response:
-    """Delete a group message.
-
-    Args:
-        message_id: The ID of the message to delete
-        user: The authenticated user
-
-    Returns:
-        Response: 200 OK
-
-    Raises:
-        HTTPException 403: If the user is not the message author
-        HTTPException 404: If the message is not found
-    """
     async with async_session_scope() as db:
         message = await get_group_message_or_404(db, message_id)
         channel_id = f"group_{message.group_id}"
-        await delete_message_broadcast(message, user.id, channel_id)
+        error = await delete_message_broadcast(message, user.id, channel_id)
+        if error:
+            raise HTTPException(status_code=403, detail=error)
         await db.delete(message)
         await db.commit()
 
@@ -423,59 +400,12 @@ async def api_group_messages(
     limit: int = Query(default=PAGE_SIZE, ge=1, le=200),
     user: User = Depends(get_current_user),
 ) -> JSONResponse:
-    """Fetch paginated group messages as JSON.
-
-    Args:
-        group_id: The group ID
-        offset: Number of messages to skip (from newest)
-        limit: Maximum number of messages to return
-        user: The authenticated user
-
-    Returns:
-        JSONResponse: JSON with messages list and has_more flag
-    """
     async with async_session_scope() as db:
         await require_group_member(db, group_id, user.id)
-
-        count_result = await db.execute(
-            select(func.count())
-            .select_from(GroupMessage)
-            .filter(GroupMessage.group_id == group_id)
+        data = await fetch_api_messages_json(
+            db, GroupMessage, GroupMessage.group_id, group_id, offset, limit
         )
-        total = count_result.scalar()
-
-        # Get messages ordered by created_at DESC (newest first), then reverse
-        result_messages = await db.execute(
-            select(GroupMessage)
-            .filter(GroupMessage.group_id == group_id)
-            .order_by(GroupMessage.created_at.desc())
-            .offset(offset)
-            .limit(limit)
-        )
-        msgs = list(reversed(result_messages.scalars().all()))
-
-        author_ids = {m.user_id for m in msgs}
-        users_map = {}
-        if author_ids:
-            users = await get_users_by_ids(db, list(author_ids))
-            users_map = {u.id: {"name": u.name, "surname": u.surname} for u in users}
-
-        messages_json = []
-        for m in msgs:
-            sender = users_map.get(m.user_id, {})
-            messages_json.append(
-                message_to_json(
-                    m, f"{sender.get('name', '')} {sender.get('surname', '')}".strip()
-                )
-            )
-
-        return JSONResponse(
-            {
-                "messages": messages_json,
-                "has_more": (offset + limit) < total,
-                "total": total,
-            }
-        )
+        return JSONResponse(data)
 
 
 @router.get("/group_members/{group_id}")

@@ -418,17 +418,12 @@ async def load_user_groups(db, user_id: int) -> tuple[list[GroupChat], dict[int,
             select(GroupChat).filter(GroupChat.id.in_(group_ids))
         )
         groups = result_groups.scalars().all()
-        for g in groups:
-            member_count = len(
-                (
-                    await db.execute(
-                        select(GroupMember).filter(GroupMember.group_id == g.id)
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            group_member_counts[g.id] = member_count
+        count_result = await db.execute(
+            select(GroupMember.group_id, func.count())
+            .filter(GroupMember.group_id.in_(group_ids))
+            .group_by(GroupMember.group_id)
+        )
+        group_member_counts = dict(count_result.all())
     return groups, group_member_counts
 
 
@@ -474,23 +469,18 @@ def is_csrf_token_valid(token: str, user_id: int) -> bool:
         return False
 
 
-async def edit_message_broadcast(message, user_id: int, content: str, channel_id: str):
+async def edit_message_broadcast(
+    message, user_id: int, content: str, channel_id: str
+) -> str | None:
     """Edit a message and broadcast the update via WebSocket.
 
-    Args:
-        message: The message object to edit
-        user_id: The ID of the user requesting the edit
-        content: The new message content
-        channel_id: The channel to broadcast to
-
-    Raises:
-        HTTPException 403: If the user is not the message author
-        HTTPException 400: If content is empty
+    Returns:
+        str or None: Error message if failed, None on success
     """
     if message.user_id != user_id:
-        raise HTTPException(status_code=403, detail="Not your message")
+        return "Not your message"
     if not content.strip():
-        raise HTTPException(status_code=400, detail="Content cannot be empty")
+        return "Content cannot be empty"
 
     now = datetime.now()
     message.content = content
@@ -507,21 +497,19 @@ async def edit_message_broadcast(message, user_id: int, content: str, channel_id
         ),
         channel_id,
     )
+    return None
 
 
-async def delete_message_broadcast(message, user_id: int, channel_id: str):
+async def delete_message_broadcast(
+    message, user_id: int, channel_id: str
+) -> str | None:
     """Delete a message and broadcast the deletion via WebSocket.
 
-    Args:
-        message: The message object to delete
-        user_id: The ID of the user requesting deletion
-        channel_id: The channel to broadcast to
-
-    Raises:
-        HTTPException 403: If the user is not the message author
+    Returns:
+        str or None: Error message if failed, None on success
     """
     if message.user_id != user_id:
-        raise HTTPException(status_code=403, detail="Not your message")
+        return "Not your message"
 
     await manager.broadcast(
         dumps(
@@ -532,6 +520,7 @@ async def delete_message_broadcast(message, user_id: int, channel_id: str):
         ),
         channel_id,
     )
+    return None
 
 
 def message_to_json(message, sender_name: str) -> dict:
@@ -594,6 +583,58 @@ async def get_paginated_messages(
     return total, messages, users_map
 
 
+async def fetch_api_messages_json(
+    db, message_model, filter_col, filter_val, offset: int, limit: int
+) -> dict:
+    """Fetch paginated messages and serialize to JSON.
+
+    Args:
+        db: Database session
+        message_model: Message or GroupMessage model class
+        filter_col: Column to filter on (e.g. Message.channel_id)
+        filter_val: Value to filter by
+        offset: Number of messages to skip (from newest)
+        limit: Maximum number of messages to return
+
+    Returns:
+        dict: {messages: list, has_more: bool, total: int}
+    """
+    count_result = await db.execute(
+        select(func.count()).select_from(message_model).filter(filter_col == filter_val)
+    )
+    total = count_result.scalar()
+
+    result_messages = await db.execute(
+        select(message_model)
+        .filter(filter_col == filter_val)
+        .order_by(message_model.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    msgs = list(reversed(result_messages.scalars().all()))
+
+    author_ids = {m.user_id for m in msgs}
+    users_map = {}
+    if author_ids:
+        authors = await get_users_by_ids(db, list(author_ids))
+        users_map = {u.id: {"name": u.name, "surname": u.surname} for u in authors}
+
+    messages_json = []
+    for m in msgs:
+        sender = users_map.get(m.user_id, {})
+        messages_json.append(
+            message_to_json(
+                m, f"{sender.get('name', '')} {sender.get('surname', '')}".strip()
+            )
+        )
+
+    return {
+        "messages": messages_json,
+        "has_more": (offset + limit) < total,
+        "total": total,
+    }
+
+
 async def get_channel_or_404(db, channel_id: str) -> Channel:
     """Get a channel by channel_id or raise 404.
 
@@ -631,184 +672,78 @@ async def require_channel_participant(db, channel_id: str, user_id: int):
         raise HTTPException(status_code=403, detail="Not a participant in this channel")
 
 
-async def mark_channel_read(db, user_id: int, channel_id: str):
-    """Set last_read_message_id for a user in a friend channel to the latest message.
-
-    Args:
-        db: Database session
-        user_id: The user who is reading
-        channel_id: The channel being read
-    """
+async def _mark_read(db, user_id, filter_val, read_model, message_model, id_col):
     latest = await db.execute(
-        select(Message.id)
-        .filter(Message.channel_id == channel_id)
-        .order_by(Message.id.desc())
+        select(message_model.id)
+        .filter(getattr(message_model, id_col) == filter_val)
+        .order_by(message_model.id.desc())
         .limit(1)
     )
     latest_id = latest.scalar()
     if latest_id is None:
         return
     result = await db.execute(
-        select(UserChannelRead).filter(
-            UserChannelRead.user_id == user_id,
-            UserChannelRead.channel_id == channel_id,
+        select(read_model).filter(
+            read_model.user_id == user_id,
+            getattr(read_model, id_col) == filter_val,
         )
     )
-    ucr = result.scalar()
-    if ucr:
-        ucr.last_read_message_id = latest_id
+    record = result.scalar()
+    if record:
+        record.last_read_message_id = latest_id
     else:
         db.add(
-            UserChannelRead(
-                user_id=user_id,
-                channel_id=channel_id,
-                last_read_message_id=latest_id,
+            read_model(
+                user_id=user_id, **{id_col: filter_val}, last_read_message_id=latest_id
             )
         )
+
+
+async def mark_channel_read(db, user_id: int, channel_id: str):
+    await _mark_read(db, user_id, channel_id, UserChannelRead, Message, "channel_id")
 
 
 async def mark_group_read(db, user_id: int, group_id: int):
-    """Set last_read_message_id for a user in a group to the latest message.
+    await _mark_read(db, user_id, group_id, UserGroupRead, GroupMessage, "group_id")
 
-    Args:
-        db: Database session
-        user_id: The user who is reading
-        group_id: The group being read
-    """
-    latest = await db.execute(
-        select(GroupMessage.id)
-        .filter(GroupMessage.group_id == group_id)
-        .order_by(GroupMessage.id.desc())
-        .limit(1)
-    )
-    latest_id = latest.scalar()
-    if latest_id is None:
-        return
-    result = await db.execute(
-        select(UserGroupRead).filter(
-            UserGroupRead.user_id == user_id,
-            UserGroupRead.group_id == group_id,
+
+async def _compute_unread_counts(
+    db, user_id, ids, read_model, message_model, id_col, read_id_col
+):
+    if not ids:
+        return {}
+
+    query = (
+        select(getattr(message_model, read_id_col), func.count())
+        .outerjoin(
+            read_model,
+            (getattr(read_model, id_col) == getattr(message_model, read_id_col))
+            & (read_model.user_id == user_id),
         )
-    )
-    ugr = result.scalar()
-    if ugr:
-        ugr.last_read_message_id = latest_id
-    else:
-        db.add(
-            UserGroupRead(
-                user_id=user_id,
-                group_id=group_id,
-                last_read_message_id=latest_id,
-            )
+        .filter(
+            getattr(message_model, read_id_col).in_(ids),
+            message_model.user_id != user_id,
+            (read_model.last_read_message_id.is_(None))
+            | (message_model.id > read_model.last_read_message_id),
         )
+        .group_by(getattr(message_model, read_id_col))
+    )
+    result = await db.execute(query)
+    raw = dict(result.all())
+    return {i: raw.get(i, 0) for i in ids}
 
 
 async def compute_channel_unread_counts(
     db, user_id: int, channel_ids: list[str]
 ) -> dict[str, int]:
-    """Compute unread message count for each channel.
-
-    Args:
-        db: Database session
-        user_id: The user to compute for
-        channel_ids: List of channel IDs to check
-
-    Returns:
-        dict[str, int]: Mapping channel_id -> unread count
-    """
-    if not channel_ids:
-        return {}
-
-    result_reads = await db.execute(
-        select(UserChannelRead).filter(
-            UserChannelRead.user_id == user_id,
-            UserChannelRead.channel_id.in_(channel_ids),
-        )
+    return await _compute_unread_counts(
+        db, user_id, channel_ids, UserChannelRead, Message, "channel_id", "channel_id"
     )
-    last_read = {
-        r.channel_id: r.last_read_message_id for r in result_reads.scalars().all()
-    }
-
-    result_counts = await db.execute(
-        select(Message.channel_id, func.count())
-        .filter(Message.channel_id.in_(channel_ids))
-        .group_by(Message.channel_id)
-    )
-    total_by_channel = dict(result_counts.all())
-
-    unread: dict[str, int] = {}
-    for ch_id in channel_ids:
-        last_id = last_read.get(ch_id)
-        if last_id is None:
-            result_unread = await db.execute(
-                select(func.count())
-                .select_from(Message)
-                .filter(
-                    Message.channel_id == ch_id,
-                    Message.user_id != user_id,
-                )
-            )
-        else:
-            result_unread = await db.execute(
-                select(func.count())
-                .select_from(Message)
-                .filter(
-                    Message.channel_id == ch_id,
-                    Message.id > last_id,
-                    Message.user_id != user_id,
-                )
-            )
-        unread[ch_id] = result_unread.scalar() or 0
-    return unread
 
 
 async def compute_group_unread_counts(
     db, user_id: int, group_ids: list[int]
 ) -> dict[int, int]:
-    """Compute unread message count for each group.
-
-    Args:
-        db: Database session
-        user_id: The user to compute for
-        group_ids: List of group IDs to check
-
-    Returns:
-        dict[int, int]: Mapping group_id -> unread count
-    """
-    if not group_ids:
-        return {}
-
-    result_reads = await db.execute(
-        select(UserGroupRead).filter(
-            UserGroupRead.user_id == user_id,
-            UserGroupRead.group_id.in_(group_ids),
-        )
+    return await _compute_unread_counts(
+        db, user_id, group_ids, UserGroupRead, GroupMessage, "group_id", "group_id"
     )
-    last_read = {
-        r.group_id: r.last_read_message_id for r in result_reads.scalars().all()
-    }
-
-    unread: dict[int, int] = {}
-    for gid in group_ids:
-        last_id = last_read.get(gid)
-        if last_id is None:
-            result_unread = await db.execute(
-                select(func.count())
-                .select_from(GroupMessage)
-                .filter(
-                    GroupMessage.group_id == gid,
-                    GroupMessage.user_id != user_id,
-                )
-            )
-        else:
-            result_unread = await db.execute(
-                select(func.count())
-                .select_from(GroupMessage)
-                .filter(
-                    GroupMessage.group_id == gid,
-                    GroupMessage.id > last_id,
-                    GroupMessage.user_id != user_id,
-                )
-            )
-        unread[gid] = result_unread.scalar() or 0
-    return unread

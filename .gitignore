@@ -4,6 +4,7 @@ __pycache__/
 .main.egg-info/
 Chat_app.session.sql
 test.db
+test.db-journal
 .env
 .coverage
 coverage.xml
