@@ -1,7 +1,7 @@
 """add_user_channel_group_read_tracking
 
 Revision ID: e9f7b2c4d5e6
-Revises: 8f2e8a1b3c4d
+Revises: b5a2c3d4e5f6
 Create Date: 2026-07-01 14:00:00.000000
 """
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "e9f7b2c4d5e6"
-down_revision = "8f2e8a1b3c4d"
+down_revision = "b5a2c3d4e5f6"
 branch_labels = None
 depends_on = None
 
