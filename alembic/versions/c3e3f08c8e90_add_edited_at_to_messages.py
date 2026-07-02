@@ -1,4 +1,3 @@
-
 """add_edited_at_to_messages
 
 Revision ID: c3e3f08c8e90
@@ -10,8 +9,8 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision = 'c3e3f08c8e90'
-down_revision = '347cfe570c0f'
+revision = "c3e3f08c8e90"
+down_revision = "347cfe570c0f"
 branch_labels = None
 depends_on = None
 
