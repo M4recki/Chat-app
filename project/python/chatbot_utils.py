@@ -97,7 +97,11 @@ def resolve_api_key() -> str:
     api_key = settings.ai_key.strip().strip('"').strip("'")
     if api_key.lower().startswith("bearer "):
         api_key = api_key.split(" ", 1)[1].strip()
-    if not api_key or api_key.lower() in {"your-nvidia-api-key", "changeme"}:
+    if not api_key or api_key.lower() in {
+        "your-groq-api-key",
+        "your-api-key",
+        "changeme",
+    }:
         raise ChatbotServiceError(
             "Chatbot service is not configured",
             {"reason": "Missing or placeholder AI_KEY"},
@@ -173,23 +177,33 @@ def chatbot_response(user_input: str, previous_messages: list | None = None) -> 
         return "test-response"
 
     api_key = resolve_api_key()
-    client = OpenAI(
-        base_url="https://integrate.api.nvidia.com/v1",
-        api_key=api_key,
-        timeout=settings.chatbot_timeout_seconds,
-        max_retries=settings.chatbot_max_retries,
-    )
+    providers = [(settings.ai_base_url, api_key, settings.chatbot_models)]
+    if settings.ai_fallback_base_url:
+        providers.append(
+            (
+                settings.ai_fallback_base_url,
+                settings.ai_fallback_key or api_key,
+                settings.ai_fallback_models or settings.chatbot_models,
+            )
+        )
     messages = build_chatbot_messages(user_input, previous_messages)
 
     model_errors = []
-    for model_name in settings.chatbot_models:
-        try:
-            result = call_model(client, model_name, messages)
-            if result:
-                return result
-            model_errors.append(f"Model {model_name} returned an empty response")
-        except Exception as exc:
-            model_errors.append(f"Model {model_name} failed: {exc}")
+    for base_url, provider_key, models in providers:
+        client = OpenAI(
+            base_url=base_url,
+            api_key=provider_key,
+            timeout=settings.chatbot_timeout_seconds,
+            max_retries=settings.chatbot_max_retries,
+        )
+        for model_name in models:
+            try:
+                result = call_model(client, model_name, messages)
+                if result:
+                    return result
+                model_errors.append(f"Model {model_name} returned an empty response")
+            except Exception as exc:
+                model_errors.append(f"Model {model_name} failed: {exc}")
 
     raise ChatbotServiceError(
         "Chatbot service is temporarily unavailable",

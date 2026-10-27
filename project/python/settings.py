@@ -42,14 +42,15 @@ class Settings(BaseSettings):
 
     # AI
     ai_key: str = ""
+    ai_base_url: str = "https://api.groq.com/openai/v1"
+    ai_fallback_key: str = ""
+    ai_fallback_base_url: str = ""
+    ai_fallback_models: list[str] = []
     chatbot_history_limit: int = 8
     chatbot_max_tokens: int = 2048
     chatbot_timeout_seconds: float = 60.0
     chatbot_max_retries: int = 3
-    chatbot_models: list[str] = [
-        "stepfun-ai/step-3.5-flash",
-        "mistralai/mistral-large-3-675b-instruct-2512",
-    ]
+    chatbot_models: list[str] = ["openai/gpt-oss-120b"]
 
     # Redis
     redis_url: str = ""

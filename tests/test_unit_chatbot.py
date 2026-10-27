@@ -146,13 +146,13 @@ def test_chatbot_service_error():
         (chatbot_utils_response, "changeme", "Chatbot service is not configured"),
         (
             chatbot_utils_response,
-            "your-nvidia-api-key",
+            "your-groq-api-key",
             "Chatbot service is not configured",
         ),
         (chatbot_utils_response, "   ", "Chatbot service is not configured"),
         (chatbot_utils_response, "bearer changeme", None),
         (chatbot_response, "changeme", "Chatbot service is not configured"),
-        (chatbot_response, "your-nvidia-api-key", "Chatbot service is not configured"),
+        (chatbot_response, "your-api-key", "Chatbot service is not configured"),
         (chatbot_response, "   ", "Chatbot service is not configured"),
         (chatbot_response, "bearer changeme", None),
     ],
@@ -364,3 +364,87 @@ def test_call_model_empty_content():
 
     result = call_model(mock_client, "test-model", [{"role": "user", "content": "hi"}])
     assert result == ""
+
+
+def mock_providers(monkeypatch, failing_base_urls=()):
+    """Patch OpenAI to record provider settings and fail for selected endpoints."""
+    calls = []
+
+    def fake_openai(**kwargs):
+        calls.append(kwargs)
+        client = MagicMock()
+        if kwargs["base_url"] in failing_base_urls:
+            client.chat.completions.create.side_effect = RuntimeError("boom")
+        else:
+            completion = MagicMock()
+            completion.choices[0].message.content = "fallback answer"
+            client.chat.completions.create.return_value = completion
+        return client
+
+    monkeypatch.setattr("project.python.chatbot_utils.OpenAI", fake_openai)
+    return calls
+
+
+def test_chatbot_response_falls_back_to_second_provider(monkeypatch):
+    enable_openai(monkeypatch)
+    monkeypatch.setattr(
+        "project.python.chatbot_utils.settings.ai_base_url", "https://primary.test/v1"
+    )
+    monkeypatch.setattr(
+        "project.python.chatbot_utils.settings.ai_fallback_base_url",
+        "https://fallback.test/v1",
+    )
+    monkeypatch.setattr(
+        "project.python.chatbot_utils.settings.ai_fallback_key", "sk-fallback"
+    )
+    monkeypatch.setattr(
+        "project.python.chatbot_utils.settings.ai_fallback_models", ["fallback-model"]
+    )
+    calls = mock_providers(monkeypatch, failing_base_urls={"https://primary.test/v1"})
+
+    assert chatbot_response("hello") == "fallback answer"
+    assert [c["base_url"] for c in calls] == [
+        "https://primary.test/v1",
+        "https://fallback.test/v1",
+    ]
+    assert calls[1]["api_key"] == "sk-fallback"
+
+
+def test_chatbot_response_fallback_reuses_primary_key_and_models(monkeypatch):
+    enable_openai(monkeypatch)
+    monkeypatch.setattr(
+        "project.python.chatbot_utils.settings.ai_base_url", "https://primary.test/v1"
+    )
+    monkeypatch.setattr(
+        "project.python.chatbot_utils.settings.ai_fallback_base_url",
+        "https://fallback.test/v1",
+    )
+    monkeypatch.setattr("project.python.chatbot_utils.settings.ai_fallback_key", "")
+    monkeypatch.setattr("project.python.chatbot_utils.settings.ai_fallback_models", [])
+    calls = mock_providers(monkeypatch, failing_base_urls={"https://primary.test/v1"})
+
+    assert chatbot_response("hello") == "fallback answer"
+    assert calls[1]["api_key"] == "sk-real-key"
+    assert calls[1]["base_url"] == "https://fallback.test/v1"
+
+
+def test_chatbot_response_skips_fallback_when_primary_succeeds(monkeypatch):
+    enable_openai(monkeypatch)
+    monkeypatch.setattr(
+        "project.python.chatbot_utils.settings.ai_fallback_base_url",
+        "https://fallback.test/v1",
+    )
+    calls = mock_providers(monkeypatch)
+
+    assert chatbot_response("hello") == "fallback answer"
+    assert len(calls) == 1
+    assert calls[0]["base_url"] != "https://fallback.test/v1"
+
+
+def test_ai_base_url_default_is_groq():
+    from project.python.settings import Settings
+
+    assert (
+        Settings.model_fields["ai_base_url"].default == "https://api.groq.com/openai/v1"
+    )
+    assert Settings.model_fields["chatbot_models"].default == ["openai/gpt-oss-120b"]

@@ -9,7 +9,7 @@ A real-time chat application built with FastAPI, WebSockets, and PostgreSQL. Fea
 - 💬 **Real-time Chat**: WebSocket-based messaging between friends
 - 👥 **Group Chat**: Create groups, invite members, real-time group messaging
 - 👫 **Friend Management**: Send/accept/deny friend requests, block/unblock users
-- 🤖 **AI Chatbot**: Integrated AI chatbot conversation (NVIDIA API via OpenAI SDK)
+- 🤖 **AI Chatbot**: Integrated AI chatbot conversation (Groq API via OpenAI SDK)
 - 📁 **Contact Form**: Email-based contact form with SMTP
 - 🎨 **Responsive UI**: Bootstrap 5 + Jinja2 templates
 - ⚡ **Rate Limiting**: In-memory + Redis sliding window rate limiter
@@ -22,7 +22,7 @@ A real-time chat application built with FastAPI, WebSockets, and PostgreSQL. Fea
 - **Real-time**: WebSockets with connection manager
 - **Frontend**: Jinja2 templates, Bootstrap 5, vanilla JS
 - **Security**: PBKDF2 hashing, itsdangerous signed tokens, CSRF protection
-- **AI**: OpenAI Python client (NVIDIA Integrate API)
+- **AI**: OpenAI Python client (Groq OpenAI-compatible API)
 - **Testing**: pytest, pytest-cov, httpx, SQLite
 - **Infra**: Docker, docker-compose, GitHub Actions CI
 
@@ -171,7 +171,12 @@ pytest -k "test_login"       # Filter by name
 | `EMAIL_SENDER` | SMTP sender address (Gmail) | falls back to `EMAIL_RECEIVER` |
 | `EMAIL_RECEIVER` | Contact form recipient | `admin@example.com` |
 | `EMAIL_PASSWORD` | Gmail app password | — |
-| `AI_KEY` | NVIDIA Integrate API key | — |
+| `AI_KEY` | API key of the primary chat provider | — |
+| `AI_BASE_URL` | OpenAI-compatible endpoint of the primary provider | `https://api.groq.com/openai/v1` |
+| `CHATBOT_MODELS` | JSON list of models tried in order | `["openai/gpt-oss-120b"]` |
+| `AI_FALLBACK_BASE_URL` | Optional second provider used after every model above fails | `""` (disabled) |
+| `AI_FALLBACK_KEY` | Key for the fallback provider | falls back to `AI_KEY` |
+| `AI_FALLBACK_MODELS` | JSON list of fallback models | falls back to the primary model list |
 | `REDIS_URL` | Redis connection (for distributed rate limiting) | `""` (in-memory) |
 
 ## Security
