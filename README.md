@@ -119,20 +119,23 @@ docker-compose up --build
 │       ├── contact.html, error.html
 ├── alembic/
 │   ├── env.py, script.py.mako
-│   └── versions/                   # 6 migrations
+│   └── versions/                   # 9 migrations
 │       ├── 593b...create_initial_schema.py
-│       ├── 347c...change_message_content_to_text.py
 │       ├── 3736...increase_password_length.py
-│       ├── fe4e...add_edited_at_to_messages.py
+│       ├── 347c...change_message_content_to_text.py
+│       ├── c3e3...add_edited_at_to_messages.py
+│       ├── 8f2e...add_last_active_to_users.py
+│       ├── b5a2...add_group_chat_tables.py
+│       ├── e9f7...add_user_channel_group_read_tracking.py
 │       ├── b5a7...add_index_on_messages_created_at.py
-│       └── ef3b...add_group_chat_tables.py
+│       └── 3c0b...add_indexes_on_group_chat_tables.py
 ├── tests/
 │   ├── conftest.py                 # Fixtures and test helpers
 │   ├── model_test.py               # SQLite engine/test session config
-│   ├── unit_test.py                # Unit tests
+│   ├── test_routes_*.py            # Route-level HTTP tests (auth, chat, group, ...)
+│   ├── test_unit_*.py              # Unit tests (helpers, email, websocket, ...)
 │   ├── integration_test.py         # Integration tests
 │   ├── functional_test.py          # End-to-end functional tests
-│   ├── routes_test.py              # Route-level HTTP tests
 │   ├── security_test.py            # Security tests (CSRF, XSS, auth)
 │   ├── contract_test.py            # API contract tests
 │   └── performance_test.py         # Load and rate limit tests
@@ -150,7 +153,7 @@ docker-compose up --build
 ## Testing
 
 ```bash
-pytest -q                    # 189 tests
+pytest -q                    # 310 tests
 pytest --cov=project         # With coverage
 pytest -k "test_login"       # Filter by name
 ```

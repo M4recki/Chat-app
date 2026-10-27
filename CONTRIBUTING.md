@@ -108,7 +108,7 @@ Write tests for new features and bug fixes:
 pytest -q
 
 # Run specific test file
-pytest tests/unit_test.py -v
+pytest tests/test_unit_helpers.py -v
 
 # Run with coverage
 pytest --cov=project --cov-report=html
