@@ -74,8 +74,9 @@ We follow [PEP 8](https://www.python.org/dev/peps/pep-0008/) with these tools:
 Format your code before committing:
 
 ```bash
-black project/
-isort project/
+black .
+isort .
+flake8 project tests alembic
 ```
 
 ### Commit Messages

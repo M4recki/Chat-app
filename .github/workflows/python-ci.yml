@@ -66,6 +66,7 @@ jobs:
             raise SystemExit('DB not ready')
           PY
           alembic upgrade head
+          alembic check
 
       - name: Run tests with coverage
         env:
@@ -75,6 +76,12 @@ jobs:
 
       - name: Check formatting with black
         run: black --check .
+
+      - name: Check import order with isort
+        run: isort --check-only .
+
+      - name: Lint with flake8
+        run: flake8 project tests alembic
 
       - name: Upload coverage to artifact
         if: always()
