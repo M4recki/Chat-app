@@ -9,3 +9,5 @@ test.db-journal
 .coverage
 coverage.xml
 .idea/
+# coverage annotate output
+cov_annotate*/
