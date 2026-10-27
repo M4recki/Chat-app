@@ -1,0 +1,20 @@
+# Hooks call the tools installed from requirements-dev.txt, so pre-commit
+# and CI always run the same versions.
+repos:
+  - repo: local
+    hooks:
+      - id: black
+        name: black
+        entry: black
+        language: system
+        types: [python]
+      - id: isort
+        name: isort
+        entry: isort
+        language: system
+        types: [python]
+      - id: flake8
+        name: flake8
+        entry: flake8
+        language: system
+        types: [python]
