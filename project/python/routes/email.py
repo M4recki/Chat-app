@@ -1,9 +1,8 @@
 import logging
 import secrets
-
-from email.message import EmailMessage
-from smtplib import SMTPException, SMTP_SSL
 import smtplib
+from email.message import EmailMessage
+from smtplib import SMTP_SSL, SMTPException
 from ssl import create_default_context
 
 from itsdangerous import URLSafeTimedSerializer as Serializer

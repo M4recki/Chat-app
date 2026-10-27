@@ -1,5 +1,6 @@
-from itsdangerous import URLSafeTimedSerializer as Serializer
 from conftest import client, create_user
+from itsdangerous import URLSafeTimedSerializer as Serializer
+
 from project.python.routes.helpers import generate_csrf_token
 from project.python.settings import settings
 from tests.model_test import TestingSessionLocal

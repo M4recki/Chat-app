@@ -1,12 +1,13 @@
 from conftest import (
+    NONEXISTENT_ID,
     authed_client,
     create_friendship,
     create_group,
     create_group_member,
     create_group_message,
     create_user,
-    NONEXISTENT_ID,
 )
+
 from project.python.models import (
     FriendStatus,
     GroupChat,

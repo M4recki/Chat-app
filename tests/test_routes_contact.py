@@ -1,4 +1,5 @@
 from conftest import client
+
 from project.python.routes.helpers import generate_csrf_token
 
 

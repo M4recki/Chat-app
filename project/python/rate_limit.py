@@ -6,11 +6,10 @@ import time
 from collections import deque
 from typing import TypedDict
 
+import redis.asyncio as aioredis
 from fastapi import HTTPException, Request
 
 from .settings import settings
-
-import redis.asyncio as aioredis
 
 logger = logging.getLogger(__name__)
 

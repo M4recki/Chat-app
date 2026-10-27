@@ -1,11 +1,10 @@
 import smtplib
 
-
 from project.python.routes.email import (
     generate_password_reset_token,
     get_sender,
-    send_email_raw,
     send_email,
+    send_email_raw,
     send_reset_email,
     verify_password_reset_token,
 )

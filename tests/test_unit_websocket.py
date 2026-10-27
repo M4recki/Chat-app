@@ -4,9 +4,9 @@ from io import BytesIO
 
 import pytest
 from conftest import (
-    client,
     DEFAULT_AVATAR,
     NONEXISTENT_ID,
+    client,
 )
 from fastapi import WebSocketDisconnect
 from fastapi.testclient import TestClient
@@ -14,8 +14,7 @@ from itsdangerous import URLSafeTimedSerializer as Serializer
 from PIL import Image
 from starlette.testclient import TestClient as WSClient
 
-from project.python.main import app
-from project.python.main import app as ws_app
+from project.python.main import app, app as ws_app
 from project.python.models import Channel, GroupChat, GroupMember, User
 from project.python.settings import settings as app_settings
 from tests.model_test import TestingSessionLocal

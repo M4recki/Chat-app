@@ -1,17 +1,19 @@
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-import time
+from io import BytesIO
+
+from conftest import DEFAULT_AVATAR, TEST_PASSWORD, client
 from fastapi.testclient import TestClient
 from itsdangerous import URLSafeTimedSerializer as Serializer
-from conftest import client, DEFAULT_AVATAR, TEST_PASSWORD
+from PIL import Image
+
 from project.python.main import app
+from project.python.models import Channel, User
 from project.python.rate_limit import clear_rate_limiter
 from project.python.routes.helpers import generate_csrf_token
 from project.python.settings import settings
 from tests.model_test import TestingSessionLocal
-from project.python.models import Channel, User
-from io import BytesIO
-from PIL import Image
 
 
 def test_rate_limiter_parallel_requests():

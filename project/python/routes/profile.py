@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash
 from ..database import async_session_scope
 from ..models import User
 from ..settings import settings
-from .forms import profile_update_form, ProfileUpdateForm
+from .forms import ProfileUpdateForm, profile_update_form
 from .helpers import get_current_user, validate_csrf, validate_email
 from .template import templates
 
@@ -60,7 +60,8 @@ async def update_profile_data(
             avatar_data = await form.avatar.read()
             if len(avatar_data) > settings.max_avatar_size:
                 errors["avatar"] = (
-                    f"Avatar must be smaller than {settings.max_avatar_size // (1024 * 1024)} MB"
+                    "Avatar must be smaller than "
+                    f"{settings.max_avatar_size // (1024 * 1024)} MB"
                 )
             else:
                 user.avatar = avatar_data

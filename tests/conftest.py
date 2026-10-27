@@ -29,14 +29,14 @@ if db_file.exists():
 environ["TESTING"] = "1"
 environ["CHAT_SECRET_KEY"] = "test-secret"
 
-from project.python import models
-from project.python.main import app
-import tests.model_test as _model_test_mod
-from tests.model_test import (
-    async_engine as test_async_engine,
-    sync_engine as test_engine,
+import tests.model_test as _model_test_mod  # noqa: E402
+from project.python import models  # noqa: E402
+from project.python.main import app  # noqa: E402
+from tests.model_test import (  # noqa: E402
     TestingAsyncSessionLocal,
     TestingSessionLocal as _TestingSessionLocal,
+    async_engine as test_async_engine,
+    sync_engine as test_engine,
 )
 
 # session-leak prevention
@@ -77,7 +77,7 @@ DEFAULT_AVATAR = "project/static/img/default avatar.png"
 
 client = TestClient(app)
 
-from project.python.settings import settings as _settings
+from project.python.settings import settings as _settings  # noqa: E402
 
 
 def set_access_token(user_id: int, target_client=client) -> None:

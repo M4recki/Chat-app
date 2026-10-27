@@ -3,12 +3,12 @@ from typing import cast
 
 import pytest
 from conftest import (
+    NONEXISTENT_ID,
     async_session_scope,
     create_channel,
     create_user,
     make_request,
     make_request_with_cookie,
-    NONEXISTENT_ID,
 )
 from fastapi import HTTPException
 from itsdangerous import URLSafeTimedSerializer as Serializer
@@ -24,16 +24,6 @@ from project.python.models import (
 )
 from project.python.routes.helpers import (
     authentication_in_header,
-    get_user,
-    get_user_from_request,
-    is_authenticated,
-)
-from project.python.routes.template import (
-    encode_avatar,
-    user_image,
-    user_name,
-)
-from project.python.routes.helpers import (
     get_channel_id_map,
     get_channel_or_404,
     get_current_user_id,
@@ -41,9 +31,17 @@ from project.python.routes.helpers import (
     get_message_or_404,
     get_or_create_channel,
     get_paginated_messages,
+    get_user,
     get_user_by_id,
+    get_user_from_request,
+    is_authenticated,
     message_to_json,
     require_channel_participant,
+)
+from project.python.routes.template import (
+    encode_avatar,
+    user_image,
+    user_name,
 )
 from project.python.settings import settings as app_settings
 from tests.model_test import TestingSessionLocal

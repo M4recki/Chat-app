@@ -1,10 +1,11 @@
 from conftest import (
     authed_client,
+    client,
     create_channel,
     create_friendship,
     create_user,
-    client,
 )
+
 from project.python.models import FriendStatus
 from tests.model_test import TestingSessionLocal
 

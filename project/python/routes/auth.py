@@ -16,7 +16,7 @@ from .email import (
     send_reset_email,
     verify_password_reset_token,
 )
-from .forms import sign_up_form, SignUpForm
+from .forms import SignUpForm, sign_up_form
 from .helpers import is_authenticated, validate_csrf_optional, validate_email
 from .template import DEFAULT_AVATAR_PATH, render_template
 
@@ -70,7 +70,8 @@ async def sign_up_data(
             errors["email"] = "User with this email already exists"
         if len(form.password) < settings.password_min_length:
             errors["password"] = (
-                f"Password must be at least {settings.password_min_length} characters long"
+                f"Password must be at least {settings.password_min_length} "
+                "characters long"
             )
         if form.password != form.confirm_password:
             errors["confirm_password"] = "Passwords do not match"
@@ -207,7 +208,10 @@ async def forgot_password_data(request: Request, email: str = Form(...)) -> Resp
     return render_template(
         "forgot_password.html",
         request,
-        success="If an account with that email exists, we have sent a password reset link.",
+        success=(
+            "If an account with that email exists, "
+            "we have sent a password reset link."
+        ),
     )
 
 

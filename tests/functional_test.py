@@ -1,14 +1,14 @@
-from itsdangerous import URLSafeTimedSerializer as Serializer
+from conftest import client, create_user
 from fastapi.testclient import TestClient
+from itsdangerous import URLSafeTimedSerializer as Serializer
+
+from project.python.chatbot_utils import ChatbotServiceError, chatbot_response
+from project.python.main import app
 from project.python.models import ChatbotMessage
-from project.python.chatbot_utils import ChatbotServiceError
-from project.python.chatbot_utils import chatbot_response
+from project.python.rate_limit import clear_rate_limiter
 from project.python.routes.email import send_email
 from project.python.routes.helpers import generate_csrf_token
 from project.python.settings import settings
-from project.python.main import app
-from project.python.rate_limit import clear_rate_limiter
-from conftest import client, create_user
 from tests.model_test import TestingSessionLocal
 
 

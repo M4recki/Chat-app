@@ -15,11 +15,11 @@ from project.python.chatbot_utils import (
     chatbot_context,
     chatbot_json_error,
     chatbot_json_success,
+    chatbot_response,
     chatbot_response as chatbot_utils_response,
     normalize_chatbot_response,
 )
 from project.python.models import User
-from project.python.chatbot_utils import chatbot_response
 from project.python.routes.helpers import generate_channel_id
 
 

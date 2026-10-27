@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from os import environ
 from textwrap import dedent
+
 import openai
 from fastapi.responses import JSONResponse
 from openai import OpenAI
@@ -148,7 +149,7 @@ def call_model(client: OpenAI, model_name: str, messages: list) -> str:
         if content:
             return normalize_chatbot_response(content)
         return ""
-    except Exception as exc:
+    except Exception:
         if getattr(settings, "debug", False):
             logging.getLogger("chatbot").exception(
                 "Chatbot model %s failed", model_name

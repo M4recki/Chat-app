@@ -1,9 +1,10 @@
 from conftest import (
-    authed_client,
-    create_user,
     DEFAULT_AVATAR,
     TEST_PASSWORD,
+    authed_client,
+    create_user,
 )
+
 from project.python.routes.helpers import generate_csrf_token
 from tests.model_test import TestingSessionLocal
 

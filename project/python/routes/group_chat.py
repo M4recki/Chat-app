@@ -5,9 +5,8 @@ from json import dumps
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 
-from ..models import GroupChat, GroupMember, GroupMessage, User
-
 from ..database import async_session_scope
+from ..models import GroupChat, GroupMember, GroupMessage, User
 from .helpers import (
     PAGE_SIZE,
     compute_group_unread_counts,
@@ -378,7 +377,10 @@ async def leave_group(
         if group.created_by == user.id:
             raise HTTPException(
                 status_code=400,
-                detail="Creator cannot leave the group. Transfer ownership or delete the group.",
+                detail=(
+                    "Creator cannot leave the group. "
+                    "Transfer ownership or delete the group."
+                ),
             )
 
         member = await get_group_member(db, group_id, user.id)
@@ -388,7 +390,7 @@ async def leave_group(
         await db.delete(member)
 
     return RedirectResponse(
-        url=f"/group_chat_list",
+        url="/group_chat_list",
         status_code=303,
     )
 

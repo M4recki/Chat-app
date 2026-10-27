@@ -1,7 +1,8 @@
 from conftest import client
-from project.python.routes.helpers import generate_csrf_token
 from fastapi.testclient import TestClient
+
 from project.python.main import app
+from project.python.routes.helpers import generate_csrf_token
 
 
 def test_validation_error_returns_422_json():

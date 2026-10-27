@@ -4,15 +4,12 @@ from hashlib import sha256
 from json import dumps
 from typing import cast
 
+from fastapi import Depends, HTTPException, Request
 from itsdangerous import URLSafeTimedSerializer as Serializer
 from itsdangerous.exc import BadSignature, SignatureExpired
-
-from fastapi import Depends, HTTPException, Request
 from sqlalchemy import func, or_, select
 
 from ..connection_manager import manager
-
-PAGE_SIZE: int = 50
 from ..database import async_session_scope, session_scope
 from ..models import (
     Channel,
@@ -27,6 +24,8 @@ from ..models import (
     UserGroupRead,
 )
 from ..settings import settings
+
+PAGE_SIZE: int = 50
 
 
 def decode_access_token(cookies: dict) -> int | None:

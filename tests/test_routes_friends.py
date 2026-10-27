@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
 
 from conftest import (
+    NONEXISTENT_ID,
     authed_client,
     create_friendship,
     create_user,
-    NONEXISTENT_ID,
 )
+
 from project.python.models import FriendStatus
 from project.python.routes.helpers import generate_csrf_token
 from tests.model_test import TestingSessionLocal

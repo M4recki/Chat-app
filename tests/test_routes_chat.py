@@ -1,16 +1,17 @@
 from uuid import uuid4
 
 from conftest import (
+    NONEXISTENT_ID,
     authed_client,
     create_channel,
     create_friendship,
-    create_message,
-    create_user,
     create_group,
     create_group_member,
     create_group_message,
-    NONEXISTENT_ID,
+    create_message,
+    create_user,
 )
+
 from project.python.models import (
     Channel,
     FriendStatus,

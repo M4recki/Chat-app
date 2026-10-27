@@ -1,15 +1,16 @@
 from conftest import (
-    client,
     authed_client,
+    client,
     create_user,
 )
+from fastapi.testclient import TestClient
 from itsdangerous import URLSafeTimedSerializer as Serializer
+
+from project.python.chatbot_utils import ChatbotServiceError, chatbot_json_error
 from project.python.main import app
-from project.python.settings import settings
 from project.python.models import User
 from project.python.routes.helpers import generate_csrf_token
-from project.python.chatbot_utils import ChatbotServiceError, chatbot_json_error
-from fastapi.testclient import TestClient
+from project.python.settings import settings
 from tests.model_test import TestingSessionLocal
 
 

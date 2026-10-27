@@ -7,6 +7,7 @@ from conftest import (
     create_group_member,
     create_user,
 )
+
 from project.python.models import (
     Channel,
     GroupMessage,
