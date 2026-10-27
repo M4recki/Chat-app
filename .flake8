@@ -1,0 +1,4 @@
+[flake8]
+# black formats to 88 columns, so flake8's default of 79 would flag black output.
+max-line-length = 88
+extend-ignore = E203, W503
