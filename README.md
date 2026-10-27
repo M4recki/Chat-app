@@ -119,7 +119,7 @@ docker-compose up --build
 │       ├── contact.html, error.html
 ├── alembic/
 │   ├── env.py, script.py.mako
-│   └── versions/                   # 9 migrations
+│   └── versions/                   # 10 migrations
 │       ├── 593b...create_initial_schema.py
 │       ├── 3736...increase_password_length.py
 │       ├── 347c...change_message_content_to_text.py
@@ -128,7 +128,8 @@ docker-compose up --build
 │       ├── b5a2...add_group_chat_tables.py
 │       ├── e9f7...add_user_channel_group_read_tracking.py
 │       ├── b5a7...add_index_on_messages_created_at.py
-│       └── 3c0b...add_indexes_on_group_chat_tables.py
+│       ├── 3c0b...add_indexes_on_group_chat_tables.py
+│       └── bd39...add_indexes_on_channels_friends_messages.py
 ├── tests/
 │   ├── conftest.py                 # Fixtures and test helpers
 │   ├── model_test.py               # SQLite engine/test session config
